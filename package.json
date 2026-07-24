@@ -32,7 +32,10 @@
     "bot:eval": "node --env-file=.env --import tsx scripts/bot-eval/run.ts",
     "bot:eval:smoke": "node --env-file=.env --import tsx scripts/bot-eval/run.ts --smoke",
     "bot:export": "node --env-file=.env --import tsx scripts/bot-eval/export-real.ts",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "typecheck": "tsc --noEmit",
+    "typecheck:mobile": "npm --workspace @nidokey/mobile exec -- tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\" \"packages/shared/src/*.test.ts\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

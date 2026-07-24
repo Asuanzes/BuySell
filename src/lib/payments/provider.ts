@@ -20,14 +20,32 @@ export interface PaymentProvider {
   expire(intentId: string): Promise<void>;
 }
 
-const secret = () => process.env.FOOD_PAYMENT_WEBHOOK_SECRET || process.env.AUTH_SECRET || "";
+/**
+ * Secreto HMAC de pagos. DEDICADO: en producción es obligatorio
+ * FOOD_PAYMENT_WEBHOOK_SECRET (P0 auditoría: compartir AUTH_SECRET con pagos
+ * significa que comprometer uno compromete el otro). El fallback a AUTH_SECRET
+ * solo existe en desarrollo. Sin secreto: firmar lanza (fail-fast) y verificar
+ * devuelve false (fail-closed).
+ */
+const secret = () => {
+  const dedicated = process.env.FOOD_PAYMENT_WEBHOOK_SECRET;
+  if (dedicated) return dedicated;
+  if (process.env.NODE_ENV !== "production") return process.env.AUTH_SECRET || "";
+  return "";
+};
+
+function requireSecret(): string {
+  const s = secret();
+  if (!s) throw new Error("FOOD_PAYMENT_WEBHOOK_SECRET no configurado (obligatorio en producción)");
+  return s;
+}
 
 export function signPaymentWebhook(raw: string): string {
-  return "sha256=" + createHmac("sha256", secret()).update(raw).digest("hex");
+  return "sha256=" + createHmac("sha256", requireSecret()).update(raw).digest("hex");
 }
 
 export function signFakePaymentToken(intentId: string): string {
-  return createHmac("sha256", secret()).update(`fake-payment:${intentId}`).digest("hex");
+  return createHmac("sha256", requireSecret()).update(`fake-payment:${intentId}`).digest("hex");
 }
 
 export function verifyFakePaymentToken(intentId: string, token: string): boolean {

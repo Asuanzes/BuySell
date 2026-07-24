@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomInt } from "node:crypto";
 import { Resend } from "resend";
 import { prisma } from "@/lib/db";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -38,6 +39,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email inválido" }, { status: 400, headers: CORS_HEADERS });
   }
   const email = parsed.data.email.trim().toLowerCase();
+
+  // Rate limit por IP (P1 auditoría): el throttle por email no frena a un
+  // atacante que rota emails (email-bombing / enumeración). 8 peticiones por
+  // IP cada 15 min cubren de sobra un login legítimo con reintentos.
+  const ipLimit = await rateLimit("otp-req-ip", clientIp(req), { limit: 8, windowMs: 15 * 60_000 });
+  if (!ipLimit.ok) {
+    return NextResponse.json(
+      { error: "Demasiadas peticiones. Inténtalo más tarde." },
+      { status: 429, headers: CORS_HEADERS }
+    );
+  }
 
   // Cuenta de revisión (App Store): no enviamos email ni generamos OTP; el código
   // fijo lo valida /verify. Evita rebotes en Resend y deja avanzar la UI al paso
@@ -92,6 +104,15 @@ export async function POST(req: NextRequest) {
   const text = `Tu código de acceso a Nidokey: ${code}\n\nCaduca en 10 minutos.`;
 
   if (!resend) {
+    // Sin Resend solo se puede operar en desarrollo. En producción imprimir el
+    // OTP en logs sería filtrar credenciales (P2 auditoría) → error explícito.
+    if (process.env.NODE_ENV === "production") {
+      console.error("[auth-mobile] RESEND_API_KEY no configurada en producción");
+      return NextResponse.json(
+        { error: "Envío de email no configurado" },
+        { status: 500, headers: CORS_HEADERS }
+      );
+    }
     console.log(`\n========================`);
     console.log(`[auth-mobile] OTP para ${email}: ${code}`);
     console.log(`========================\n`);

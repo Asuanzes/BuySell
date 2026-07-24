@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { randomInt } from "node:crypto";
 import { getUserId } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/db";
 import { upsertRecord, getHolidayById } from "@/features/sources/upsert";
@@ -39,7 +40,10 @@ const Body = z.object({ record: RecordPayload });
 
 /** Referencia de reserva de prueba ("H-ABC123"). */
 function testRef(prefix: string): string {
-  return `${prefix}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += alphabet[randomInt(alphabet.length)];
+  return `${prefix}-${code}`;
 }
 
 export async function OPTIONS() {

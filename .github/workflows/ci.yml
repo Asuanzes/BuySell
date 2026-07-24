@@ -1,0 +1,46 @@
+# CI de PR/push (P0 auditoría: hasta ahora nada validaba el código antes del
+# deploy automático de Vercel). Typecheck web+móvil, tests y build de producción.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Stubs: prisma generate y next build no tocan la BBDD real en CI.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      AUTH_SECRET: ci-dummy-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Typecheck web
+        run: npm run typecheck
+
+      - name: Typecheck móvil
+        run: npm run typecheck:mobile
+
+      - name: Tests
+        run: npm test
+
+      - name: Build de producción (Next.js)
+        run: npx next build

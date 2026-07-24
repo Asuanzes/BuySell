@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { issueMobileJwt } from "@/lib/mobile-jwt";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -41,6 +42,17 @@ export async function POST(req: NextRequest) {
   }
   const email = parsed.data.email.trim().toLowerCase();
   const code = parsed.data.code;
+
+  // Rate limit por IP: complementa el candado de 5 intentos por código (que un
+  // atacante multi-email eludiría) y sobre todo protege la cuenta de revisión
+  // de abajo, cuya comparación directa NO pasa por el contador de intentos.
+  const ipLimit = await rateLimit("otp-verify-ip", clientIp(req), { limit: 30, windowMs: 15 * 60_000 });
+  if (!ipLimit.ok) {
+    return NextResponse.json(
+      { error: "Demasiados intentos. Inténtalo más tarde." },
+      { status: 429, headers: CORS_HEADERS }
+    );
+  }
 
   // Cuenta de revisión (App Store): permite a los revisores entrar sin acceso
   // al email. Solo activo si REVIEW_LOGIN_EMAIL y REVIEW_LOGIN_CODE están puestas.

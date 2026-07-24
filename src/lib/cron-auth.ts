@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 /**
  * Autorización para endpoints programados (cron).
  *
@@ -12,5 +14,10 @@ export function isCronAuthorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false; // sin secreto configurado, nada de cron
   const got = req.headers.get("authorization");
-  return got === `Bearer ${secret}`;
+  if (!got) return false;
+  // Comparación en tiempo constante: un === con early-exit filtra por timing
+  // cuántos caracteres del secreto coinciden.
+  const a = Buffer.from(got);
+  const b = Buffer.from(`Bearer ${secret}`);
+  return a.length === b.length && timingSafeEqual(a, b);
 }

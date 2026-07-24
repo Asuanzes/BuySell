@@ -1145,3 +1145,15 @@ model Device {
 
   @@index([userId])
 }
+
+// Rate limiting / cuotas de uso serverless-safe (ventana fija respaldada en
+// BBDD; los throttles en memoria no sirven entre lambdas de Vercel). La clave
+// codifica dimensión + ventana: p.ej. "otp-ip:1.2.3.4:29384". Limpieza de
+// filas caducadas en el cron semanal de chat-cleanup.
+model RateLimit {
+  key     String   @id
+  count   Int      @default(1)
+  resetAt DateTime
+
+  @@index([resetAt])
+}

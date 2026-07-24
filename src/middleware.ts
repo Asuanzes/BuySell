@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/lib/auth-edge";
+import { verifyMobileJwt } from "@/lib/mobile-jwt";
 
 /**
  * Middleware. La web es SOLO la landing pública (`/`) + la API (de la que vive la
@@ -43,12 +44,21 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (isPublic(pathname)) return NextResponse.next();
 
-  // API (la consume la app móvil): si trae Authorization: Bearer la dejamos pasar
-  // —la validación real del JWT ocurre en el handler (Node runtime)—; si no, hace
-  // falta sesión web válida o devolvemos 401.
+  // API (la consume la app móvil). El Bearer se VALIDA aquí en el edge: un JWT
+  // inválido/caducado responde 401 limpio en vez de llegar a requireUserId(),
+  // que lanza sin catch y convertía cada token malo en un 500 (P0 auditoría).
+  // Los tokens de API (nk_/bs_) requieren BBDD → se resuelven en el handler.
   if (pathname.startsWith("/api/")) {
     const authHeader = req.headers.get("authorization");
-    if (authHeader?.startsWith("Bearer ")) return NextResponse.next();
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7).trim();
+      if (/^(nk|bs)_/.test(token)) return NextResponse.next();
+      const verified = await verifyMobileJwt(token);
+      if (!verified) {
+        return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+      }
+      return NextResponse.next();
+    }
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });

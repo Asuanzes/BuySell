@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomInt } from "node:crypto";
 import { FoodOrderStatus, type FoodOrder, type FoodOrderActor, type Prisma } from "@prisma/client";
 import { haversineMeters } from "@nidokey/shared";
 import { prisma } from "@/lib/db";
@@ -8,7 +8,12 @@ export const FOOD_PAYMENT_TTL_MS = 30 * 60 * 1000;
 export type FoodCartItemInput = { menuItemId: string; quantity: number; notes?: string | null };
 
 export function orderCode(): string {
-  return `NK-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  // CSPRNG (P3 auditoría): Math.random es predecible; los códigos de pedido se
+  // muestran a restaurante/repartidor y no deben ser adivinables.
+  const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += alphabet[randomInt(alphabet.length)];
+  return `NK-${code}`;
 }
 
 export async function quoteFoodOrder(restaurantId: string, items: FoodCartItemInput[]) {

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { CHAT_RETENTION_DAYS } from "@/lib/chat/config";
 import { deleteObject, listObjects, r2Enabled } from "@/lib/chat/r2";
+import { cleanupRateLimits } from "@/lib/rate-limit";
 
 /**
  * GET /api/cron/chat-cleanup — limpieza del ciclo de vida del chat (F6).
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
     retention: { enabled: CHAT_RETENTION_DAYS != null, messagesPurged: 0, r2Deleted: 0 },
     orphans: { r2Enabled: r2Enabled(), chatDeleted: 0, avatarsDeleted: 0 },
     tokensDeleted: 0,
+    rateLimitsDeleted: 0,
   };
 
   try {
@@ -110,6 +112,9 @@ export async function GET(req: NextRequest) {
       where: { expires: { lt: new Date() } },
     });
     summary.tokensDeleted = tokens.count;
+
+    // ── 4. Ventanas de rate limit ya cerradas ───────────────────────────────
+    summary.rateLimitsDeleted = await cleanupRateLimits();
 
     console.log(
       `[chat-cleanup] purged=${summary.retention.messagesPurged} r2=${summary.retention.r2Deleted} ` +
