@@ -345,7 +345,8 @@ function ToggleRow({ label, value, onChange }: { label: string; value: boolean; 
   );
 }
 
-type TFn = ReturnType<typeof useTranslation>["t"];
+// Firma estrecha (evita TS2589 del TFunction genérico; ver lib/trends/sources.ts).
+type TFn = (key: "common.yes" | "common.no") => string;
 function TriState({ label, value, onChange, t }: { label: string; value: boolean | null; onChange: (b: boolean | null) => void; t: TFn }) {
   const { th } = useTheme();
   const opts: { v: boolean | null; l: string }[] = [

@@ -52,7 +52,7 @@ export default function FoodCheckoutScreen() {
       cart.clear();
       router.replace(`/food/order/${created.order.id}?from=payment`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo iniciar el pago");
+      setError(e instanceof Error ? e.message : t("food.pay_error"));
     } finally {
       setBusy(false);
     }
@@ -61,7 +61,7 @@ export default function FoodCheckoutScreen() {
   if (!cart.items.length) {
     return (
       <Screen title={t("food.checkout")} background backgroundCategory="food">
-        <EmptyState icon="cart-outline" title="Carrito vacío" description="Añade platos antes de pagar." />
+        <EmptyState icon="cart-outline" title={t("food.cart_empty_title")} description={t("food.cart_empty_checkout_desc")} />
       </Screen>
     );
   }
@@ -72,7 +72,7 @@ export default function FoodCheckoutScreen() {
           en Android quedaría bajo la barra de navegación. insets=0 cuando no aplica. */}
       <ScrollView contentContainerStyle={[styles.content, { padding: th.space.lg, gap: th.space.md, paddingBottom: 28 + insets.bottom }]}>
         <Card>
-          <Text style={[styles.title, { color: th.text }]}>Entrega</Text>
+          <Text style={[styles.title, { color: th.text }]}>{t("food.delivery")}</Text>
           {addressesQ.loading && !addressesQ.data ? <ActivityIndicator color={th.primary} /> : addressesQ.data?.addresses.map((a) => {
             const selectedAddress = selected?.id === a.id;
             return (
@@ -92,7 +92,7 @@ export default function FoodCheckoutScreen() {
               </Pressable>
             );
           })}
-          <Button label="Añadir dirección" variant="ghost" onPress={() => router.push("/food/address")} />
+          <Button label={t("food.add_address")} variant="ghost" onPress={() => router.push("/food/address")} />
         </Card>
         <Card>
           <Text style={[styles.title, { color: th.text }]}>{cart.restaurantName}</Text>
@@ -101,10 +101,10 @@ export default function FoodCheckoutScreen() {
               {i.quantity} x {i.name} · {money(i.priceCents * i.quantity)}
             </Text>
           ))}
-          <Text style={[styles.total, { color: foodAccent }]}>Subtotal {money(cart.totalCents)}</Text>
+          <Text style={[styles.total, { color: foodAccent }]}>{t("food.subtotal")} {money(cart.totalCents)}</Text>
         </Card>
         {error && <Text style={[styles.error, { color: th.dangerFg }]}>{error}</Text>}
-        <Button label="Pagar" loading={busy} disabled={!selected || busy} onPress={pay} />
+        <Button label={t("food.pay")} loading={busy} disabled={!selected || busy} onPress={pay} />
       </ScrollView>
     </Screen>
   );

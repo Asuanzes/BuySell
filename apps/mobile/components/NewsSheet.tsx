@@ -154,7 +154,10 @@ function matchAssets(text: string, keywords: Kw[]): string[] {
   return [...hits];
 }
 
-type TFn = ReturnType<typeof useTranslation>["t"];
+// Firma estrecha: el TFunction genérico instancia contra ~750 claves y revienta
+// TS2589. Ver lib/trends/sources.ts (mismo patrón).
+type AgoKey = "news.ago_now" | "news.ago_min" | "news.ago_h" | "news.ago_d";
+type TFn = (key: AgoKey, opts?: { n: number }) => string;
 
 /** "hace X" relativo. Recibe `t` como parámetro (patrón TFn): así re-renderiza
  *  al cambiar el idioma (no usar i18n.t directo). */

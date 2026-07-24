@@ -11,7 +11,14 @@ import { type BaseRecord, metaField, compactNumber } from "@nidokey/shared";
 import { useTheme } from "@/lib/theme";
 import { useAppStyle } from "@/lib/app-style-context";
 
-type TFn = ReturnType<typeof useTranslation>["t"];
+/**
+ * Firma ESTRECHA de t() para fmtAgo: el TFunction genérico de i18next
+ * instancia recursivamente contra todo el recurso (~750 claves) y revienta el
+ * límite de profundidad de TS (TS2589). Unión literal = typecheck estable.
+ * Mismo patrón que lib/trends/sources.ts y components/food/status-labels.ts.
+ */
+type AgoKey = "card.updated_now" | "card.updated_min" | "card.updated_h" | "card.updated_d";
+type TFn = (key: AgoKey, opts?: { n: number }) => string;
 import { recordTypeConfig } from "@/lib/records/config";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { provinceImage } from "@/lib/records/province-images";

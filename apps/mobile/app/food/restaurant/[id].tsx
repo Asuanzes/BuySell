@@ -3,6 +3,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
+import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
 import { useQuery } from "@/lib/hooks/useQuery";
 import { useFoodCart } from "@/lib/food-cart-context";
@@ -25,6 +26,7 @@ function money(cents: number) {
 export default function RestaurantScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { th, dark } = useTheme();
+  const { t } = useTranslation();
   const { appStyle } = useAppStyle();
   const insets = useSafeAreaInsets();
   const foodAccent = categoryColor("food", dark, appStyle);
@@ -67,7 +69,7 @@ export default function RestaurantScreen() {
   }
   const restaurant = q.data?.restaurant;
   const menuStatus = q.data?.menuStatus;
-  if (!restaurant) return <Screen title="Restaurante" background backgroundCategory="food"><Text style={{ color: th.text }}>No encontrado</Text></Screen>;
+  if (!restaurant) return <Screen title={t("food.restaurant")} background backgroundCategory="food"><Text style={{ color: th.text }}>{t("detail.not_found")}</Text></Screen>;
 
   const itemCount = restaurant.categories.reduce((n, c) => n + c.items.length, 0);
 
@@ -77,7 +79,7 @@ export default function RestaurantScreen() {
   }
 
   return (
-    <Screen title={restaurant.name} subtitle={restaurant.isOpen ? restaurant.description ?? "Carta" : "Cerrado"} background backgroundCategory="food">
+    <Screen title={restaurant.name} subtitle={restaurant.isOpen ? restaurant.description ?? t("food.menu") : t("food.closed")} background backgroundCategory="food">
       <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: th.space.lg, gap: th.space.lg, paddingBottom: 96 + insets.bottom }]}>
         <Image
           source={restaurant.imageUrl ? { uri: restaurant.imageUrl } : undefined}
@@ -120,19 +122,19 @@ export default function RestaurantScreen() {
                 <View style={[styles.add, { backgroundColor: th.imagePlaceholder }]} />
               </Card>
             ))}
-            <Text style={[styles.menuStateText, { color: th.textSubtle, textAlign: "center", marginTop: 4 }]}>Preparando carta…</Text>
+            <Text style={[styles.menuStateText, { color: th.textSubtle, textAlign: "center", marginTop: 4 }]}>{t("food.menu_preparing")}</Text>
           </View>
         )}
         {itemCount === 0 && menuStatus !== "fetching" && (
           <View style={styles.menuState}>
-            <Text style={[styles.menuStateText, { color: th.textMuted }]}>Menú no disponible aún</Text>
-            <Button label={refreshing ? "Buscando carta…" : "Reintentar"} onPress={refreshMenu} />
+            <Text style={[styles.menuStateText, { color: th.textMuted }]}>{t("food.menu_unavailable")}</Text>
+            <Button label={refreshing ? t("food.menu_fetching") : t("common.retry")} onPress={refreshMenu} />
           </View>
         )}
         {itemCount > 0 && (
           <Pressable onPress={refreshMenu} style={styles.refreshLink} disabled={refreshing}>
             <Text style={[styles.menuStateText, { color: th.textSubtle, textAlign: "center" }]}>
-              {refreshing ? "Actualizando carta…" : "Actualizar carta"}
+              {refreshing ? t("food.menu_refreshing") : t("food.menu_refresh")}
             </Text>
           </Pressable>
         )}
@@ -141,7 +143,7 @@ export default function RestaurantScreen() {
           bajo la barra de navegación de Android. insets.bottom=0 cuando no aplica. */}
       {cart.restaurantId === restaurant.id && cart.count > 0 && (
         <View style={[styles.bar, th.elevation.lg, { backgroundColor: th.surfaceRaised, borderTopColor: th.border, paddingBottom: Math.max(insets.bottom, 12) }]}>
-          <Button label={`Ver carrito · ${cart.count} · ${money(cart.totalCents)}`} onPress={() => router.push("/food/cart")} />
+          <Button label={`${t("food.view_cart")} · ${cart.count} · ${money(cart.totalCents)}`} onPress={() => router.push("/food/cart")} />
         </View>
       )}
     </Screen>

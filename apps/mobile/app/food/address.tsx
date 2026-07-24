@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
 import { useQuery } from "@/lib/hooks/useQuery";
 import { useTheme } from "@/lib/theme";
@@ -41,9 +42,10 @@ function cityFromAddress(address: string, fallback: string): string {
 
 export default function FoodAddressScreen() {
   const { th } = useTheme();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const q = useQuery(() => api<{ addresses: FoodAddress[] }>("/api/food/addresses"), []);
-  const [label, setLabel] = useState("Casa");
+  const [label, setLabel] = useState(() => t("food.address_default_label"));
   const [line, setLine] = useState("");
   const [city, setCity] = useState("Oviedo");
   const [postalCode, setPostalCode] = useState("");
@@ -109,7 +111,7 @@ export default function FoodAddressScreen() {
       setSelectedCoords({ lat: details.lat, lng: details.lng });
       setSuggestions([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo resolver la direccion");
+      setError(e instanceof Error ? e.message : t("food.address_resolve_error"));
     } finally {
       setDetailsLoadingId(null);
     }
@@ -121,7 +123,7 @@ export default function FoodAddressScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setError("Permiso de ubicacion denegado");
+        setError(t("food.location_permission_denied"));
         return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -142,7 +144,7 @@ export default function FoodAddressScreen() {
       }
       setSuggestions([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo obtener la ubicacion");
+      setError(e instanceof Error ? e.message : t("food.location_error"));
     } finally {
       setLocating(false);
     }
@@ -170,24 +172,24 @@ export default function FoodAddressScreen() {
       setSuggestions([]);
       await q.refetch();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar");
+      setError(e instanceof Error ? e.message : t("food.save_error"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Screen title="Direccion de entrega">
+    <Screen title={t("food.address_title")}>
       {/* paddingBottom + insets.bottom: el botón "Guardar dirección" y la lista van
           al final del scroll → en Android, bajo la barra de navegación. */}
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 16 + insets.bottom }]} keyboardShouldPersistTaps="handled">
         <Card style={styles.form}>
           <Pressable onPress={useMyLocation} disabled={locating} style={[styles.locBtn, { borderColor: th.primary, opacity: locating ? 0.6 : 1 }]}>
-            {locating ? <ActivityIndicator color={th.primary} size="small" /> : <Text style={[styles.locBtnText, { color: th.primary }]}>📍 Usar mi ubicación</Text>}
+            {locating ? <ActivityIndicator color={th.primary} size="small" /> : <Text style={[styles.locBtnText, { color: th.primary }]}>{t("food.use_my_location")}</Text>}
           </Pressable>
-          <TextInput value={label} onChangeText={setLabel} placeholder="Etiqueta" placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
+          <TextInput value={label} onChangeText={setLabel} placeholder={t("food.address_label_placeholder")} placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
           <View>
-            <TextInput value={line} onChangeText={onLineChange} placeholder="Calle, numero, piso" placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
+            <TextInput value={line} onChangeText={onLineChange} placeholder={t("food.address_line_placeholder")} placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
             {(autocompleteLoading || suggestions.length > 0) && (
               <View style={[styles.suggestions, { borderColor: th.border, backgroundColor: th.surface }]}>
                 {autocompleteLoading && suggestions.length === 0 ? <ActivityIndicator color={th.primary} /> : null}
@@ -201,16 +203,16 @@ export default function FoodAddressScreen() {
               </View>
             )}
           </View>
-          <TextInput value={city} onChangeText={setCity} placeholder="Ciudad" placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
-          <TextInput value={postalCode} onChangeText={setPostalCode} placeholder="Codigo postal" placeholderTextColor={th.textSubtle} keyboardType="numbers-and-punctuation" style={[styles.input, { color: th.text, borderColor: th.border }]} />
-          <TextInput value={notes} onChangeText={setNotes} placeholder="Notas para el reparto" placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
+          <TextInput value={city} onChangeText={setCity} placeholder={t("food.address_city_placeholder")} placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
+          <TextInput value={postalCode} onChangeText={setPostalCode} placeholder={t("food.address_postal_placeholder")} placeholderTextColor={th.textSubtle} keyboardType="numbers-and-punctuation" style={[styles.input, { color: th.text, borderColor: th.border }]} />
+          <TextInput value={notes} onChangeText={setNotes} placeholder={t("food.address_notes_placeholder")} placeholderTextColor={th.textSubtle} style={[styles.input, { color: th.text, borderColor: th.border }]} />
           {error && <Text style={[styles.error, { color: th.dangerFg }]}>{error}</Text>}
-          <Button label="Guardar direccion" onPress={save} loading={saving} disabled={line.trim().length < 4 || city.trim().length < 2} />
+          <Button label={t("food.save_address")} onPress={save} loading={saving} disabled={line.trim().length < 4 || city.trim().length < 2} />
         </Card>
-        <Text style={[styles.section, { color: th.textMuted }]}>Guardadas</Text>
+        <Text style={[styles.section, { color: th.textMuted }]}>{t("food.saved_addresses")}</Text>
         {q.loading && !q.data ? <ActivityIndicator color={th.primary} /> : q.data?.addresses.map((a) => (
           <Card key={a.id}>
-            <Text style={[styles.title, { color: th.text }]}>{a.label}{a.isDefault ? " · predeterminada" : ""}</Text>
+            <Text style={[styles.title, { color: th.text }]}>{a.label}{a.isDefault ? ` · ${t("food.default_address")}` : ""}</Text>
             <Text style={[styles.meta, { color: th.textMuted }]}>{a.line}</Text>
             <Text style={[styles.meta, { color: th.textSubtle }]}>{[a.postalCode, a.city].filter(Boolean).join(" ")}</Text>
           </Card>

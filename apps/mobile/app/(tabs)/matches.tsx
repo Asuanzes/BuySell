@@ -163,7 +163,12 @@ export default function MatchesScreen() {
   );
 }
 
-type TFn = ReturnType<typeof useTranslation>["t"];
+// Firma estrecha (evita TS2589 del TFunction genérico; ver lib/trends/sources.ts).
+type MergeKey =
+  | "matches.merge_message_cross"
+  | "matches.merge_message"
+  | `types.${RecordType}.singular`;
+type TFn = (key: MergeKey, opts?: Record<string, string | number>) => string;
 
 /** Texto del diálogo de fusión: explícito cuando lo único que cambia es el idioma. */
 function mergeMessage(g: DupGroup, t: TFn): string {

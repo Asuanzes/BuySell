@@ -548,14 +548,14 @@ function AuthGate() {
             }}
           />
           {[
-            ["food/address", "Dirección"],
-            ["food/restaurant/[id]", "Restaurante"],
-            ["food/cart", "Carrito"],
-            ["food/checkout", "Checkout"],
-            ["food/order/[id]", "Pedido"],
-            ["food/orders", "Mis pedidos"],
-            ["food/restaurant-panel/index", "Restaurante"],
-            ["food/courier/index", "Repartidor"],
+            ["food/address", t("food.address")],
+            ["food/restaurant/[id]", t("food.restaurant")],
+            ["food/cart", t("food.cart")],
+            ["food/checkout", t("food.checkout")],
+            ["food/order/[id]", t("food.order")],
+            ["food/orders", t("food.orders")],
+            ["food/restaurant-panel/index", t("food.restaurant_panel")],
+            ["food/courier/index", t("food.courier")],
           ].map(([name, title]) => (
             <Stack.Screen
               key={name}

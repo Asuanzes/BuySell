@@ -23,7 +23,7 @@ export default function FoodCartScreen() {
   if (!cart.items.length) {
     return (
       <Screen title={t("food.cart")} background backgroundCategory="food">
-        <EmptyState icon="cart-outline" title="Carrito vacío" description="Añade platos desde un restaurante." />
+        <EmptyState icon="cart-outline" title={t("food.cart_empty_title")} description={t("food.cart_empty_desc")} />
       </Screen>
     );
   }
@@ -52,17 +52,17 @@ export default function FoodCartScreen() {
             <TextInput
               value={item.notes ?? ""}
               onChangeText={(v) => cart.updateNotes(item.menuItemId, v)}
-              placeholder="Notas para este plato"
+              placeholder={t("food.item_notes_placeholder")}
               placeholderTextColor={th.textSubtle}
               style={[styles.notes, { color: th.text, backgroundColor: th.surface, borderColor: th.border }]}
             />
           </Card>
         ))}
         <Card>
-          <Text style={[styles.total, { color: th.text }]}>Subtotal {money(cart.totalCents)}</Text>
-          <Text style={[styles.meta, { color: th.textMuted }]}>El total final se recalcula en el servidor antes del pago.</Text>
+          <Text style={[styles.total, { color: th.text }]}>{t("food.subtotal")} {money(cart.totalCents)}</Text>
+          <Text style={[styles.meta, { color: th.textMuted }]}>{t("food.total_note")}</Text>
         </Card>
-        <Button label="Continuar" onPress={() => router.push("/food/checkout")} />
+        <Button label={t("food.continue")} onPress={() => router.push("/food/checkout")} />
       </ScrollView>
     </Screen>
   );

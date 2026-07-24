@@ -1,5 +1,4 @@
 import type { Ionicons } from "@expo/vector-icons";
-import type { useTranslation } from "react-i18next";
 
 /**
  * Metadatos de presentación por fuente de tendencia: icono de marca (Ionicons
@@ -27,7 +26,21 @@ export type TrendSource =
 export type TrendFilter = "all" | "twitter" | "googletrends" | "instagram" | "hackernews" | "twitch";
 
 type IconName = keyof typeof Ionicons.glyphMap;
-type TFn = ReturnType<typeof useTranslation>["t"];
+/**
+ * Firma ESTRECHA de t() para este módulo: el TFunction genérico de i18next
+ * instancia recursivamente contra las ~750 claves del recurso y revienta el
+ * límite de profundidad de TS (TS2589) en cuanto el JSON crece. Con la unión
+ * literal de las claves que este fichero usa, el typecheck es O(6) y estable.
+ * Mismo patrón que components/food/status-labels.ts.
+ */
+type TrendLabelKey =
+  | "trends.filter_all"
+  | "trends.source_twitter"
+  | "trends.source_googletrends"
+  | "trends.source_instagram"
+  | "trends.source_hackernews"
+  | "trends.source_twitch";
+type TFn = (key: TrendLabelKey) => string;
 
 type SourceMeta = { color: string; icon: IconName };
 
