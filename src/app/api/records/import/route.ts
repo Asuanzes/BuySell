@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BaseRecord, RecordType } from "@nidokey/shared";
 
 import { getUserId } from "@/lib/auth-helpers";
+import { rateLimit } from "@/lib/rate-limit";
 import { pickAdapter } from "@/features/sources/registry";
 import { upsertRecord, getCryptoById, getMarketById, getJobById, getBookById, getHolidayById } from "@/features/sources/upsert";
 import { cryptoToBaseRecord, marketToBaseRecord, jobToBaseRecord, bookToBaseRecord, holidayToBaseRecord } from "@/lib/records/mapper";
@@ -140,6 +141,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Error interno" },
         { status: 500, headers: CORS_HEADERS }
+      );
+    }
+  }
+
+  // Búsqueda de empleo = 3 actores Apify DE PAGO por petición. Cuota diaria por
+  // usuario: sin ella, un usuario (o un script con su JWT) quema saldo sin tope.
+  if (type === "job" && input.kind === "query") {
+    const jobsLimit = await rateLimit("jobs-search", ownerId, { limit: 10, windowMs: 86_400_000 });
+    if (!jobsLimit.ok) {
+      return NextResponse.json(
+        { error: "Límite diario de búsquedas de empleo alcanzado. Inténtalo mañana." },
+        { status: 429, headers: CORS_HEADERS }
       );
     }
   }

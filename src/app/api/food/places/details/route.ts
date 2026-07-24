@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUserId } from "@/lib/auth-helpers";
+import { rateLimit } from "@/lib/rate-limit";
 import { isProviderUnavailable } from "@/features/sources/providers/availability";
 import { placeDetails } from "@/features/sources/providers/google-places";
 
@@ -9,7 +10,12 @@ const Query = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  await requireUserId();
+  const userId = await requireUserId();
+  // Google Places factura por petición: tope diario por usuario.
+  const limit = await rateLimit("places-details", userId, { limit: 150, windowMs: 86_400_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Límite diario alcanzado" }, { status: 429 });
+  }
   const parsed = Query.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) {
     return NextResponse.json({ error: "Parametros invalidos", detail: parsed.error.flatten() }, { status: 400 });

@@ -22,6 +22,12 @@ export const CHAT_LIMITS = {
   deleteForAllWindowMin: 60,
   /** Mensajes por minuto y usuario (rate limit serverless-safe: count en BBDD). */
   rateMsgsPerMin: 30,
+  /**
+   * Respuestas del bot @Nidokey por usuario y día (tier gratis). Cada mensaje
+   * al bot cuesta dinero real (hasta 4 llamadas a Claude Haiku); sin cuota
+   * diaria, el límite de ráfaga de 30/min permitiría ~43k mensajes/día.
+   */
+  botMsgsPerDay: num(process.env.BOT_MSGS_PER_DAY, 40),
   /** Resultados de búsqueda de usuarios. */
   userSearchLimit: 10,
   /** Página de mensajes (keyset). */

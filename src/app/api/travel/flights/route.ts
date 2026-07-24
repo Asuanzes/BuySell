@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUserId } from "@/lib/auth-helpers";
+import { rateLimit } from "@/lib/rate-limit";
 import { flightPricesCheap } from "@/features/sources/providers/travelpayouts";
 import { duffelSearchOffers, type DuffelOffer } from "@/features/sources/providers/duffel";
 
@@ -86,10 +87,16 @@ function duffelToOptions(offers: DuffelOffer[], origin: string, destination: str
 }
 
 export async function GET(req: NextRequest) {
+  let userId: string;
   try {
-    await requireUserId();
+    userId = await requireUserId();
   } catch {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+  // Duffel busca en vivo (cuota/coste por petición): tope diario por usuario.
+  const limit = await rateLimit("flights-search", userId, { limit: 50, windowMs: 86_400_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Límite diario de búsquedas de vuelos alcanzado" }, { status: 429 });
   }
   const parsed = Query.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) {
