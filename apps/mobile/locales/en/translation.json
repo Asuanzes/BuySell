@@ -71,7 +71,13 @@
     "blocked_users": "Blocked users",
     "avatar_title": "Profile photo",
     "avatar_remove": "Remove photo",
-    "avatar_error": "The photo could not be updated"
+    "avatar_error": "The photo could not be updated",
+    "premium": "Nidokey Premium",
+    "delete_account": "Delete account",
+    "delete_title": "Delete your account?",
+    "delete_body": "Your records, chats, addresses and subscription will be permanently deleted. This cannot be undone.",
+    "delete_confirm": "Delete permanently",
+    "delete_error": "Could not delete the account. Please try again."
   },
   "theme": {
     "appearance": "Appearance",
@@ -850,5 +856,24 @@
     "cuisine_spanish": "Spanish",
     "cuisine_steak": "Steak",
     "cuisine_sushi": "Sushi"
+  },
+  "premium": {
+    "title": "Nidokey Premium",
+    "pitch": "Expand the assistant and job searches when you need more.",
+    "plan_free": "Free",
+    "plan_premium": "Premium",
+    "current_plan": "Your current plan",
+    "price_month": "{{price}} / month",
+    "free_features": "Unlimited records · Alerts · End-to-end encrypted chat · Assistant 40 messages/day · 10 job searches/day",
+    "premium_features": "Everything in Free · Assistant 400 messages/day · 40 job searches/day · Cancel anytime",
+    "subscribe": "Go Premium",
+    "renews_at": "Renews: {{date}}",
+    "cancel_at_end": "Will cancel at the end of the period",
+    "cancel": "Cancel subscription",
+    "cancel_confirm_title": "Cancel Premium?",
+    "cancel_confirm_body": "You will keep Premium until the end of the paid period.",
+    "checkout_error": "Could not start the payment",
+    "status_pending": "Confirming your payment…",
+    "past_due": "There is a problem with your last charge. Check your payment method."
   }
 }

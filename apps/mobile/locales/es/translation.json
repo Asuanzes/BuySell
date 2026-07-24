@@ -71,7 +71,13 @@
     "blocked_users": "Usuarios bloqueados",
     "avatar_title": "Foto de perfil",
     "avatar_remove": "Quitar foto",
-    "avatar_error": "No se pudo actualizar la foto"
+    "avatar_error": "No se pudo actualizar la foto",
+    "premium": "Nidokey Premium",
+    "delete_account": "Eliminar cuenta",
+    "delete_title": "¿Eliminar tu cuenta?",
+    "delete_body": "Se borrarán permanentemente tus registros, chats, direcciones y suscripción. Esta acción no se puede deshacer.",
+    "delete_confirm": "Eliminar definitivamente",
+    "delete_error": "No se pudo eliminar la cuenta. Inténtalo de nuevo."
   },
   "theme": {
     "appearance": "Apariencia",
@@ -850,5 +856,24 @@
     "cuisine_spanish": "Espanola",
     "cuisine_steak": "Carne",
     "cuisine_sushi": "Sushi"
+  },
+  "premium": {
+    "title": "Nidokey Premium",
+    "pitch": "Amplía el asistente y las búsquedas de empleo cuando lo necesites.",
+    "plan_free": "Gratis",
+    "plan_premium": "Premium",
+    "current_plan": "Tu plan actual",
+    "price_month": "{{price}} / mes",
+    "free_features": "Registros ilimitados · Alertas · Chat cifrado · Asistente 40 mensajes/día · 10 búsquedas de empleo/día",
+    "premium_features": "Todo lo del plan Gratis · Asistente 400 mensajes/día · 40 búsquedas de empleo/día · Cancela cuando quieras",
+    "subscribe": "Hacerme Premium",
+    "renews_at": "Renovación: {{date}}",
+    "cancel_at_end": "Se cancelará al final del periodo",
+    "cancel": "Cancelar suscripción",
+    "cancel_confirm_title": "¿Cancelar Premium?",
+    "cancel_confirm_body": "Mantendrás Premium hasta el final del periodo ya pagado.",
+    "checkout_error": "No se pudo iniciar el pago",
+    "status_pending": "Confirmando el pago…",
+    "past_due": "Hay un problema con tu último cobro. Revisa tu método de pago."
   }
 }

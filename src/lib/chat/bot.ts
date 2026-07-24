@@ -148,6 +148,9 @@ export async function notifyShare(
  * correr en after() → no bloquea el envío del usuario.
  */
 export async function respondAsBot(conversationId: string, userId: string): Promise<void> {
+  // Embudo: uso del bot, contado server-side (fiable; el cliente no emite esto).
+  await prisma.analyticsEvent.create({ data: { userId, name: "bot_message" } }).catch(() => {});
+
   // Cuota diaria del bot (control de coste LLM; mayor en Premium). Al agotarla
   // respondemos con un mensaje fijo sin tocar el modelo.
   const limit = await botDailyLimit(userId);

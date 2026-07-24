@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { BaseRecord, RecordType } from "@nidokey/shared";
 
+import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth-helpers";
 import { rateLimit } from "@/lib/rate-limit";
 import { jobSearchDailyLimit } from "@/lib/billing/entitlements";
@@ -133,6 +134,12 @@ export async function POST(req: NextRequest) {
     try {
       const { id, created } = await upsertRecord(ownerId, normalized);
       const record = await recordById(type, id);
+      if (created) {
+        // Embudo (activación): alta de registro, contada server-side.
+        await prisma.analyticsEvent
+          .create({ data: { userId: ownerId, name: "record_import", props: { type, kind: "record" } } })
+          .catch(() => {});
+      }
       return NextResponse.json(
         { created, record },
         { status: created ? 201 : 200, headers: CORS_HEADERS }
@@ -183,6 +190,12 @@ export async function POST(req: NextRequest) {
   try {
     const { id, created } = await upsertRecord(ownerId, outcome.record);
     const record = await recordById(type, id);
+    if (created) {
+      // Embudo (activación): alta de registro, contada server-side.
+      await prisma.analyticsEvent
+        .create({ data: { userId: ownerId, name: "record_import", props: { type, kind: input.kind } } })
+        .catch(() => {});
+    }
     return NextResponse.json(
       { created, record },
       { status: created ? 201 : 200, headers: CORS_HEADERS }

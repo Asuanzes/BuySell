@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth-context";
+import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui";
 import { useTheme } from "@/lib/theme";
 
@@ -34,6 +35,7 @@ export default function LoginScreen() {
     setError(null);
     try {
       await requestOtp(email.trim().toLowerCase());
+      track("login_request");
       setPhase("code");
     } catch (e) {
       setError(e instanceof Error ? e.message : t("login.error_network"));
@@ -48,6 +50,7 @@ export default function LoginScreen() {
     setError(null);
     try {
       await verifyOtp(email.trim().toLowerCase(), code);
+      track("login_verify_success");
       // useAuth cambiará el estado y el root layout redirigirá a tabs
     } catch (e) {
       setError(e instanceof Error ? e.message : t("login.error_code"));

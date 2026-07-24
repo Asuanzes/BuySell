@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { normalizeUsername, usernameError, type RecordType } from "@nidokey/shared";
 
 import { useAuth } from "@/lib/auth-context";
+import { track } from "@/lib/analytics";
 import { checkUsername, updateAccount } from "@/lib/chat/account";
 import { useCategoryPrefs, DEFAULT_CATEGORY } from "@/lib/records/category-prefs-context";
 import { RECORD_TYPE_CONFIG } from "@/lib/records/config";
@@ -65,6 +66,7 @@ export default function OnboardingScreen() {
     try {
       await updateAccount({ onboardingCompleted: true });
       await markOnboardingComplete();
+      track("onboarding_complete");
       router.replace("/(tabs)");
     } finally {
       setSaving(false);

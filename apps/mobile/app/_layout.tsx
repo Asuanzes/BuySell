@@ -2,7 +2,8 @@ import "@/lib/logbox"; // PRIMERO: silencia warnings benignos de NativeEventEmit
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics";
 import { Appearance, Platform, StyleSheet, View } from "react-native";
 import "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -215,6 +216,14 @@ function AuthGate() {
 
   // Al tocar una notificación de chat → abrir la conversación (deep-link).
   useEffect(() => useChatNotificationTap(), []);
+
+  // Embudo: un session_start por arranque, cuando la sesión queda resuelta.
+  const sessionTracked = useRef(false);
+  useEffect(() => {
+    if (state.kind === "loading" || sessionTracked.current) return;
+    sessionTracked.current = true;
+    track("session_start", { authed: state.kind === "authed" });
+  }, [state.kind]);
 
   // Red de seguridad: nunca dejar el loader colgado más de 8 s si los registros
   // tardaran o fallaran sin avisar.
@@ -511,6 +520,17 @@ function AuthGate() {
               headerStyle: { backgroundColor: th.surface },
               headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
               title: t("account.theme"),
+            }}
+          />
+          <Stack.Screen
+            name="premium"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("premium.title"),
             }}
           />
           <Stack.Screen
