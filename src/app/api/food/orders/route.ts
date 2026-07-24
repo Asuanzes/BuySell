@@ -109,7 +109,8 @@ export async function GET(req: NextRequest) {
     const staff = await prisma.restaurantStaff.findMany({ where: { userId }, select: { restaurantId: true } });
     const orders = await prisma.foodOrder.findMany({
       where: { restaurantId: { in: staff.map((s) => s.restaurantId) }, ...(statusWhere ? { status: statusWhere } : {}) },
-      include: { restaurant: true, items: true, payment: true, events: { orderBy: { createdAt: "asc" } } },
+      // P2 auditoría: las LISTAS no cargan el histórico de eventos (el detalle sí).
+      include: { restaurant: true, items: true, payment: true },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -121,7 +122,7 @@ export async function GET(req: NextRequest) {
     if (!courier) return NextResponse.json({ orders: [] });
     const orders = await prisma.foodOrder.findMany({
       where: { courierId: userId, ...(statusWhere ? { status: statusWhere } : {}) },
-      include: { restaurant: true, items: true, payment: true, events: { orderBy: { createdAt: "asc" } } },
+      include: { restaurant: true, items: true, payment: true },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -130,7 +131,7 @@ export async function GET(req: NextRequest) {
 
   const orders = await prisma.foodOrder.findMany({
     where: { customerId: userId, ...(statusWhere ? { status: statusWhere } : {}) },
-    include: { restaurant: true, items: true, payment: true, events: { orderBy: { createdAt: "asc" } } },
+    include: { restaurant: true, items: true, payment: true },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
