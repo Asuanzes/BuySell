@@ -64,7 +64,7 @@ function verifySignature(header: string | null, raw: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function baseUrl(): string {
+export function baseUrl(): string {
   return (process.env.NEXTAUTH_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || "https://nidokey.es")
     .replace(/^([^h])/, "https://$1")
     .replace(/\/+$/, "");

@@ -4,8 +4,8 @@ import { sendChatPush } from "@/lib/chat/push";
 import { notifyMessage } from "@/lib/chat/gateway";
 import { runTool, mintUserToken } from "@/lib/chat/bot-tools";
 import { runAgent, echoReply, HISTORY_TURNS, type Turn, type ToolRunner } from "@/lib/chat/agent";
-import { CHAT_LIMITS } from "@/lib/chat/config";
 import { rateLimit } from "@/lib/rate-limit";
+import { botDailyLimit } from "@/lib/billing/entitlements";
 
 const MAX_REPLY_CHARS = 800;
 
@@ -148,16 +148,15 @@ export async function notifyShare(
  * correr en after() → no bloquea el envío del usuario.
  */
 export async function respondAsBot(conversationId: string, userId: string): Promise<void> {
-  // Cuota diaria del bot (control de coste LLM). Al agotarla respondemos con
-  // un mensaje fijo sin tocar el modelo.
-  const used = await rateLimit("bot-day", userId, {
-    limit: CHAT_LIMITS.botMsgsPerDay,
-    windowMs: 86_400_000,
-  });
+  // Cuota diaria del bot (control de coste LLM; mayor en Premium). Al agotarla
+  // respondemos con un mensaje fijo sin tocar el modelo.
+  const limit = await botDailyLimit(userId);
+  const used = await rateLimit("bot-day", userId, { limit, windowMs: 86_400_000 });
   if (!used.ok) {
     await replyAsBot(
       conversationId,
-      "Has alcanzado el límite diario del asistente. Mañana seguimos donde lo dejamos 😊",
+      "Has alcanzado el límite diario del asistente. Mañana seguimos donde lo dejamos 😊 " +
+        "Con Nidokey Premium el límite es mucho más amplio (Cuenta → Premium).",
     );
     return;
   }

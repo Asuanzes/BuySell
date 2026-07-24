@@ -141,6 +141,7 @@ model User {
   foodAddresses     FoodAddress[]
   restaurantStaff   RestaurantStaff[]
   courierProfile    CourierProfile?
+  subscription      Subscription?
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -1156,4 +1157,50 @@ model RateLimit {
   resetAt DateTime
 
   @@index([resetAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Suscripción Premium (monetización). Una por usuario. WEBHOOK-FIRST, igual
+// que FoodPayment: el estado solo lo cambia un webhook firmado del proveedor
+// (fake en desarrollo, Stripe en producción); el acceso lo decide el servidor
+// vía src/lib/billing/entitlements.ts. Precios en src/lib/billing/plans.ts.
+// ─────────────────────────────────────────────────────────────────────────
+enum SubscriptionStatus {
+  PENDING // checkout iniciado, esperando webhook
+  ACTIVE
+  PAST_DUE // cobro fallido; gracia antes de perder acceso
+  CANCELLED
+}
+
+model Subscription {
+  id                     String             @id @default(cuid())
+  userId                 String             @unique
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                   String             @default("premium")
+  status                 SubscriptionStatus @default(PENDING)
+  provider               String // "fake" | "stripe"
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  @@index([status, currentPeriodEnd])
+}
+
+// Analítica de producto propia (sin SDK de terceros, EU-friendly). El móvil
+// postea lotes a /api/analytics; el embudo se consulta con SQL (docs/ANALITICA.md).
+// Sin FK a User a propósito: al borrar la cuenta se anonimiza userId y el
+// agregado histórico sobrevive.
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  deviceId  String?  @db.VarChar(64)
+  name      String   @db.VarChar(60)
+  props     Json?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([userId, createdAt])
 }
