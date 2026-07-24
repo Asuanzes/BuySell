@@ -113,26 +113,46 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
 | Comando | Qué hace |
 | --- | --- |
 | `npm run dev` | Next.js en `:4200` |
+| `npm test` / `npm run typecheck` / `npm run typecheck:mobile` | lo mismo que corre el CI de PR |
 | `cd apps/mobile && npx expo start` | Metro |
 | `/ship <mensaje>` | tsc de lo cambiado → commit → push (Vercel) → `eas update` si tocó móvil |
 | `eas update --branch production` | OTA manual |
 | `npx prisma db push` | Sincronizar esquema con Neon (nunca migrate) |
 
-## 9. Docs normativos
+## 9. Monetización y analítica (jul-2026)
 
-- `docs/diseno-vertical-comida.md` — diseño cerrado del vertical comida (v1 pendiente)
+- **Nidokey Premium** (suscripción 4,99 €/mes): rail webhook-first completo en
+  `src/lib/billing/` (planes en `plans.ts` — el cliente JAMÁS manda precios;
+  entitlements server-side en `entitlements.ts`; proveedores fake + Stripe
+  test-mode tras una interfaz). Paywall móvil en `app/premium.tsx`. Activación
+  de Stripe: `docs/OPERACIONES.md`. ⚠️ Para vender in-app en tiendas hará falta
+  IAP (RevenueCat) — el checkout web vale para distribución web/APK.
+- **Cuotas de coste** (tabla `RateLimit` + `src/lib/rate-limit.ts`,
+  serverless-safe): bot 40 msgs/día (Premium 400), empleos Apify 10/día
+  (Premium 40), refresh-menu, Places, vuelos Duffel, OTP por IP.
+- **Analítica propia** (tabla `AnalyticsEvent`, sin SDK de terceros): móvil
+  `lib/analytics.ts` → `POST /api/analytics`; conversión/uso server-side desde
+  webhooks. Catálogo y SQL del embudo: `docs/ANALITICA.md`.
+- **RGPD**: `DELETE /api/account` (borrado total) + `GET /api/account/export`
+  (portabilidad); UI en Cuenta.
+
+## 10. Docs normativos
+
+- `docs/OPERACIONES.md` — deploy, pagos test→live, backups, rollback, checklist de lanzamiento
+- `docs/ANALITICA.md` — catálogo de eventos, embudo, métricas
+- `docs/diseno-vertical-comida.md` — diseño cerrado del vertical comida
 - `docs/TRENDS.md` — vertical tendencias
-- `docs/auditoria-riesgos-mejoras.html` — auditoría técnica P0–P3 (jun-2026)
+- `docs/auditoria-riesgos-mejoras.html` — auditoría técnica P0–P3 (jun-2026; P0/P1 resueltos jul-2026)
 - `docs/seguridad-registros.md`, `docs/arquitectura-records.md`
 - `docs/blitzy-tech-spec.md` + `docs/ROADMAP.md` — **histórico** BuySell (no refleja la app actual)
 
-## 10. Pendientes estratégicos (jul-2026)
+## 11. Pendientes estratégicos (jul-2026, tras el sprint de lanzamiento)
 
-1. 🚩 **Seguridad de pagos** (flag `checkpoint-pagos`): diseñar antes de cablear
-   pasarela; P0s de la auditoría (secreto de pagos ≠ `AUTH_SECRET`, Bearer
-   inválido → 500, CI de PR).
-2. **Vertical comida v1** (diseño cerrado, 100% OTA, pagos fake).
-3. **Publicar en tiendas**: EAS build, rename package Android, badges landing;
-   iOS bloqueado por cuenta Apple de pago.
-4. Menores: chat F5 (grupos UI), bot EDITAR campos, formulario manual de
-   inmueble + edición de alquiler.
+1. **Lanzar**: acciones manuales del checklist de `docs/OPERACIONES.md` §8
+   (secreto de pagos en Vercel, Stripe test end-to-end, rebuild Android con el
+   package nuevo `es.nidokey.app`, ficha de Play, textos legales con revisión
+   profesional, flip de la landing).
+2. **Tiendas**: EAS build Android; iOS bloqueado por cuenta Apple de pago;
+   IAP/RevenueCat para vender Premium in-app.
+3. Menores: chat F5 (grupos UI), picker emoji, responder-cita; subida del
+   toolchain Expo (resuelve las vulns altas restantes del audit).
