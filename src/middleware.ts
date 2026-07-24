@@ -32,6 +32,7 @@ const PUBLIC_PATHS = [
   /^\/food\/pay\/fake$/,               // checkout fake hospedado
   /^\/api\/avatar\/[^/]+$/,           // foto de perfil: 302 a URL firmada (expo-image no manda Bearer)
   /^\/api\/analytics$/,               // embudo pre-login; rate limit por IP en el handler
+  /^\/api\/health$/,                  // health check (sin datos sensibles)
   /^\/_next(\/.*)?$/,
   /^\/favicon\./,
   /^\/icon\./,

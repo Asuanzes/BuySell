@@ -48,6 +48,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
     data: dataForEvent(event),
   });
 
+  // Evento de embudo server-side (fuente de verdad de conversión: el webhook,
+  // no el cliente). Best-effort: nunca bloquea el ack al proveedor.
+  const funnelName =
+    event.type === "activated"
+      ? "subscribe_success"
+      : event.type === "payment_failed"
+        ? "subscribe_payment_failed"
+        : event.type === "cancelled"
+          ? "subscribe_cancelled"
+          : null;
+  if (funnelName) {
+    await prisma.analyticsEvent
+      .create({ data: { userId: sub.userId, name: funnelName, props: { provider: providerName } } })
+      .catch(() => {});
+  }
+
   return NextResponse.json({ ok: true });
 }
 

@@ -232,6 +232,52 @@ export function Landing() {
         </div>
       </section>
 
+      {/* ===== Precios ===== */}
+      <section className="mx-auto max-w-5xl px-6 py-14">
+        <h2 className="text-2xl font-semibold tracking-tight text-text">
+          Precios sin sorpresas
+        </h2>
+        <p className="mt-2 max-w-2xl text-md text-text-muted">
+          Empieza gratis con todo lo esencial. Premium amplía el asistente y las
+          búsquedas cuando lo necesites.
+        </p>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+          <div className="rounded-xl border border-border bg-surface p-6 shadow-xs">
+            <h3 className="text-lg font-semibold text-text">Gratis</h3>
+            <p className="mt-1 text-3xl font-bold text-text">
+              0 € <span className="text-sm font-normal text-text-muted">/ mes</span>
+            </p>
+            <ul className="mt-4 space-y-2 text-sm leading-relaxed text-text-muted">
+              <li>• Registros ilimitados en todas las categorías</li>
+              <li>• Alertas de cambios de precio y estado</li>
+              <li>• Chat con cifrado de extremo a extremo</li>
+              <li>• Asistente Nidokey (40 mensajes al día)</li>
+              <li>• 10 búsquedas de empleo al día</li>
+            </ul>
+          </div>
+          <div className="rounded-xl border-2 border-primary bg-surface p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-text">Premium</h3>
+              <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">
+                Para los que siguen de todo
+              </span>
+            </div>
+            <p className="mt-1 text-3xl font-bold text-text">
+              4,99 € <span className="text-sm font-normal text-text-muted">/ mes</span>
+            </p>
+            <ul className="mt-4 space-y-2 text-sm leading-relaxed text-text-muted">
+              <li>• Todo lo del plan Gratis</li>
+              <li>• Asistente Nidokey ampliado (400 mensajes al día)</li>
+              <li>• 40 búsquedas de empleo al día</li>
+              <li>• Cancela cuando quieras, desde la app</li>
+            </ul>
+            <p className="mt-4 text-xs text-text-subtle">
+              La suscripción se gestiona dentro de la app.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* ===== Descarga ===== */}
       <section className="mx-auto max-w-5xl px-6 py-16">
         <div className="overflow-hidden rounded-2xl border border-border bg-surface p-8 text-center shadow-sm sm:p-12">

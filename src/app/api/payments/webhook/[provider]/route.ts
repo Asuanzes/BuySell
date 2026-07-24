@@ -91,6 +91,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   after(async () => {
     await notifyFoodOrder(payment.orderId, null);
     await sendFoodPush(payment.orderId, "Pedido pagado", "El restaurante ya puede aceptarlo", null);
+    // Embudo: pago de pedido confirmado (server-side, fuente de verdad).
+    await prisma.analyticsEvent
+      .create({
+        data: {
+          userId: payment.order.customerId,
+          name: "food_order_paid",
+          props: { amountCents: payment.amountCents, provider: providerName },
+        },
+      })
+      .catch(() => {});
   });
   return NextResponse.json({ ok: true });
 }

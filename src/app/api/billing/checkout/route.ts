@@ -41,5 +41,11 @@ export async function POST() {
     returnUrl: `${baseUrl()}/billing/pay/return`,
   });
 
+  // Embudo: inicio de checkout registrado server-side (fiable aunque el
+  // cliente muera antes de flushear su cola).
+  await prisma.analyticsEvent
+    .create({ data: { userId, name: "checkout_start", props: { provider: providerName } } })
+    .catch(() => {});
+
   return NextResponse.json({ checkoutUrl });
 }
