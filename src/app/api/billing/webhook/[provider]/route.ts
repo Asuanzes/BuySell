@@ -43,6 +43,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   const sub = await prisma.subscription.findUnique({ where: { id: event.subscriptionRef } });
   if (!sub) return NextResponse.json({ ok: true }); // ref desconocida: ack sin efecto
 
+  // Stripe NO garantiza el orden de los webhooks (retries). Dos guardas:
+  //  1. Evento de una suscripción de proveedor ANTIGUA (tras resubscribir la
+  //     fila apunta a otra providerSubscriptionId) → historia pasada, ack.
+  //  2. Un "renewed" tardío jamás resucita una fila ya CANCELLED.
+  if (
+    event.type !== "activated" &&
+    event.providerSubscriptionId &&
+    sub.providerSubscriptionId &&
+    event.providerSubscriptionId !== sub.providerSubscriptionId
+  ) {
+    return NextResponse.json({ ok: true, stale: true });
+  }
+  if (event.type === "renewed" && sub.status === "CANCELLED") {
+    return NextResponse.json({ ok: true, stale: true });
+  }
+
   await prisma.subscription.update({
     where: { id: sub.id },
     data: dataForEvent(event),
@@ -72,7 +88,16 @@ function dataForEvent(event: SubscriptionEvent) {
   const providerSubscriptionId = event.providerSubscriptionId ?? undefined;
   switch (event.type) {
     case "activated":
-      return { status: "ACTIVE" as const, providerSubscriptionId, currentPeriodEnd: periodEnd, cancelAtPeriodEnd: false };
+      // periodEnd FORZADO (null si el evento no lo trae, nunca `undefined`):
+      // un "activated" debe borrar cualquier periodo caducado de una
+      // suscripción anterior — premiumFromRow trata null como acceso válido
+      // hasta que el customer.subscription.updated traiga la fecha real.
+      return {
+        status: "ACTIVE" as const,
+        providerSubscriptionId,
+        currentPeriodEnd: event.periodEndISO ? new Date(event.periodEndISO) : null,
+        cancelAtPeriodEnd: false,
+      };
     case "renewed":
       return { status: "ACTIVE" as const, providerSubscriptionId, currentPeriodEnd: periodEnd };
     case "payment_failed":

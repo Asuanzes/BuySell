@@ -155,6 +155,10 @@ export async function DELETE() {
     where: { customerId: userId },
     data: { deliveryAddress: "[eliminado]", deliveryCity: null, deliveryLat: 0, deliveryLng: 0, deliveryNotes: null },
   });
+  // courierId y FoodOrderEvent.actorId son String? SIN FK (no hay cascada):
+  // anonimizarlos a mano o el id del usuario borrado queda en el histórico.
+  await prisma.foodOrder.updateMany({ where: { courierId: userId }, data: { courierId: null } });
+  await prisma.foodOrderEvent.updateMany({ where: { actorId: userId }, data: { actorId: null } });
 
   // Analítica: anonimizar (el embudo agregado sobrevive sin identidad).
   await prisma.analyticsEvent.updateMany({ where: { userId }, data: { userId: null } });

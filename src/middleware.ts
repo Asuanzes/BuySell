@@ -58,7 +58,13 @@ export async function middleware(req: NextRequest) {
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7).trim();
-      if (/^(nk|bs)_/.test(token)) return NextResponse.next();
+      // Tokens de API: SOLO el formato exacto que emite api-token.ts pasa al
+      // handler (la resolución exige BBDD). "Bearer nk_loquesea" malformado
+      // muere aquí con 401 — sin esto llegaba a requireUserId() y era un 500.
+      if (token.startsWith("nk_")) {
+        if (/^nk_[0-9a-f]{64}$/.test(token)) return NextResponse.next();
+        return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+      }
       const verified = await verifyMobileJwt(token);
       if (!verified) {
         return NextResponse.json({ error: "No autenticado" }, { status: 401 });

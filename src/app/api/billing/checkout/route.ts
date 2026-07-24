@@ -24,6 +24,16 @@ export async function POST() {
   }
 
   const providerName = activeSubscriptionProviderName();
+  // Cinturón de producción: el proveedor fake regala Premium (pago simulado).
+  // Solo se permite en prod si se activa EXPLÍCITAMENTE con BILLING_PROVIDER=fake
+  // (pruebas controladas); sin Stripe configurado, el checkout queda apagado.
+  if (
+    providerName === "fake" &&
+    process.env.NODE_ENV === "production" &&
+    process.env.BILLING_PROVIDER !== "fake"
+  ) {
+    return NextResponse.json({ error: "Checkout no disponible todavía" }, { status: 503 });
+  }
   const provider = subscriptionProvider(providerName);
   if (!provider) {
     return NextResponse.json({ error: `Proveedor no soportado: ${providerName}` }, { status: 500 });
@@ -32,7 +42,17 @@ export async function POST() {
   const sub = await prisma.subscription.upsert({
     where: { userId },
     create: { userId, plan: "premium", provider: providerName, status: "PENDING" },
-    update: { plan: "premium", provider: providerName, status: "PENDING" },
+    // Resubscripción: resetear el periodo viejo — si no, tras el "activated" de
+    // Stripe (que aún no trae periodEnd) premiumFromRow vería el periodo
+    // CADUCADO de la suscripción anterior y negaría el acceso recién pagado.
+    update: {
+      plan: "premium",
+      provider: providerName,
+      status: "PENDING",
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      providerSubscriptionId: null,
+    },
   });
 
   const { checkoutUrl } = await provider.createCheckout({
