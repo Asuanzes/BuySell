@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { CHAT_FLAGS } from "@/lib/chat/config";
 import { displayName } from "@/lib/chat/serialize";
 import { messagePreview } from "@/lib/chat/util";
+import { deliverPush, pushableTokens, type PushMessage } from "@/lib/notifications/push";
 import type { ChatMessage } from "@prisma/client";
 
 /**
@@ -11,19 +12,13 @@ import type { ChatMessage } from "@prisma/client";
  * tengan la conversación silenciada; el cliente suprime el aviso si está mirando
  * esa conversación en primer plano.
  *
+ * El filtrado por preferencias del usuario y horario silencioso vive en
+ * @/lib/notifications/push (compartido con las alertas de precio). Silenciar la
+ * conversación (muteUntil) sigue siendo un filtro aparte y más específico.
+ *
  * Privacidad: si CHAT_PUSH_PREVIEW=false, no se envía el texto (solo "Nuevo
  * mensaje") — útil mientras no haya E2E.
  */
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-
-type ExpoMessage = {
-  to: string;
-  title: string;
-  body: string;
-  sound: "default";
-  data: { type: "chat"; conversationId: string };
-  channelId: "chat";
-};
 
 export async function sendChatPush(message: ChatMessage): Promise<void> {
   if (!message.senderId) return;
@@ -45,18 +40,15 @@ export async function sendChatPush(message: ChatMessage): Promise<void> {
   });
   if (!conversation || conversation.participants.length === 0) return;
 
+  const recipientIds = conversation.participants.map((p) => p.user.id);
+  const tokens = await pushableTokens(recipientIds, "chat");
+  if (tokens.length === 0) return;
+
   const sender = await prisma.user.findUnique({
     where: { id: message.senderId },
     select: { name: true, username: true, email: true },
   });
   const senderName = sender ? displayName(sender) : "Alguien";
-
-  const recipientIds = conversation.participants.map((p) => p.user.id);
-  const devices = await prisma.device.findMany({
-    where: { userId: { in: recipientIds } },
-    select: { expoPushToken: true },
-  });
-  if (devices.length === 0) return;
 
   // Título y cuerpo. En grupo el título es el grupo y el cuerpo "Remitente: …".
   const preview = CHAT_FLAGS.pushPreview ? messagePreview(message.kind, message.body) : "Nuevo mensaje";
@@ -64,8 +56,8 @@ export async function sendChatPush(message: ChatMessage): Promise<void> {
   const title = isGroup ? conversation.title ?? "Grupo" : senderName;
   const body = isGroup ? `${senderName}: ${preview}` : preview;
 
-  const payloads: ExpoMessage[] = devices.map((d) => ({
-    to: d.expoPushToken,
+  const payloads: PushMessage[] = tokens.map((to) => ({
+    to,
     title,
     body,
     sound: "default",
@@ -73,43 +65,5 @@ export async function sendChatPush(message: ChatMessage): Promise<void> {
     channelId: "chat",
   }));
 
-  await deliver(payloads);
-}
-
-/** Envía en lotes de 100 y limpia tokens muertos (DeviceNotRegistered). */
-async function deliver(messages: ExpoMessage[]): Promise<void> {
-  const dead: string[] = [];
-  let errors = 0;
-  for (let i = 0; i < messages.length; i += 100) {
-    const chunk = messages.slice(i, i + 100);
-    try {
-      const res = await fetch(EXPO_PUSH_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          ...(process.env.EXPO_ACCESS_TOKEN ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` } : {}),
-        },
-        body: JSON.stringify(chunk),
-      });
-      const json = (await res.json().catch(() => null)) as { data?: { status: string; details?: { error?: string } }[] } | null;
-      const tickets = json?.data ?? [];
-      tickets.forEach((t, idx) => {
-        if (t.status === "error") {
-          if (t.details?.error === "DeviceNotRegistered") dead.push(chunk[idx].to);
-          else errors++;
-        }
-      });
-    } catch (e) {
-      // Push best-effort: nunca rompe el envío del mensaje, pero deja rastro.
-      errors += chunk.length;
-      console.error(`[chat-push] lote falló: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  if (errors || dead.length) {
-    console.log(`[chat-push] enviados=${messages.length - errors - dead.length} errores=${errors} muertos=${dead.length}`);
-  }
-  if (dead.length) {
-    await prisma.device.deleteMany({ where: { expoPushToken: { in: dead } } }).catch(() => {});
-  }
+  await deliverPush(payloads, "chat-push");
 }

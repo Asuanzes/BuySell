@@ -77,7 +77,8 @@
     "delete_title": "¿Eliminar tu cuenta?",
     "delete_body": "Se borrarán permanentemente tus registros, chats, direcciones y suscripción. Esta acción no se puede deshacer.",
     "delete_confirm": "Eliminar definitivamente",
-    "delete_error": "No se pudo eliminar la cuenta. Inténtalo de nuevo."
+    "delete_error": "No se pudo eliminar la cuenta. Inténtalo de nuevo.",
+    "notifications": "Notificaciones"
   },
   "theme": {
     "appearance": "Apariencia",
@@ -901,5 +902,18 @@
     "placeholder_price": "Importe en €",
     "placeholder_pct": "Porcentaje (p. ej. 10)",
     "notice_property_daily": "Revisamos tus anuncios a diario, no al instante."
+  },
+  "notifications": {
+    "channels": "Avisos",
+    "chat": "Mensajes de chat",
+    "chat_hint": "Avisos de mensajes nuevos y del asistente.",
+    "alerts": "Alertas de precio",
+    "alerts_hint": "Cuando salta una alerta que has configurado.",
+    "quiet": "Horario silencioso",
+    "quiet_enable": "No molestar de noche",
+    "quiet_hint": "Durante la franja no suena nada. Los avisos siguen llegando al chat.",
+    "quiet_from": "Desde",
+    "quiet_to": "Hasta",
+    "footer": "La franja se aplica en la hora local de este dispositivo. Silenciar nunca borra un aviso: siempre puedes verlo en el chat con Nidokey."
   }
 }

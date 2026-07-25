@@ -6,6 +6,8 @@ import { requireUserId } from "@/lib/auth-helpers";
 const Input = z.object({
   expoPushToken: z.string().min(10).max(200),
   platform: z.enum(["ios", "android"]),
+  /** Zona IANA del dispositivo: el horario silencioso se evalúa en hora local. */
+  timezone: z.string().max(64).regex(/^[A-Za-z0-9_+\-/]+$/).optional(),
 });
 
 /**
@@ -17,12 +19,12 @@ export async function POST(req: NextRequest) {
   const userId = await requireUserId();
   const parsed = Input.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { expoPushToken, platform } = parsed.data;
+  const { expoPushToken, platform, timezone } = parsed.data;
 
   await prisma.device.upsert({
     where: { expoPushToken },
-    create: { userId, expoPushToken, platform },
-    update: { userId, platform, lastSeenAt: new Date() },
+    create: { userId, expoPushToken, platform, timezone: timezone ?? null },
+    update: { userId, platform, lastSeenAt: new Date(), ...(timezone ? { timezone } : {}) },
   });
   return NextResponse.json({ ok: true }, { status: 201 });
 }

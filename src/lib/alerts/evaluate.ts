@@ -1,8 +1,10 @@
 import type { AlertKind } from "@prisma/client";
 import type { RecordType } from "@nidokey/shared";
+import { stripRecordLinks } from "@nidokey/shared";
 import { prisma } from "@/lib/db";
 import { ensureBotDm, replyAsBot } from "@/lib/chat/bot";
 import { recordTitle } from "@/lib/records/access";
+import { deliverPush, pushableTokens } from "@/lib/notifications/push";
 
 /**
  * Motor de alertas de precio.
@@ -179,8 +181,26 @@ export async function evaluateAlerts(
         status: change.status,
       });
 
+      // Canal 1 (siempre): DM del bot. Registro duradero y visible en iOS.
       const cid = await ensureBotDm(a.userId);
       if (cid) await replyAsBot(cid, text);
+
+      // Canal 2 (si el usuario lo permite y no está en horario silencioso):
+      // push. El texto va sin el marcado de enlace, que solo entiende el chat.
+      const tokens = await pushableTokens([a.userId], "alerts");
+      if (tokens.length > 0) {
+        await deliverPush(
+          tokens.map((to) => ({
+            to,
+            title: "Alerta de precio",
+            body: stripRecordLinks(text).replace(/^🔔\s*/, ""),
+            sound: "default" as const,
+            data: { type: "alert", recordType, recordId },
+            channelId: "chat",
+          })),
+          "alert-push"
+        );
+      }
 
       await prisma.analyticsEvent
         .create({ data: { userId: a.userId, name: "alert_fired", props: { recordType, kind: a.kind } } })

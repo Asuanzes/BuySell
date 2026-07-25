@@ -523,6 +523,17 @@ function AuthGate() {
             }}
           />
           <Stack.Screen
+            name="notification-settings"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("account.notifications"),
+            }}
+          />
+          <Stack.Screen
             name="premium"
             options={{
               headerShown: true,

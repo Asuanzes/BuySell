@@ -56,6 +56,15 @@ try {
   // binario sin expo-notifications: sin handler, sin crash
 }
 
+/** Zona IANA del dispositivo ("Europe/Madrid"). undefined si Hermes no la da. */
+function deviceTimezone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function projectId(): string | undefined {
   return (
     (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ??
@@ -92,7 +101,13 @@ export async function registerForPush(): Promise<void> {
     const token = (await Notifications.getExpoPushTokenAsync({ projectId: projectId() })).data;
     await api("/api/devices", {
       method: "POST",
-      body: JSON.stringify({ expoPushToken: token, platform: Platform.OS }),
+      // La zona del dispositivo la usa el servidor para el horario silencioso
+      // (se evalúa en hora LOCAL, no en UTC).
+      body: JSON.stringify({
+        expoPushToken: token,
+        platform: Platform.OS,
+        timezone: deviceTimezone(),
+      }),
     });
   } catch {
     // Push es best-effort: nunca rompe el arranque/login.

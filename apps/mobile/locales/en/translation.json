@@ -77,7 +77,8 @@
     "delete_title": "Delete your account?",
     "delete_body": "Your records, chats, addresses and subscription will be permanently deleted. This cannot be undone.",
     "delete_confirm": "Delete permanently",
-    "delete_error": "Could not delete the account. Please try again."
+    "delete_error": "Could not delete the account. Please try again.",
+    "notifications": "Notifications"
   },
   "theme": {
     "appearance": "Appearance",
@@ -901,5 +902,18 @@
     "placeholder_price": "Amount in €",
     "placeholder_pct": "Percentage (e.g. 10)",
     "notice_property_daily": "We check your listings daily, not in real time."
+  },
+  "notifications": {
+    "channels": "Notifications",
+    "chat": "Chat messages",
+    "chat_hint": "New messages and assistant replies.",
+    "alerts": "Price alerts",
+    "alerts_hint": "When an alert you set goes off.",
+    "quiet": "Quiet hours",
+    "quiet_enable": "Do not disturb at night",
+    "quiet_hint": "Nothing rings during this window. Notices still arrive in the chat.",
+    "quiet_from": "From",
+    "quiet_to": "To",
+    "footer": "The window uses this device's local time. Silencing never deletes a notice: you can always find it in the Nidokey chat."
   }
 }

@@ -98,14 +98,34 @@ de FK.
 Eventos: `alert_created` y `alert_fired` (ambos server-side, con `recordType` y
 `kind`). Ver [ANALITICA.md](ANALITICA.md).
 
+## Notificaciones: canales y preferencias
+
+Además del DM del bot, cada alerta manda **push** si el usuario lo permite. El
+filtrado vive en [src/lib/notifications/push.ts](../src/lib/notifications/push.ts),
+compartido con el push del chat:
+
+- `NotificationPrefs` (1-a-1 con `User`, el id ES el userId): `chatPush`,
+  `alertsPush`, `quietStartHour`, `quietEndHour`. **La ausencia de fila = todo
+  activado y sin franja**, así que los usuarios que ya existían no cambian de
+  comportamiento.
+- **Horario silencioso en hora LOCAL** del dispositivo: `Device.timezone`
+  (IANA, la manda el móvil al registrar el token). Admite franjas que cruzan
+  medianoche (23 → 8). `inQuietHours` y `localHourIn` son puras y están
+  cubiertas por `src/lib/notifications/push.test.ts`.
+- Silenciar **solo suprime el push**: el mensaje del bot se escribe igual, así
+  que ningún aviso se pierde.
+- El push de **chat nunca se limita por plan**; solo las alertas tienen cuota.
+- UI: Cuenta → Notificaciones (`apps/mobile/app/notification-settings.tsx`).
+  Cubre además el requisito de Apple/Google de poder desactivarlas desde la app.
+
+API: `GET`/`PATCH /api/account/notifications`.
+
 ## Pendiente
 
-1. **Push como canal adicional**: `NotificationPrefs` (on/off por categoría),
-   horario silencioso, `timezone` en `Device` y sección "Notificaciones" en
-   Ajustes — que además cubre un requisito de las tiendas (poder desactivar
-   las notificaciones desde la app).
-2. Verificar en dispositivo si el binario Android instalado trae el módulo
+1. Verificar en dispositivo si el binario Android instalado trae el módulo
    nativo de `expo-notifications` (si no, no hay push hasta el próximo build;
-   el DM funciona igual).
-3. Extender a inmuebles con umbral sobre el histórico de `PriceSnapshot`
+   el DM funciona igual). iOS sigue bloqueado por la cuenta de Apple.
+2. Extender a inmuebles con umbral sobre el histórico de `PriceSnapshot`
    (hoy la referencia es el precio al crear la alerta).
+3. Alertas de empleo por consulta guardada: investigado el 2026-07-26 — **no
+   sobre Apify** ($3–4,50/mes por alerta), sí viable con Jina Reader.

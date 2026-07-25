@@ -143,6 +143,7 @@ model User {
   courierProfile    CourierProfile?
   subscription      Subscription?
   priceAlerts       PriceAlert[]
+  notificationPrefs NotificationPrefs?
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -1142,6 +1143,9 @@ model Device {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expoPushToken String   @unique
   platform      String // "ios" | "android"
+  // Zona IANA del dispositivo ("Europe/Madrid"): el horario silencioso se evalúa
+  // en hora LOCAL, no en UTC. La manda el móvil al registrarse.
+  timezone      String?  @db.VarChar(64)
   lastSeenAt    DateTime @default(now())
   createdAt     DateTime @default(now())
 
@@ -1253,4 +1257,26 @@ model PriceAlert {
 
   @@index([recordType, recordId, active])
   @@index([userId, active])
+}
+
+// Preferencias de notificación por usuario. La AUSENCIA de fila = valores por
+// defecto (todo activado, sin horario silencioso), así que los usuarios que ya
+// existen no cambian de comportamiento. El id ES el userId (1-a-1 sin columna
+// extra). Requisito de tiendas: poder desactivar notificaciones desde la app.
+model NotificationPrefs {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Push de mensajes de chat. NUNCA se limita por plan.
+  chatPush   Boolean @default(true)
+  /// Push de alertas de precio (el aviso en el DM del bot se escribe igual).
+  alertsPush Boolean @default(true)
+
+  /// Franja sin push, en hora LOCAL del dispositivo (0-23). null = sin franja.
+  /// Puede cruzar medianoche (23 → 8). El aviso del bot se escribe igual: no se
+  /// pierde nada, solo no suena.
+  quietStartHour Int?
+  quietEndHour   Int?
+
+  updatedAt DateTime @updatedAt
 }

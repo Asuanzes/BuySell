@@ -67,6 +67,14 @@ export default function AccountScreen() {
         </Pressable>
       </Section>
 
+      <Section label={t("account.notifications")}>
+        <Pressable style={styles.toggleRow} onPress={() => router.push("/notification-settings" as never)}>
+          <Ionicons name="notifications-outline" size={20} color={th.textMuted} />
+          <Text style={[styles.toggleLabel, { color: th.text }]}>{t("account.notifications")}</Text>
+          <Ionicons name="chevron-forward" size={18} color={th.textSubtle} />
+        </Pressable>
+      </Section>
+
       <Section label={t("account.theme")}>
         <Pressable style={styles.toggleRow} onPress={() => router.push("/theme-settings")}>
           <Ionicons name="color-palette-outline" size={20} color={th.textMuted} />
