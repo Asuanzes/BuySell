@@ -259,3 +259,28 @@ procedimiento manual: reembolsar + cancelar inmediata en Stripe → el webhook
 8. Monitor externo sobre `/api/health` + alerta.
 9. Primera compra controlada en producción + verificación del embudo en
    `AnalyticsEvent` (docs/ANALITICA.md).
+
+### Requisitos legales de la UE en las tiendas (aparecieron el 2026-07-25)
+
+Al subir a TestFlight, App Store Connect bloqueó el envío hasta aceptar dos
+declaraciones nuevas de normativa europea. **No son un trámite de un clic: tienen
+consecuencias sobre el producto.** Verificar el alcance exacto con asesoría —
+aquí solo se recoge lo que hay que mirar:
+
+- **Condición de comerciante (DSA)**. Al declararte comerciante, Apple publica
+  tus **datos de contacto en la ficha de la app**: nombre, dirección, teléfono y
+  email. Siendo persona física, son datos personales tuyos y quedan visibles.
+  Muchos desarrolladores individuales usan una dirección profesional o
+  constituyen una entidad antes de declarar. Decidir esto ANTES de publicar en
+  abierto: revertirlo después no borra lo ya indexado.
+- **Accesibilidad (European Accessibility Act)**. Aplica a servicios de comercio
+  electrónico dirigidos a consumidores de la UE. Nidokey **vende una suscripción
+  dentro de la app**, así que muy probablemente está en el alcance. Eso convierte
+  la accesibilidad en obligación legal, no en mejora opcional.
+  Línea base actual: 26 ficheros del móvil usan `accessibilityLabel` /
+  `accessibilityRole` / `accessibilityHint` — hay algo, pero **nunca se ha
+  auditado**. Pendiente: recorrer los flujos críticos (registro, alta de
+  registro, paywall, pago, borrado de cuenta) con lector de pantalla, revisar
+  contraste y tamaños de toque.
+
+Ambas afectan también a Google Play, que tiene declaraciones equivalentes.
