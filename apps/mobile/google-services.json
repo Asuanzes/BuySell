@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "314162476511",
+    "project_id": "es-nidokey-app",
+    "storage_bucket": "es-nidokey-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:314162476511:android:1703c886c0848bf853c06a",
+        "android_client_info": {
+          "package_name": "es.nidokey.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDkqe47PmtbtpllgUjOVeTb3j3TBZPiSa4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -86,11 +86,29 @@ export async function pushableTokens(
   return out;
 }
 
-/** Envía en lotes de 100 y limpia tokens muertos (DeviceNotRegistered). */
-export async function deliverPush(messages: PushMessage[], tag = "push"): Promise<void> {
-  if (messages.length === 0) return;
+export type PushDelivery = {
+  /** Tickets aceptados por Expo (no garantiza entrega, pero sí que se cursó). */
+  ok: number;
+  /** Tokens caducados: se borran de Device. */
+  dead: number;
+  /** Errores reales (p. ej. credencial FCM ausente en el proyecto de Expo). */
+  errors: number;
+  /** Primer error, tal cual lo devuelve Expo. Clave para diagnosticar. */
+  firstError: string | null;
+};
+
+/**
+ * Envía en lotes de 100, limpia tokens muertos (DeviceNotRegistered) y DEVUELVE
+ * el resultado. Devolverlo importa: sin credencial FCM V1 en el proyecto de
+ * Expo, los tokens existen y el envío se cursa pero Expo lo rechaza — contar
+ * solo tokens daría un falso "enviado".
+ */
+export async function deliverPush(messages: PushMessage[], tag = "push"): Promise<PushDelivery> {
+  if (messages.length === 0) return { ok: 0, dead: 0, errors: 0, firstError: null };
   const dead: string[] = [];
   let errors = 0;
+  let ok = 0;
+  let firstError: string | null = null;
   for (let i = 0; i < messages.length; i += 100) {
     const chunk = messages.slice(i, i + 100);
     try {
@@ -104,25 +122,40 @@ export async function deliverPush(messages: PushMessage[], tag = "push"): Promis
         body: JSON.stringify(chunk),
       });
       const json = (await res.json().catch(() => null)) as
-        | { data?: { status: string; details?: { error?: string } }[] }
+        | { data?: { status: string; message?: string; details?: { error?: string } }[]; errors?: { message?: string }[] }
         | null;
+      // Error global del lote (p. ej. credencial FCM ausente): Expo responde
+      // con `errors` en la raíz y sin tickets.
+      if (json?.errors?.length) {
+        errors += chunk.length;
+        firstError ??= json.errors[0]?.message ?? "error sin mensaje";
+        continue;
+      }
       const tickets = json?.data ?? [];
       tickets.forEach((t, idx) => {
         if (t.status === "error") {
           if (t.details?.error === "DeviceNotRegistered") dead.push(chunk[idx].to);
-          else errors++;
+          else {
+            errors++;
+            firstError ??= t.message ?? t.details?.error ?? "error sin mensaje";
+          }
+        } else {
+          ok++;
         }
       });
     } catch (e) {
       // Push best-effort: nunca rompe la operación que lo originó.
       errors += chunk.length;
-      console.error(`[${tag}] lote falló: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      firstError ??= msg;
+      console.error(`[${tag}] lote falló: ${msg}`);
     }
   }
   if (errors || dead.length) {
-    console.log(`[${tag}] enviados=${messages.length - errors - dead.length} errores=${errors} muertos=${dead.length}`);
+    console.log(`[${tag}] ok=${ok} errores=${errors} muertos=${dead.length}${firstError ? ` primero="${firstError}"` : ""}`);
   }
   if (dead.length) {
     await prisma.device.deleteMany({ where: { expoPushToken: { in: dead } } }).catch(() => {});
   }
+  return { ok, dead: dead.length, errors, firstError };
 }

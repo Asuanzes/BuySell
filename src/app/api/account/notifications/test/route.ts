@@ -41,8 +41,9 @@ export async function POST() {
   // Se usa la categoría "chat" a propósito: valida el mismo camino que un
   // mensaje real (preferencia + horario silencioso), no un atajo.
   const tokens = await pushableTokens([userId], "chat", now);
+  let delivery: Awaited<ReturnType<typeof deliverPush>> | null = null;
   if (tokens.length > 0) {
-    await deliverPush(
+    delivery = await deliverPush(
       tokens.map((to) => ({
         to,
         title: "Nidokey",
@@ -61,15 +62,23 @@ export async function POST() {
     timezones: [...new Set(devices.map((d) => d.timezone ?? "sin zona"))],
     chatPushEnabled: prefs?.chatPush ?? true,
     inQuietHours: quiet,
-    sent: tokens.length,
-    // Pista accionable cuando no se envía nada.
+    // "sent" = tickets ACEPTADOS por Expo, no tokens a los que se intentó
+    // enviar: sin credencial FCM V1 el envío se cursa y Expo lo rechaza.
+    sent: delivery?.ok ?? 0,
+    rejected: delivery?.errors ?? 0,
+    expoError: delivery?.firstError ?? null,
+    // Pista accionable cuando no llega nada.
     hint:
       devices.length === 0
-        ? "Ningún dispositivo registró token. En Android hace falta un build nativo con expo-notifications y aceptar el permiso; en iOS el push está desactivado (sin cuenta Apple)."
+        ? "Ningún dispositivo registró token. En Android hace falta un build nativo con google-services.json (Firebase) y aceptar el permiso; en iOS el push está desactivado (sin cuenta Apple)."
         : tokens.length === 0
           ? quiet
             ? "Estás en horario silencioso: por eso no suena. El aviso sí se guardaría en el chat."
             : "El push de chat está desactivado en tus preferencias."
-          : null,
+          : delivery && delivery.errors > 0
+            ? `Expo rechazó el envío: ${delivery.firstError ?? "sin detalle"}. Si menciona FCM o credenciales, falta subir la clave de cuenta de servicio (FCM V1) a expo.dev → Credentials → Android.`
+            : delivery && delivery.dead > 0
+              ? "El token estaba caducado y se ha borrado. Reabre la app para registrar uno nuevo."
+              : null,
   });
 }
