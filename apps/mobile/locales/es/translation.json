@@ -914,6 +914,10 @@
     "quiet_hint": "Durante la franja no suena nada. Los avisos siguen llegando al chat.",
     "quiet_from": "Desde",
     "quiet_to": "Hasta",
-    "footer": "La franja se aplica en la hora local de este dispositivo. Silenciar nunca borra un aviso: siempre puedes verlo en el chat con Nidokey."
+    "footer": "La franja se aplica en la hora local de este dispositivo. Silenciar nunca borra un aviso: siempre puedes verlo en el chat con Nidokey.",
+    "test": "Comprobar",
+    "test_send": "Enviar notificación de prueba",
+    "test_sent": "Enviada a {{count}} dispositivo(s). Si no la ves en unos segundos, revisa los permisos del sistema.",
+    "test_none": "No se pudo enviar."
   }
 }

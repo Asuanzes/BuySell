@@ -12,7 +12,9 @@ export async function register() {
   const recommended = [
     "CRON_SECRET", // sin él, los crons de refresco/limpieza no autorizan
     "RESEND_API_KEY", // sin él, el login por email NO funciona en producción
-    "PAYMENT_WEBHOOK_SECRET", // obligatorio para CUALQUIER pago (P0 auditoría)
+    // Sin él los PAGOS quedan apagados (503 al intentar cobrar), pero el resto
+    // de la app funciona con normalidad. Obligatorio antes de cobrar.
+    "PAYMENT_WEBHOOK_SECRET",
     "CHAT_GATEWAY_SECRET", // sin él, el chat degrada a polling
     "CHAT_WS_SECRET",
   ] as const;

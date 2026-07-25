@@ -914,6 +914,10 @@
     "quiet_hint": "Nothing rings during this window. Notices still arrive in the chat.",
     "quiet_from": "From",
     "quiet_to": "To",
-    "footer": "The window uses this device's local time. Silencing never deletes a notice: you can always find it in the Nidokey chat."
+    "footer": "The window uses this device's local time. Silencing never deletes a notice: you can always find it in the Nidokey chat.",
+    "test": "Check",
+    "test_send": "Send test notification",
+    "test_sent": "Sent to {{count}} device(s). If you do not see it within a few seconds, check your system permissions.",
+    "test_none": "Could not send."
   }
 }

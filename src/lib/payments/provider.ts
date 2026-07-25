@@ -42,6 +42,15 @@ export function requirePaymentSecret(): string {
   return s;
 }
 
+/**
+ * ¿Se pueden crear cobros? Sin secreto NO: firmar lanzaría. Las rutas que
+ * inician un pago deben comprobarlo antes y responder 503 en vez de un 500.
+ * Permite desplegar sin secreto (pagos apagados) sin que nada crashee.
+ */
+export function paymentsConfigured(): boolean {
+  return !!paymentSecret();
+}
+
 export function signPaymentWebhook(raw: string): string {
   return "sha256=" + createHmac("sha256", requirePaymentSecret()).update(raw).digest("hex");
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { createFoodOrderEvent } from "@/lib/food/state";
-import { paymentProvider } from "@/lib/payments/provider";
+import { paymentProvider, paymentsConfigured } from "@/lib/payments/provider";
 
 function appUrl(): string {
   return (process.env.NEXTAUTH_URL || "https://nidokey.es").replace(/\/+$/, "");
@@ -21,6 +21,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   if (order.payment?.status === "SUCCEEDED") {
     return NextResponse.json({ checkoutUrl: order.payment.checkoutUrl, payment: order.payment });
+  }
+  // Sin PAYMENT_WEBHOOK_SECRET no se puede firmar el intent: 503 explícito en
+  // vez del 500 que saldría al intentar firmar. Permite desplegar con los pagos
+  // apagados a propósito.
+  if (!paymentsConfigured()) {
+    return NextResponse.json({ error: "Los pagos no están disponibles todavía." }, { status: 503 });
   }
   const provider = paymentProvider("fake");
   if (!provider) return NextResponse.json({ error: "Proveedor no disponible" }, { status: 500 });

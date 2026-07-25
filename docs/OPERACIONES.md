@@ -25,9 +25,38 @@ Validación al arrancar: `src/instrumentation.ts` — críticas (`DATABASE_URL`,
 `AUTH_SECRET`) tumban el server en producción si faltan; recomendadas solo
 avisan en logs.
 
-⚠️ **Acción pendiente de humano**: crear `PAYMENT_WEBHOOK_SECRET` en
-Vercel (32 bytes hex). Desde el commit de seguridad, firmar pagos SIN esta
-variable **lanza error en producción** (antes caía en silencio a `AUTH_SECRET`).
+### Desplegar SIN `PAYMENT_WEBHOOK_SECRET` (pagos apagados)
+
+**Es un escenario soportado y probado** (`src/lib/payments/provider.test.ts`).
+Sin esa variable:
+
+- Todo lo que no sean pagos funciona con normalidad: chat, push, alertas,
+  registros, analítica.
+- Iniciar el pago de un pedido responde **503** con un mensaje claro (no un
+  500): la ruta comprueba `paymentsConfigured()` antes de intentar firmar.
+- El checkout de suscripción responde **503** (el proveedor fake exige opt-in
+  explícito con `BILLING_PROVIDER=fake` en producción).
+- Verificar webhooks **falla cerrado** (401), nunca crashea.
+- El arranque solo deja un aviso `[env]` en los logs; no tumba el server.
+- **NO hay fallback a `AUTH_SECRET` en producción** — eso era el P0 de la
+  auditoría y sigue cerrado.
+
+⚠️ Crear `PAYMENT_WEBHOOK_SECRET` (32 bytes hex) **antes de querer cobrar**.
+
+### Probar el push tras desplegar
+
+Cuenta → Notificaciones → **"Enviar notificación de prueba"**. La respuesta
+diagnostica el fallo en vez de dejarte a ciegas:
+
+| Resultado | Significa |
+| --- | --- |
+| llega la notificación | la cadena entera funciona |
+| "Ningún dispositivo registró token" | el binario instalado no trae el módulo nativo de `expo-notifications` (hace falta `eas build`, no basta OTA) o no se aceptó el permiso |
+| "Estás en horario silencioso" | la franja está activa; el aviso sí se guardaría en el chat |
+| "El push de chat está desactivado" | la preferencia está apagada |
+
+En iOS no habrá push hasta tener cuenta Apple de pago (APNs); las alertas
+siguen llegando al DM de @Nidokey.
 
 ## 3. Pagos y suscripción Premium
 
