@@ -63,7 +63,10 @@ export async function POST() {
         data: { type: "test" },
         channelId: "chat",
       })),
-      "push-test"
+      "push-test",
+      // El botón de prueba SÍ espera los recibos: es la única forma de saber si
+      // el aviso llegó de verdad. Un ticket "ok" no significa entregado.
+      { awaitReceipts: true }
     );
   }
 
@@ -86,10 +89,12 @@ export async function POST() {
           ? quiet
             ? "Estás en horario silencioso: por eso no suena. El aviso sí se guardaría en el chat."
             : "El push de chat está desactivado en tus preferencias."
-          : delivery && delivery.errors > 0
-            ? `Expo rechazó el envío: ${delivery.firstError ?? "sin detalle"}. Si menciona FCM o credenciales, falta subir la clave de cuenta de servicio (FCM V1) a expo.dev → Credentials → Android.`
-            : delivery && delivery.dead > 0
-              ? "El token estaba caducado y se ha borrado. Reabre la app para registrar uno nuevo."
-              : null,
+          : delivery && delivery.dead > 0 && delivery.ok === 0
+            ? "FCM dice que el dispositivo NO está registrado. Suele significar que la clave FCM V1 subida a Expo pertenece a OTRO proyecto de Firebase que el google-services.json de la app, o que se subió a otro identificador. Comprueba en expo.dev → Credentials → Android que la clave es del proyecto 'es-nidokey-app' y está en 'es.nidokey.app'. Los tokens muertos se han borrado: reabre la app para registrar uno nuevo."
+            : delivery && delivery.errors > 0
+              ? `Expo rechazó el envío: ${delivery.firstError ?? "sin detalle"}.`
+              : delivery && delivery.dead > 0
+                ? "Algún token estaba caducado y se ha borrado. Reabre la app para registrar uno nuevo."
+                : null,
   });
 }

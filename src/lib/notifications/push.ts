@@ -103,12 +103,18 @@ export type PushDelivery = {
  * Expo, los tokens existen y el envío se cursa pero Expo lo rechaza — contar
  * solo tokens daría un falso "enviado".
  */
-export async function deliverPush(messages: PushMessage[], tag = "push"): Promise<PushDelivery> {
+export async function deliverPush(
+  messages: PushMessage[],
+  tag = "push",
+  opts: { awaitReceipts?: boolean } = {}
+): Promise<PushDelivery> {
   if (messages.length === 0) return { ok: 0, dead: 0, errors: 0, firstError: null };
   const dead: string[] = [];
   let errors = 0;
   let ok = 0;
   let firstError: string | null = null;
+  /** ticketId → token, para poder culpar al token correcto en los recibos. */
+  const ticketToToken = new Map<string, string>();
   for (let i = 0; i < messages.length; i += 100) {
     const chunk = messages.slice(i, i + 100);
     try {
@@ -141,6 +147,7 @@ export async function deliverPush(messages: PushMessage[], tag = "push"): Promis
           }
         } else {
           ok++;
+          if (t.id) ticketToToken.set(t.id, chunk[idx].to);
         }
       });
     } catch (e) {
@@ -151,6 +158,27 @@ export async function deliverPush(messages: PushMessage[], tag = "push"): Promis
       console.error(`[${tag}] lote falló: ${msg}`);
     }
   }
+  // FASE 2: los RECIBOS. Un ticket "ok" solo significa ACEPTADO por Expo; el
+  // motivo real de un fallo de entrega (DeviceNotRegistered, credencial FCM que
+  // no corresponde al proyecto, mensaje demasiado grande) solo aparece aquí.
+  // Sin esto, un envío que no llega a ningún sitio se reporta como "enviado"
+  // — que es exactamente lo que despistó el 2026-07-25.
+  if (opts.awaitReceipts && ticketToToken.size > 0) {
+    await new Promise((r) => setTimeout(r, 3000)); // Expo tarda un par de segundos
+    const receipts = await fetchReceipts([...ticketToToken.keys()], tag);
+    for (const [id, r] of Object.entries(receipts)) {
+      if (r.status !== "error") continue;
+      ok = Math.max(0, ok - 1);
+      const token = ticketToToken.get(id);
+      if (r.details?.error === "DeviceNotRegistered") {
+        if (token) dead.push(token);
+      } else {
+        errors++;
+      }
+      firstError ??= r.message ?? r.details?.error ?? "error sin mensaje";
+    }
+  }
+
   if (errors || dead.length) {
     console.log(`[${tag}] ok=${ok} errores=${errors} muertos=${dead.length}${firstError ? ` primero="${firstError}"` : ""}`);
   }
@@ -158,4 +186,26 @@ export async function deliverPush(messages: PushMessage[], tag = "push"): Promis
     await prisma.device.deleteMany({ where: { expoPushToken: { in: dead } } }).catch(() => {});
   }
   return { ok, dead: dead.length, errors, firstError };
+}
+
+type Receipt = { status: string; message?: string; details?: { error?: string } };
+
+/** Recibos de entrega de Expo. Nunca lanza: es diagnóstico, no camino crítico. */
+async function fetchReceipts(ids: string[], tag: string): Promise<Record<string, Receipt>> {
+  try {
+    const res = await fetch("https://exp.host/--/api/v2/push/getReceipts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(process.env.EXPO_ACCESS_TOKEN ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` } : {}),
+      },
+      body: JSON.stringify({ ids: ids.slice(0, 1000) }),
+    });
+    const json = (await res.json().catch(() => null)) as { data?: Record<string, Receipt> } | null;
+    return json?.data ?? {};
+  } catch (e) {
+    console.error(`[${tag}] no se pudieron leer los recibos: ${e instanceof Error ? e.message : String(e)}`);
+    return {};
+  }
 }
