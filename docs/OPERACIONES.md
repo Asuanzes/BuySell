@@ -18,19 +18,40 @@ lanzamiento. Complementa el brief de [CLAUDE.md](../CLAUDE.md) (arquitectura) y
 cada PR/push a `main`. El deploy de Vercel es automático al pushear `main` —
 **no pushear sin CI en verde**.
 
-⚠️ **La rama del OTA tiene que coincidir con el CANAL del build instalado.** Un
-build escucha su canal; publicar en otra rama no llega a ningún dispositivo y
-además **no da ningún error** (pasó el 2026-07-25: se publicó en `production`
-y la app siguió con un update de 6 días antes).
+⚠️ **La rama del OTA tiene que coincidir con el CANAL del build Y con su
+`runtimeVersion`.** Un build solo ve updates de su canal y su runtime; publicar
+en otro sitio no llega a nadie y **no da ningún error**.
 
-| Perfil de `eas.json` | Canal | Para qué | Rama del OTA |
+**HAY DOS AUDIENCIAS VIVAS a la vez** (esto se diagnosticó mal el 2026-07-25 al
+mirar solo los últimos builds, todos ad-hoc):
+
+| Audiencia | Perfil / canal | Distribución | Rama del OTA |
 | --- | --- | --- | --- |
-| `preview` | `preview` | APK interno → API de producción. **Es lo que hay instalado hoy** | `eas update --branch preview` |
-| `production` | `production` | app-bundle para Play Store (aún sin subir) | `--branch production` cuando se publique en tiendas |
-| `development` | `development` | dev client con Metro | no usa OTA |
+| **Tu propio móvil** | `preview` | ad-hoc (APK / IPA por enlace, device registrado) | `eas update --branch preview` |
+| **Testers de TestFlight** | `production` | store (App Store Connect) | `eas update --branch production` |
+| dev client con Metro | `development` | — | no usa OTA |
 
-Comprobar antes de publicar: `eas build:list --limit 1` (campo `Channel`) y
-`eas channel:list`.
+Como `runtimeVersion` sigue la política `appVersion`, **el `version` de app.json
+tiene que coincidir con el de la app instalada** o el update no aplica. Antes de
+publicar, comprobar qué versión corre cada audiencia:
+
+```bash
+eas build:list --limit 10 --json   # appVersion, appBuildVersion, channel, distribution
+eas channel:list                   # rama y runtime del último update por canal
+```
+
+Regla práctica: un cambio **solo de JS** llega a los testers publicando en
+`--branch production` con el `version` de su build — sin subir nada a TestFlight
+ni pasar revisión. Un cambio **nativo** (entitlements, iconos de notificación,
+módulos) exige build nuevo y subida.
+
+### Números de versión en iOS (TestFlight con testers externos)
+
+- Un **build nuevo dentro de la versión ya aprobada** (mismo `version`,
+  `ios.buildNumber` mayor) normalmente pasa la Beta App Review rápido.
+- Una **versión nueva** dispara revisión completa.
+- El `buildNumber` debe ser mayor que CUALQUIERA ya subido para esa versión:
+  comprobar con `eas build:list` filtrando `distribution: store`.
 
 ## 2. Variables de entorno
 
