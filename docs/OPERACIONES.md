@@ -12,7 +12,7 @@ lanzamiento. Complementa el brief de [CLAUDE.md](../CLAUDE.md) (arquitectura) y
 | BBDD | Neon Postgres (única; no hay staging) | `npx prisma db push` (NUNCA `migrate`) |
 | App móvil | EAS Update OTA (runtime `appVersion`) | `eas update --branch production` |
 | Gateway chat | VPS Hetzner (`ws.nidokey.es`, systemd) | `ssh` + redeploy manual |
-| Scraper menús | VPS (`scrape.nidokey.es`, Docker) | `crawl4ai/deploy.sh` |
+| Scraper menús | Apify (actor Glovo) + Firecrawl, **ambos de pago** | sin deploy propio |
 
 **CI**: `.github/workflows/ci.yml` corre typecheck (web+móvil), tests y build en
 cada PR/push a `main`. El deploy de Vercel es automático al pushear `main` —

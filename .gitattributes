@@ -1,7 +1,4 @@
 # Ficheros que se ejecutan/consumen en Linux (VPS): forzar LF para que bash/nginx
 # no fallen por CRLF al copiarlos desde Windows (rsync) o clonar el repo.
-crawl4ai/deploy.sh text eol=lf
-crawl4ai/nginx-scrape.nidokey.es.conf text eol=lf
-crawl4ai/docker-compose.yml text eol=lf
 gateway/*.mjs text eol=lf
 gateway/*.service text eol=lf

@@ -62,8 +62,10 @@ traduce.
   Cliente: `apps/mobile/lib/chat/socket.ts` con polling adaptativo de respaldo.
 - **Media/avatares**: Cloudflare R2 (URLs firmadas; `GET /api/avatar/[userId]`
   público 302).
-- **Menús comida**: Crawl4AI en `scrape.nidokey.es` → markdown → Groq
-  (`GROQ_API_KEY`) → JSON. Firecrawl solo respaldo.
+- **Menús comida** ⚠️ **DE PAGO**: actor de Glovo en **Apify** (`APIFY_TOKEN`) +
+  **Firecrawl** para resolver el restaurante en el catálogo. Cada restaurante
+  nuevo descubierto encola un scrape que gasta saldo. (Crawl4AI self-hosted se
+  retiró en `1b08124`; su Docker puede seguir vivo en el VPS — apagarlo.)
 - **Cron**: GitHub Actions + `CRON_SECRET` (en Vercel Y GitHub) refresca
   cripto/mercado y tendencias; si algo está congelado, mirar ahí.
 
