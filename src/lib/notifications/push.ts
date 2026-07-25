@@ -128,7 +128,12 @@ export async function deliverPush(
         body: JSON.stringify(chunk),
       });
       const json = (await res.json().catch(() => null)) as
-        | { data?: { status: string; message?: string; details?: { error?: string } }[]; errors?: { message?: string }[] }
+        | {
+            // `id` es el identificador del ticket: hace falta para pedir el
+            // recibo de entrega después.
+            data?: { status: string; id?: string; message?: string; details?: { error?: string } }[];
+            errors?: { message?: string }[];
+          }
         | null;
       // Error global del lote (p. ej. credencial FCM ausente): Expo responde
       // con `errors` en la raíz y sin tickets.
