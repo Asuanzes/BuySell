@@ -80,11 +80,11 @@ export async function registerForPush(): Promise<void> {
   // vacía era imposible saber si faltaba el módulo, el permiso o FCM.
   let step = "inicio";
   try {
-    // iOS DESACTIVADO de momento: sin cuenta Apple de pago no hay APNs y el
-    // entitlement aps-environment impide firmar el build (plugin
-    // expo-notifications retirado de app.json). Para reactivar: re-añadir el
-    // plugin ["expo-notifications", {"color": "#6C5A9C"}] y quitar este return.
-    if (Platform.OS === "ios") return;
+    // iOS ACTIVO desde 2026-07-25 (cuenta Apple de pago + config plugin de
+    // expo-notifications de vuelta en app.json, que añade el entitlement
+    // aps-environment). El entitlement se genera siempre como "development" y
+    // Xcode lo cambia a "production" en el archive de release, así que un build
+    // de TestFlight/App Store usa el APNs de producción sin configurar nada.
     if (!Notifications || !Device) return void reportPushIssue("sin_modulo_nativo");
     if (!Device.isDevice) return; // emulador: no es un fallo que merezca reporte
 

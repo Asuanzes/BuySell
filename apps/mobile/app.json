@@ -147,6 +147,13 @@
         {
           "locationWhenInUsePermission": "Nidokey usa tu ubicación para encontrar restaurantes cerca de ti."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#6C5A9C"
+        }
       ]
     ],
     "experiments": {

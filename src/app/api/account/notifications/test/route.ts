@@ -16,10 +16,21 @@ import { rateLimit } from "@/lib/rate-limit";
 export async function POST() {
   const userId = await requireUserId();
 
-  // Tope suave: es un botón, no un canal de envío.
-  const limit = await rateLimit("push-test", userId, { limit: 10, windowMs: 3600_000 });
+  // Tope suave: es un botón, no un canal de envío. Holgado a propósito — 10/h
+  // se agotaba en una sesión normal de puesta en marcha (pasó el 2026-07-25) y
+  // el 429 hacía pensar que el push se había roto.
+  const limit = await rateLimit("push-test", userId, { limit: 30, windowMs: 3600_000 });
   if (!limit.ok) {
-    return NextResponse.json({ error: "Demasiadas pruebas. Espera un rato." }, { status: 429 });
+    const mins = Math.max(1, Math.ceil((limit.resetAt.getTime() - Date.now()) / 60_000));
+    return NextResponse.json(
+      {
+        error: `Has hecho muchas pruebas seguidas. Vuelve a intentarlo en ${mins} min.`,
+        // Que quede claro que esto NO afecta a las notificaciones de verdad.
+        detail: "Este límite solo afecta al botón de prueba; los avisos reales siguen llegando.",
+        retryInMinutes: mins,
+      },
+      { status: 429 }
+    );
   }
 
   const [devices, prefs] = await Promise.all([
