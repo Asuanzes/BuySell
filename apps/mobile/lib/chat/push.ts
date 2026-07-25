@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import { router } from "expo-router";
 
 import { api } from "@/lib/api";
+import { track, flush as flushAnalytics } from "@/lib/analytics";
 
 /**
  * Notificaciones push del chat (lado cliente).
@@ -74,15 +75,21 @@ function projectId(): string | undefined {
 
 /** Pide permiso, obtiene el token de Expo y lo registra en el backend. */
 export async function registerForPush(): Promise<void> {
+  // Por qué NO se registró, para poder diagnosticarlo desde el servidor. El
+  // try/catch que protege de crashes se comía el error real: con la tabla Device
+  // vacía era imposible saber si faltaba el módulo, el permiso o FCM.
+  let step = "inicio";
   try {
     // iOS DESACTIVADO de momento: sin cuenta Apple de pago no hay APNs y el
     // entitlement aps-environment impide firmar el build (plugin
     // expo-notifications retirado de app.json). Para reactivar: re-añadir el
     // plugin ["expo-notifications", {"color": "#6C5A9C"}] y quitar este return.
     if (Platform.OS === "ios") return;
-    if (!Notifications || !Device || !Device.isDevice) return; // sin módulo nativo o emulador
+    if (!Notifications || !Device) return void reportPushIssue("sin_modulo_nativo");
+    if (!Device.isDevice) return; // emulador: no es un fallo que merezca reporte
 
     if (Platform.OS === "android") {
+      step = "canal";
       await Notifications.setNotificationChannelAsync("chat", {
         name: "Mensajes",
         importance: Notifications.AndroidImportance.HIGH,
@@ -91,14 +98,20 @@ export async function registerForPush(): Promise<void> {
       });
     }
 
+    step = "permiso";
     const existing = await Notifications.getPermissionsAsync();
     let status = existing.status;
     if (status !== "granted") {
       status = (await Notifications.requestPermissionsAsync()).status;
     }
-    if (status !== "granted") return;
+    if (status !== "granted") return void reportPushIssue("permiso_denegado");
 
+    // En Android este paso pide un token a FCM: sin google-services.json en el
+    // build (y sin la clave FCM V1 subida a Expo) FALLA aquí.
+    step = "token";
     const token = (await Notifications.getExpoPushTokenAsync({ projectId: projectId() })).data;
+
+    step = "registro";
     await api("/api/devices", {
       method: "POST",
       // La zona del dispositivo la usa el servidor para el horario silencioso
@@ -109,8 +122,26 @@ export async function registerForPush(): Promise<void> {
         timezone: deviceTimezone(),
       }),
     });
+  } catch (e) {
+    // Push es best-effort: nunca rompe el arranque/login, pero SÍ deja rastro.
+    reportPushIssue(`fallo_en_${step}`, e instanceof Error ? e.message : String(e));
+  }
+}
+
+/**
+ * Deja constancia de por qué no hay push, en la analítica propia (el móvil no
+ * tiene logs consultables en producción). Silencioso y no bloqueante.
+ */
+function reportPushIssue(reason: string, detail?: string): void {
+  try {
+    track("push_register_failed", {
+      reason,
+      platform: Platform.OS,
+      ...(detail ? { detail: detail.slice(0, 120) } : {}),
+    });
+    void flushAnalytics();
   } catch {
-    // Push es best-effort: nunca rompe el arranque/login.
+    // ni el diagnóstico puede romper el arranque
   }
 }
 

@@ -57,6 +57,50 @@ Sin esa variable:
 
 ⚠️ Crear `PAYMENT_WEBHOOK_SECRET` (32 bytes hex) **antes de querer cobrar**.
 
+### ⛔ El push de Android NO funciona: falta Firebase (FCM)
+
+**Diagnosticado el 2026-07-25.** La tabla `Device` estaba vacía para los 13
+usuarios: ningún dispositivo ha registrado token nunca. Causa raíz, con la
+cadena completa:
+
+1. No hay `android.googleServicesFile` en `apps/mobile/app.json` ni ningún
+   `google-services.json` en el repo.
+2. Sin esa clave, el plugin de Gradle `com.google.gms.google-services` **nunca
+   se aplica** (`@expo/config-plugins/build/android/GoogleServices.js:108-125`
+   hace early-return), así que el APK sale sin `google_app_id`.
+3. Sin eso `FirebaseApp` no auto-inicializa y
+   `FirebaseMessaging.getInstance()` lanza `IllegalStateException`
+   (`expo-notifications/.../tokens/PushTokenModule.kt:82-93`).
+4. `getExpoPushTokenAsync()` rechaza → el `catch` de `registerForPush` lo
+   silenciaba → `POST /api/devices` no se llamaba nunca.
+
+Lo que **NO** era (descartado con evidencia, para no perder el tiempo otra vez):
+el módulo nativo sí está en el binario (la dependencia entró 6 días antes del
+build); `registerForPush` sí se ejecuta al arrancar con sesión abierta
+(`auth-context.tsx:138`); `POST_NOTIFICATIONS` sí está en el manifiesto
+(**lo declara la propia librería**, `expo-notifications/android/src/main/AndroidManifest.xml:3`,
+y `android.permissions` de app.json es **aditivo**, no una allowlist).
+
+#### Pasos para arreglarlo (requiere REBUILD, no hay atajo por OTA)
+
+1. Crear proyecto en [Firebase](https://console.firebase.google.com) → añadir
+   app **Android** con el package **`es.nidokey.app`** (el NUEVO, tras el
+   rename; si se pone el viejo no funcionará).
+2. Descargar `google-services.json` y ponerlo en `apps/mobile/`.
+3. Añadir a `apps/mobile/app.json`, dentro de `android`:
+   `"googleServicesFile": "./google-services.json"`.
+   ⚠️ No añadir la clave antes de tener el fichero: el prebuild fallaría.
+4. Subir la credencial **FCM V1** a Expo: en Firebase → Configuración del
+   proyecto → Cuentas de servicio → generar clave privada (JSON); luego
+   `eas credentials` → Android → *Google Service Account Key for FCM V1*.
+   (Las claves de servidor FCM legacy están retiradas por Google desde 2024.)
+5. `eas build -p android --profile preview` e instalar el APK nuevo.
+6. Comprobar con el botón de prueba (abajo).
+
+**NO re-añadir el config plugin `expo-notifications` a app.json**: en Android
+solo aporta icono, color y sonidos (cosmético) y en iOS reintroduce el
+entitlement `aps-environment` que rompe la firma sin cuenta Apple de pago.
+
 ### Probar el push tras desplegar
 
 Cuenta → Notificaciones → **"Enviar notificación de prueba"**. La respuesta

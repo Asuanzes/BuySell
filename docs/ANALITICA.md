@@ -28,6 +28,7 @@ anonimizan (`userId → null`). Pre-login los eventos van con `deviceId` anónim
 | `food_order_paid` | Webhook de pago de pedido OK | **servidor** | `amountCents`, `provider` |
 | `alert_created` | Alerta de precio creada | **servidor** | `recordType`, `kind` |
 | `alert_fired` | Alerta disparada (aviso enviado) | **servidor** | `recordType`, `kind` |
+| `push_register_failed` | El móvil no pudo registrar token de push | móvil | `reason` (sin_modulo_nativo/permiso_denegado/fallo_en_token…), `platform`, `detail` |
 | `account_deleted` | Cuenta eliminada | móvil | — |
 | `error_critical` | Error irrecuperable mostrado al usuario | móvil | `where` (pantalla) |
 
