@@ -10,13 +10,27 @@ lanzamiento. Complementa el brief de [CLAUDE.md](../CLAUDE.md) (arquitectura) y
 | --- | --- | --- |
 | Producción web+API | Vercel (proyecto `nidokey`, dominio nidokey.es) | push a `main` → auto-deploy |
 | BBDD | Neon Postgres (única; no hay staging) | `npx prisma db push` (NUNCA `migrate`) |
-| App móvil | EAS Update OTA (runtime `appVersion`) | `eas update --branch production` |
+| App móvil | EAS Update OTA (runtime `appVersion`) | `eas update --branch preview` (ver aviso abajo) |
 | Gateway chat | VPS Hetzner (`ws.nidokey.es`, systemd) | `ssh` + redeploy manual |
 | Scraper menús | Apify (actor Glovo) + Firecrawl, **ambos de pago** | sin deploy propio |
 
 **CI**: `.github/workflows/ci.yml` corre typecheck (web+móvil), tests y build en
 cada PR/push a `main`. El deploy de Vercel es automático al pushear `main` —
 **no pushear sin CI en verde**.
+
+⚠️ **La rama del OTA tiene que coincidir con el CANAL del build instalado.** Un
+build escucha su canal; publicar en otra rama no llega a ningún dispositivo y
+además **no da ningún error** (pasó el 2026-07-25: se publicó en `production`
+y la app siguió con un update de 6 días antes).
+
+| Perfil de `eas.json` | Canal | Para qué | Rama del OTA |
+| --- | --- | --- | --- |
+| `preview` | `preview` | APK interno → API de producción. **Es lo que hay instalado hoy** | `eas update --branch preview` |
+| `production` | `production` | app-bundle para Play Store (aún sin subir) | `--branch production` cuando se publique en tiendas |
+| `development` | `development` | dev client con Metro | no usa OTA |
+
+Comprobar antes de publicar: `eas build:list --limit 1` (campo `Channel`) y
+`eas channel:list`.
 
 ## 2. Variables de entorno
 
@@ -117,8 +131,9 @@ procedimiento manual: reembolsar + cancelar inmediata en Stripe → el webhook
 
 - **Web/API**: Vercel → Deployments → "Promote to Production" del deploy
   anterior (instantáneo). O `git revert` + push.
-- **Móvil OTA**: `eas update --branch production` con el commit anterior
-  (checkout del commit + update), o `eas update:republish` de un update previo.
+- **Móvil OTA**: `eas update --branch preview` con el commit anterior (checkout
+  del commit + update), o `eas update:republish` de un update previo — que es
+  más rápido y no depende del árbol de trabajo.
 - **BBDD**: los cambios aplicados son aditivos (tablas `RateLimit`,
   `Subscription`, `AnalyticsEvent`); un rollback de código NO requiere tocar la
   BBDD. Nunca borrar columnas/tablas en el mismo deploy que deja de usarlas.

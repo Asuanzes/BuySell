@@ -118,7 +118,7 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
 | `npm test` / `npm run typecheck` / `npm run typecheck:mobile` | lo mismo que corre el CI de PR |
 | `cd apps/mobile && npx expo start` | Metro |
 | `/ship <mensaje>` | tsc de lo cambiado → commit → push (Vercel) → `eas update` si tocó móvil |
-| `eas update --branch production` | OTA manual |
+| `eas update --branch preview` | OTA manual ⚠️ **`preview`, no `production`**: todos los builds existentes usan el perfil `preview` (APK interno → API de producción). `production` solo servirá cuando se suba el app-bundle a Play Store. Publicar en la rama equivocada NO llega a ningún dispositivo (pasó el 2026-07-25) |
 | `npx prisma db push` | Sincronizar esquema con Neon (nunca migrate) |
 
 ## 9. Monetización y analítica (jul-2026)
