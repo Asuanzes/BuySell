@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nidokey",
     "slug": "nidokey",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "orientation": "portrait",
     "platforms": ["ios", "android"],
     "icon": "./assets/images/icon.png",
@@ -22,7 +22,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "2"
+      "buildNumber": "1"
     },
     "android": {
       "intentFilters": [
