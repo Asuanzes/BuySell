@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { CHAT_LIMITS } from "@/lib/chat/config";
-import { PREMIUM_PLAN, PREMIUM_GRACE_DAYS } from "@/lib/billing/plans";
+import { PREMIUM_PLAN, PREMIUM_GRACE_DAYS, FREE_ACTIVE_ALERTS } from "@/lib/billing/plans";
 
 type SubRow = {
   status: "PENDING" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
@@ -42,4 +42,9 @@ export async function botDailyLimit(userId: string): Promise<number> {
 /** Cuota diaria de búsquedas de empleo (Apify) según plan. */
 export async function jobSearchDailyLimit(userId: string): Promise<number> {
   return (await isPremium(userId)) ? PREMIUM_PLAN.jobSearchesPerDay : 10;
+}
+
+/** Máximo de alertas de precio ACTIVAS simultáneas según plan. */
+export async function activeAlertsLimit(userId: string): Promise<number> {
+  return (await isPremium(userId)) ? PREMIUM_PLAN.activeAlerts : FREE_ACTIVE_ALERTS;
 }

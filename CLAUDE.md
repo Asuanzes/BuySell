@@ -140,6 +140,7 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
 
 - `docs/OPERACIONES.md` — deploy, pagos test→live, backups, rollback, checklist de lanzamiento
 - `docs/ANALITICA.md` — catálogo de eventos, embudo, métricas
+- `docs/ALERTAS.md` — alertas de precio (cripto/mercados/inmuebles): tipos, rearme, cuotas
 - `docs/diseno-vertical-comida.md` — diseño cerrado del vertical comida
 - `docs/TRENDS.md` — vertical tendencias
 - `docs/auditoria-riesgos-mejoras.html` — auditoría técnica P0–P3 (jun-2026; P0/P1 resueltos jul-2026)

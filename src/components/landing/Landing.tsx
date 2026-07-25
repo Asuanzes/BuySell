@@ -249,7 +249,7 @@ export function Landing() {
             </p>
             <ul className="mt-4 space-y-2 text-sm leading-relaxed text-text-muted">
               <li>• Registros ilimitados en todas las categorías</li>
-              <li>• Alertas de cambios de precio y estado</li>
+              <li>• 3 alertas de precio activas</li>
               <li>• Chat con cifrado de extremo a extremo</li>
               <li>• Asistente Nidokey (40 mensajes al día)</li>
               <li>• 10 búsquedas de empleo al día</li>
@@ -267,6 +267,7 @@ export function Landing() {
             </p>
             <ul className="mt-4 space-y-2 text-sm leading-relaxed text-text-muted">
               <li>• Todo lo del plan Gratis</li>
+              <li>• 25 alertas de precio activas</li>
               <li>• Asistente Nidokey ampliado (400 mensajes al día)</li>
               <li>• 40 búsquedas de empleo al día</li>
               <li>• Cancela cuando quieras, desde la app</li>

@@ -522,7 +522,8 @@
       "ine_hint": "Precios y renta (INE)",
       "alert_label": "Alerta de precio",
       "news_label": "Noticias (tendencias)",
-      "updating": "Actualizando…"
+      "updating": "Actualizando…",
+      "alert_hint": "Alerta de precio"
     },
     "catastro": {
       "title": "Catastro",
@@ -864,8 +865,8 @@
     "plan_premium": "Premium",
     "current_plan": "Tu plan actual",
     "price_month": "{{price}} / mes",
-    "free_features": "Registros ilimitados · Alertas · Chat cifrado · Asistente 40 mensajes/día · 10 búsquedas de empleo/día",
-    "premium_features": "Todo lo del plan Gratis · Asistente 400 mensajes/día · 40 búsquedas de empleo/día · Cancela cuando quieras",
+    "free_features": "Registros ilimitados · 3 alertas de precio · Chat cifrado · Asistente 40 mensajes/día · 10 búsquedas de empleo/día",
+    "premium_features": "Todo lo del plan Gratis · 25 alertas de precio · Asistente 400 mensajes/día · 40 búsquedas de empleo/día · Cancela cuando quieras",
     "subscribe": "Hacerme Premium",
     "renews_at": "Renovación: {{date}}",
     "cancel_at_end": "Se cancelará al final del periodo",
@@ -875,5 +876,30 @@
     "checkout_error": "No se pudo iniciar el pago",
     "status_pending": "Confirmando el pago…",
     "past_due": "Hay un problema con tu último cobro. Revisa tu método de pago."
+  },
+  "alerts": {
+    "title": "Alertas de precio",
+    "empty": "No tienes alertas en este registro.",
+    "new": "Nueva alerta",
+    "create": "Crear alerta",
+    "create_error": "No se pudo crear la alerta",
+    "invalid_value": "Introduce un valor válido",
+    "kind_below": "Si baja de",
+    "kind_above": "Si sube de",
+    "kind_drop_pct": "Si cae un %",
+    "kind_status": "Si cambia de estado",
+    "desc_below": "Avisar si baja de {{amount}}",
+    "desc_above": "Avisar si sube de {{amount}}",
+    "desc_drop_pct": "Avisar si cae un {{amount}}",
+    "desc_status": "Avisar si se vende o se retira",
+    "state_active": "Activa",
+    "state_fired": "Ya avisada · pulsa recargar para rearmar",
+    "on_rent": "sobre la renta",
+    "quota": "{{used}} de {{limit}} alertas activas",
+    "limit_reached": "Has alcanzado el límite de tu plan",
+    "go_premium": "Ampliar con Nidokey Premium",
+    "placeholder_price": "Importe en €",
+    "placeholder_pct": "Porcentaje (p. ej. 10)",
+    "notice_property_daily": "Revisamos tus anuncios a diario, no al instante."
   }
 }

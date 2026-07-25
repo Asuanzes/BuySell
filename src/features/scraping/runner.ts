@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { isReasonablePriceChange } from "@nidokey/shared";
 import { logImportEvent } from "@/lib/import-log";
+import { evaluateAlerts } from "@/lib/alerts/evaluate";
 import type { PortalAdapter, ScrapeOutcome } from "./types";
 import { idealistaAdapter } from "./adapters/idealista";
 import { fotocasaAdapter } from "./adapters/fotocasa";
@@ -78,6 +79,13 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
       where: { id: listingId },
       data: { status: "REMOVED", lastCheckedAt: new Date() },
     });
+    // El anuncio desapareció: dispara las alertas de cambio de estado (que
+    // siempre se guardan con field "price", ver la API de alertas).
+    await evaluateAlerts("property", listing.propertyId, "price", {
+      oldCents: listing.lastPrice,
+      newCents: listing.lastPrice,
+      status: "REMOVED",
+    });
     return { listingId, outcome: "gone", detail: outcome.reason };
   }
   // BLOCKED / ERROR — solo touch
@@ -147,9 +155,19 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
         observedAt: r.observedAt,
       },
     });
+    // El precio va a SU columna según la operación del anuncio, igual que en
+    // import-listing.ts (alquiler → monthlyRent, venta → currentPrice). Antes el
+    // recheck escribía SIEMPRE currentPrice: en un anuncio de alquiler eso
+    // metía la renta en el precio de venta y dejaba monthlyRent obsoleto.
+    const isRent = listing.operationType === "RENT";
     await prisma.property.update({
       where: { id: listing.propertyId },
-      data: { currentPrice: r.price },
+      data: isRent ? { monthlyRent: r.price } : { currentPrice: r.price },
+    });
+    await evaluateAlerts("property", listing.propertyId, isRent ? "rent" : "price", {
+      oldCents: previousPrice,
+      newCents: r.price,
+      status: newStatus,
     });
   }
 

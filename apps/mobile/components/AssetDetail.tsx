@@ -23,6 +23,7 @@ import { api } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { marketLogoUrl } from "@/lib/records/market-logo";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+import { AlertsSheet } from "@/components/AlertsSheet";
 
 /**
  * Detalle de un activo (cripto o mercado), estilo Yahoo Finanzas:
@@ -60,6 +61,7 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
   const { th } = useTheme();
   const { t } = useTranslation();
   const [shareOpen, setShareOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const [record, setRecord] = useState<BaseRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -372,6 +374,15 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
         </Pressable>
         <View style={styles.fabGroup}>
           <Pressable
+            onPress={() => setAlertsOpen(true)}
+            hitSlop={10}
+            style={({ pressed }) => [styles.fab, { backgroundColor: th.surface, borderColor: th.border }, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t("alerts.title")}
+          >
+            <Ionicons name="notifications-outline" size={22} color={th.primary} />
+          </Pressable>
+          <Pressable
             onPress={() => setShareOpen(true)}
             hitSlop={10}
             style={({ pressed }) => [styles.fab, { backgroundColor: th.surface, borderColor: th.border }, pressed && { opacity: 0.85 }]}
@@ -402,6 +413,13 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
       </View>
 
       <ShareRecordSheet visible={shareOpen} onClose={() => setShareOpen(false)} type={type} id={id} />
+      <AlertsSheet
+        visible={alertsOpen}
+        onClose={() => setAlertsOpen(false)}
+        recordType={type}
+        recordId={id}
+        currency={quoteCur}
+      />
     </View>
   );
 }

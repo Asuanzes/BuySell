@@ -27,6 +27,7 @@ import { toolsForType, type ToolDef } from "@/lib/records/tools";
 import { CategoryContextSheet } from "@/components/CategoryContextSheet";
 import { ResultModal } from "@/components/ui";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+import { AlertsSheet } from "@/components/AlertsSheet";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
 
@@ -45,6 +46,7 @@ export default function PropertyDetailScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [shareOpen, setShareOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   // El tipo viene de la API como string libre → Record construido con t() (no
   // se puede usar template literal tipado sobre un union aquí).
@@ -140,6 +142,10 @@ export default function PropertyDetailScreen() {
       case "ine":
         setSheetOpen(false);
         router.push(`/tools/ine?city=${encodeURIComponent(p.city ?? "")}` as never);
+        return;
+      case "alert":
+        setSheetOpen(false);
+        setAlertsOpen(true);
         return;
       case "share":
         setSheetOpen(false);
@@ -373,6 +379,15 @@ export default function PropertyDetailScreen() {
       />
 
       <ShareRecordSheet visible={shareOpen} onClose={() => setShareOpen(false)} type="property" id={id} />
+      <AlertsSheet
+        visible={alertsOpen}
+        onClose={() => setAlertsOpen(false)}
+        recordType="property"
+        recordId={id}
+        // En una ficha de alquiler la alerta vigila la RENTA, no el precio de venta.
+        field={p?.monthlyRent != null && p?.currentPrice == null ? "rent" : "price"}
+        allowStatus
+      />
     </View>
   );
 }

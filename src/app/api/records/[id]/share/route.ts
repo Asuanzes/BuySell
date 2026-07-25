@@ -6,6 +6,7 @@ import { normalizeUsername } from "@nidokey/shared";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { notifyShare } from "@/lib/chat/bot";
+import { ownsRecord, recordTitle } from "@/lib/records/access";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -16,42 +17,8 @@ const Body = z.object({
   username: z.string().min(1),
 });
 
-/** ¿El registro (type,id) es del usuario? Owner-scoped por tipo. */
-async function ownsRecord(type: RecordType, id: string, ownerId: string): Promise<boolean> {
-  const where = { id, ownerId };
-  switch (type) {
-    case "crypto":
-      return (await prisma.cryptoHolding.count({ where })) > 0;
-    case "market":
-      return (await prisma.marketInstrument.count({ where })) > 0;
-    case "job":
-      return (await prisma.jobListing.count({ where })) > 0;
-    case "book":
-      return (await prisma.bookRecord.count({ where })) > 0;
-    case "holiday":
-      return (await prisma.holiday.count({ where })) > 0;
-    default:
-      return (await prisma.property.count({ where })) > 0;
-  }
-}
-
-/** Título del registro (para el aviso en el chat). */
-async function recordTitle(type: RecordType, id: string): Promise<string> {
-  const sel = { where: { id }, select: { title: true } };
-  const r =
-    type === "crypto"
-      ? await prisma.cryptoHolding.findUnique(sel)
-      : type === "market"
-        ? await prisma.marketInstrument.findUnique(sel)
-        : type === "job"
-          ? await prisma.jobListing.findUnique(sel)
-          : type === "book"
-            ? await prisma.bookRecord.findUnique(sel)
-            : type === "holiday"
-              ? await prisma.holiday.findUnique(sel)
-              : await prisma.property.findUnique(sel);
-  return r?.title ?? "";
-}
+// ownsRecord/recordTitle viven en @/lib/records/access — compartidos con las
+// alertas de precio para no tener dos comprobaciones de pertenencia distintas.
 
 /**
  * POST /api/records/:id/share  { type, username }

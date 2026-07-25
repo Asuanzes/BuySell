@@ -142,6 +142,7 @@ model User {
   restaurantStaff   RestaurantStaff[]
   courierProfile    CourierProfile?
   subscription      Subscription?
+  priceAlerts       PriceAlert[]
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -1203,4 +1204,53 @@ model AnalyticsEvent {
 
   @@index([name, createdAt])
   @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Alertas de precio (cripto, mercados, inmuebles venta y alquiler).
+//
+// La evaluación se engancha a los dos sitios que YA detectan el cambio:
+// features/sources/refresh.ts (cripto/mercado) y features/scraping/runner.ts
+// (inmuebles). Cada disparo escribe SIEMPRE un mensaje en el DM de @Nidokey
+// (registro duradero, funciona en iOS sin APNs) y además push si procede.
+// Lógica en src/lib/alerts/evaluate.ts. Cuota por plan en billing/plans.ts.
+// ─────────────────────────────────────────────────────────────────────────
+enum AlertKind {
+  PRICE_BELOW // "avísame si baja de X" (umbral absoluto)
+  PRICE_ABOVE // "avísame si sube de X"
+  PRICE_DROP_PCT // "avísame si cae un X% desde ahora"
+  STATUS_CHANGE // solo inmuebles: vendido / retirado
+}
+
+model PriceAlert {
+  id         String @id @default(cuid())
+  userId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Soft-ref al registro (patrón RecordShare): sin FK porque apunta a tablas
+  // distintas según el tipo. La evaluación salta las alertas huérfanas.
+  recordType String // "crypto" | "market" | "property"
+  recordId   String
+
+  kind AlertKind
+  // Qué campo vigila. Una ficha de inmueble puede ser MIXTA (venta + alquiler),
+  // así que la alerta declara cuál: "price" (currentPrice/currentValue) o "rent"
+  // (monthlyRent). Cripto/mercado siempre "price".
+  field String @default("price")
+  // Umbral: céntimos para PRICE_BELOW/ABOVE; porcentaje entero (5 = 5 %) para
+  // PRICE_DROP_PCT; null para STATUS_CHANGE.
+  threshold     Int?
+  // Precio de referencia al crear/rearmar, base de las alertas porcentuales.
+  baselineCents Int?
+
+  active Boolean @default(true)
+  // Umbrales absolutos: un solo disparo y se desactiva (se rearma desde la UI).
+  // Sin esto, un precio oscilando en el umbral notificaría en cada tick del cron.
+  oneShot     Boolean   @default(true)
+  lastFiredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([recordType, recordId, active])
+  @@index([userId, active])
 }

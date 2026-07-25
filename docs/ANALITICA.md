@@ -26,6 +26,8 @@ anonimizan (`userId → null`). Pre-login los eventos van con `deviceId` anónim
 | `subscribe_payment_failed` | Webhook de cobro fallido | **servidor** | `provider` |
 | `subscribe_cancelled` | Webhook de cancelación | **servidor** | `provider` |
 | `food_order_paid` | Webhook de pago de pedido OK | **servidor** | `amountCents`, `provider` |
+| `alert_created` | Alerta de precio creada | **servidor** | `recordType`, `kind` |
+| `alert_fired` | Alerta disparada (aviso enviado) | **servidor** | `recordType`, `kind` |
 | `account_deleted` | Cuenta eliminada | móvil | — |
 | `error_critical` | Error irrecuperable mostrado al usuario | móvil | `where` (pantalla) |
 

@@ -17,7 +17,12 @@ export const PREMIUM_PLAN = {
   botMsgsPerDay: 400,
   /** Búsquedas de empleo (Apify) al día para Premium (gratis: 10). */
   jobSearchesPerDay: 40,
+  /** Alertas de precio ACTIVAS simultáneas para Premium. */
+  activeAlerts: 25,
 } as const;
+
+/** Alertas de precio activas en el plan gratuito. */
+export const FREE_ACTIVE_ALERTS = 3;
 
 /** Días de gracia tras `currentPeriodEnd` antes de perder el acceso Premium
  *  (cubre reintentos de cobro y desfases de webhook). */

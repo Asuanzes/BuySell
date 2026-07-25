@@ -522,7 +522,8 @@
       "ine_hint": "Prices and income (INE)",
       "alert_label": "Price alert",
       "news_label": "News (trends)",
-      "updating": "Updating…"
+      "updating": "Updating…",
+      "alert_hint": "Price alert"
     },
     "catastro": {
       "title": "Cadastre",
@@ -864,8 +865,8 @@
     "plan_premium": "Premium",
     "current_plan": "Your current plan",
     "price_month": "{{price}} / month",
-    "free_features": "Unlimited records · Alerts · End-to-end encrypted chat · Assistant 40 messages/day · 10 job searches/day",
-    "premium_features": "Everything in Free · Assistant 400 messages/day · 40 job searches/day · Cancel anytime",
+    "free_features": "Unlimited records · 3 price alerts · End-to-end encrypted chat · Assistant 40 messages/day · 10 job searches/day",
+    "premium_features": "Everything in Free · 25 price alerts · Assistant 400 messages/day · 40 job searches/day · Cancel anytime",
     "subscribe": "Go Premium",
     "renews_at": "Renews: {{date}}",
     "cancel_at_end": "Will cancel at the end of the period",
@@ -875,5 +876,30 @@
     "checkout_error": "Could not start the payment",
     "status_pending": "Confirming your payment…",
     "past_due": "There is a problem with your last charge. Check your payment method."
+  },
+  "alerts": {
+    "title": "Price alerts",
+    "empty": "You have no alerts on this record.",
+    "new": "New alert",
+    "create": "Create alert",
+    "create_error": "Could not create the alert",
+    "invalid_value": "Enter a valid value",
+    "kind_below": "If it drops below",
+    "kind_above": "If it rises above",
+    "kind_drop_pct": "If it falls by %",
+    "kind_status": "If the status changes",
+    "desc_below": "Notify if it drops below {{amount}}",
+    "desc_above": "Notify if it rises above {{amount}}",
+    "desc_drop_pct": "Notify if it falls by {{amount}}",
+    "desc_status": "Notify if it is sold or delisted",
+    "state_active": "Active",
+    "state_fired": "Already notified · tap reload to re-arm",
+    "on_rent": "on the rent",
+    "quota": "{{used}} of {{limit}} active alerts",
+    "limit_reached": "You have reached your plan limit",
+    "go_premium": "Upgrade with Nidokey Premium",
+    "placeholder_price": "Amount in €",
+    "placeholder_pct": "Percentage (e.g. 10)",
+    "notice_property_daily": "We check your listings daily, not in real time."
   }
 }

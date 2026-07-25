@@ -34,6 +34,7 @@ export type ToolDef = {
 
 const PROPERTY_TOOLS: ToolDef[] = [
   { id: "recheck", labelKey: "tools.panel.recheck_label", icon: "refresh-outline", kind: "action", enabled: true, hintKey: "tools.panel.recheck_hint" },
+  { id: "alert", labelKey: "tools.panel.alert_label", icon: "notifications-outline", kind: "route", enabled: true, hintKey: "tools.panel.alert_hint" },
   { id: "mortgage", labelKey: "tools.mortgage.title", icon: "calculator-outline", kind: "route", enabled: true, hintKey: "tools.panel.mortgage_hint" },
   { id: "catastro", labelKey: "tools.catastro.title", icon: "document-text-outline", kind: "route", enabled: true, hintKey: "tools.panel.catastro_hint" },
   { id: "registro", labelKey: "tools.registro.title", icon: "ribbon-outline", kind: "route", enabled: true, hintKey: "tools.panel.registro_hint" },
@@ -42,7 +43,10 @@ const PROPERTY_TOOLS: ToolDef[] = [
 ];
 
 const CRYPTO_TOOLS: ToolDef[] = [
-  { id: "alert", labelKey: "tools.panel.alert_label", icon: "notifications-outline", kind: "info", enabled: false, hintKey: "common.soon" },
+  // En cripto/mercados la entrada a las alertas es el FAB de campana de
+  // AssetDetail (que sirve a los dos tipos); esta fila queda para cuando el
+  // panel contextual se cablee también ahí.
+  { id: "alert", labelKey: "tools.panel.alert_label", icon: "notifications-outline", kind: "route", enabled: true, hintKey: "tools.panel.alert_hint" },
   { id: "news", labelKey: "tools.panel.news_label", icon: "newspaper-outline", kind: "info", enabled: false, hintKey: "common.soon" },
   { id: "share", labelKey: "common.share", icon: "share-outline", kind: "share", enabled: true },
 ];

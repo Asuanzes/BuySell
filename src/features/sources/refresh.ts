@@ -3,6 +3,21 @@ import type { RecordType } from "@nidokey/shared";
 import { marketData, type CoinMarket } from "@/features/sources/adapters/coingecko";
 import { yahooQuote } from "@/features/sources/providers/yahoo";
 import { logImportEvent } from "@/lib/import-log";
+import { evaluateAlerts } from "@/lib/alerts/evaluate";
+
+/**
+ * Ids de registros de este tipo que tienen alguna alerta activa. UNA consulta
+ * por ejecución del cron en vez de una por registro: con nadie usando alertas,
+ * el coste añadido al refresco es una sola query.
+ */
+async function recordsWithAlerts(recordType: RecordType): Promise<Set<string>> {
+  const rows = await prisma.priceAlert.findMany({
+    where: { recordType, active: true },
+    select: { recordId: true },
+    distinct: ["recordId"],
+  });
+  return new Set(rows.map((r) => r.recordId));
+}
 
 /**
  * Refresh por tipo. Generaliza checkAllActiveListings: actualiza el valor de
@@ -47,6 +62,7 @@ async function refreshCrypto(): Promise<RefreshSummary> {
   let updated = 0;
   let errors = 0;
   const now = new Date();
+  const alerted = await recordsWithAlerts("crypto");
 
   for (const [quote, group] of byQuote) {
     const ids = [...new Set(group.map((h) => h.externalId!).filter(Boolean))];
@@ -81,7 +97,12 @@ async function refreshCrypto(): Promise<RefreshSummary> {
             : {}),
         },
       });
-      if (changed) updated++;
+      if (changed) {
+        updated++;
+        if (alerted.has(h.id)) {
+          await evaluateAlerts("crypto", h.id, "price", { oldCents: h.currentValue, newCents: cents });
+        }
+      }
     }
   }
 
@@ -111,6 +132,7 @@ async function refreshMarket(): Promise<RefreshSummary> {
   let updated = 0;
   let errors = 0;
   const now = new Date();
+  const alerted = await recordsWithAlerts("market");
 
   for (const inst of instruments) {
     checked++;
@@ -142,7 +164,12 @@ async function refreshMarket(): Promise<RefreshSummary> {
             : {}),
         },
       });
-      if (changed) updated++;
+      if (changed) {
+        updated++;
+        if (alerted.has(inst.id)) {
+          await evaluateAlerts("market", inst.id, "price", { oldCents: inst.currentValue, newCents: cents });
+        }
+      }
     } catch {
       errors++;
     }
