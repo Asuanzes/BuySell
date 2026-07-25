@@ -83,19 +83,36 @@ y `android.permissions` de app.json es **aditivo**, no una allowlist).
 
 #### Pasos para arreglarlo (requiere REBUILD, no hay atajo por OTA)
 
+Hacen falta **dos ficheros distintos** de Firebase, con tratamiento opuesto:
+
+| Fichero | Qué es | ¿Al repo? |
+| --- | --- | --- |
+| `google-services.json` | identificadores públicos del proyecto | **SÍ**, es commiteable (lo dice la doc de Expo; va dentro del APK de todos modos) |
+| clave de **cuenta de servicio** (`*-firebase-adminsdk-*.json`) | credencial privada para que Expo envíe por ti | **NO, JAMÁS**. Se sube a EAS. Ya está en `.gitignore` |
+
+**Parte humana (navegador, no automatizable):**
+
 1. Crear proyecto en [Firebase](https://console.firebase.google.com) → añadir
    app **Android** con el package **`es.nidokey.app`** (el NUEVO, tras el
-   rename; si se pone el viejo no funcionará).
-2. Descargar `google-services.json` y ponerlo en `apps/mobile/`.
-3. Añadir a `apps/mobile/app.json`, dentro de `android`:
-   `"googleServicesFile": "./google-services.json"`.
-   ⚠️ No añadir la clave antes de tener el fichero: el prebuild fallaría.
-4. Subir la credencial **FCM V1** a Expo: en Firebase → Configuración del
-   proyecto → Cuentas de servicio → generar clave privada (JSON); luego
-   `eas credentials` → Android → *Google Service Account Key for FCM V1*.
-   (Las claves de servidor FCM legacy están retiradas por Google desde 2024.)
-5. `eas build -p android --profile preview` e instalar el APK nuevo.
-6. Comprobar con el botón de prueba (abajo).
+   rename; con el viejo no funcionará).
+2. Descargar `google-services.json`.
+3. Firebase → Configuración del proyecto → **Cuentas de servicio** → *Generar
+   nueva clave privada* → descargar el JSON.
+4. Subir esa clave a EAS: expo.dev → proyecto → Credentials → Android →
+   *FCM V1 service account key* (o `eas credentials` en tu terminal, que es
+   interactivo). Las claves de servidor FCM **legacy** están retiradas por
+   Google desde 2024: tiene que ser **V1**.
+
+**Parte automatizable (una vez existan los dos ficheros):**
+
+5. Colocar `google-services.json` en `apps/mobile/` y añadir a `app.json`,
+   dentro de `android`: `"googleServicesFile": "./google-services.json"`.
+   ⚠️ No añadir la clave antes de tener el fichero: rompería el prebuild.
+6. `npx expo config --type public` para confirmar que la ruta resuelve.
+7. `eas build -p android --profile preview` (~20 min, consume cuota de EAS) e
+   instalar el APK.
+8. Comprobar con el botón de prueba (abajo) y verificar que aparece fila en
+   `Device`.
 
 **NO re-añadir el config plugin `expo-notifications` a app.json**: en Android
 solo aporta icono, color y sonidos (cosmético) y en iOS reintroduce el

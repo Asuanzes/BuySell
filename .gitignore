@@ -59,3 +59,10 @@ scripts/bot-eval/reports/*
 !scripts/bot-eval/reports/baseline.json
 scripts/bot-eval/cases/reales.local.ts
 scripts/bot-eval/real/
+
+# Credencial FCM V1 (cuenta de servicio de Firebase) — SENSIBLE, se sube a EAS,
+# NUNCA al repo. Ojo: google-services.json SÍ es commiteable (solo lleva
+# identificadores públicos), por eso no se ignora aquí.
+**/*-firebase-adminsdk-*.json
+**/service-account*.json
+**/firebase-service-account*.json
