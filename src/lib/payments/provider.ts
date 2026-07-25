@@ -21,35 +21,37 @@ export interface PaymentProvider {
 }
 
 /**
- * Secreto HMAC de pagos. DEDICADO: en producción es obligatorio
- * FOOD_PAYMENT_WEBHOOK_SECRET (P0 auditoría: compartir AUTH_SECRET con pagos
- * significa que comprometer uno compromete el otro). El fallback a AUTH_SECRET
- * solo existe en desarrollo. Sin secreto: firmar lanza (fail-fast) y verificar
- * devuelve false (fail-closed).
+ * Secreto HMAC de pagos. ÚNICA fuente de verdad: lo usan tanto los pagos de
+ * pedidos como las SUSCRIPCIONES (de ahí el nombre genérico).
+ *
+ * DEDICADO: en producción es obligatorio `PAYMENT_WEBHOOK_SECRET` (P0 de la
+ * auditoría — compartir AUTH_SECRET con pagos significa que comprometer uno
+ * compromete el otro). El fallback a AUTH_SECRET solo existe en desarrollo.
+ * Sin secreto: firmar lanza (fail-fast) y verificar devuelve false (fail-closed).
  */
-const secret = () => {
-  const dedicated = process.env.FOOD_PAYMENT_WEBHOOK_SECRET;
+export const paymentSecret = () => {
+  const dedicated = process.env.PAYMENT_WEBHOOK_SECRET;
   if (dedicated) return dedicated;
   if (process.env.NODE_ENV !== "production") return process.env.AUTH_SECRET || "";
   return "";
 };
 
-function requireSecret(): string {
-  const s = secret();
-  if (!s) throw new Error("FOOD_PAYMENT_WEBHOOK_SECRET no configurado (obligatorio en producción)");
+export function requirePaymentSecret(): string {
+  const s = paymentSecret();
+  if (!s) throw new Error("PAYMENT_WEBHOOK_SECRET no configurado (obligatorio en producción)");
   return s;
 }
 
 export function signPaymentWebhook(raw: string): string {
-  return "sha256=" + createHmac("sha256", requireSecret()).update(raw).digest("hex");
+  return "sha256=" + createHmac("sha256", requirePaymentSecret()).update(raw).digest("hex");
 }
 
 export function signFakePaymentToken(intentId: string): string {
-  return createHmac("sha256", requireSecret()).update(`fake-payment:${intentId}`).digest("hex");
+  return createHmac("sha256", requirePaymentSecret()).update(`fake-payment:${intentId}`).digest("hex");
 }
 
 export function verifyFakePaymentToken(intentId: string, token: string): boolean {
-  if (!secret() || !intentId || !token) return false;
+  if (!paymentSecret() || !intentId || !token) return false;
   const expected = signFakePaymentToken(intentId);
   const a = Buffer.from(token);
   const b = Buffer.from(expected);
@@ -57,7 +59,7 @@ export function verifyFakePaymentToken(intentId: string, token: string): boolean
 }
 
 function verifySignature(header: string | null, raw: string): boolean {
-  if (!secret() || !header) return false;
+  if (!paymentSecret() || !header) return false;
   const expected = signPaymentWebhook(raw);
   const a = Buffer.from(header);
   const b = Buffer.from(expected);

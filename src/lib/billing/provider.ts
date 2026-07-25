@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import Stripe from "stripe";
-import { baseUrl, signPaymentWebhook } from "@/lib/payments/provider";
+import { baseUrl, signPaymentWebhook, paymentSecret, requirePaymentSecret } from "@/lib/payments/provider";
 import { PREMIUM_PLAN } from "@/lib/billing/plans";
 
 /**
@@ -41,17 +41,12 @@ export interface SubscriptionProvider {
 
 // ─── Fake ────────────────────────────────────────────────────────────────
 
-const fakeSecret = () => {
-  const s = process.env.FOOD_PAYMENT_WEBHOOK_SECRET;
-  if (s) return s;
-  if (process.env.NODE_ENV !== "production") return process.env.AUTH_SECRET || "";
-  return "";
-};
+// El secreto de pagos se resuelve en UN solo sitio (payments/provider.ts):
+// tener dos copias de la regla de fallback es justo lo que se desincroniza.
+const fakeSecret = paymentSecret;
 
 export function signFakeSubToken(ref: string): string {
-  const s = fakeSecret();
-  if (!s) throw new Error("FOOD_PAYMENT_WEBHOOK_SECRET no configurado");
-  return createHmac("sha256", s).update(`fake-sub:${ref}`).digest("hex");
+  return createHmac("sha256", requirePaymentSecret()).update(`fake-sub:${ref}`).digest("hex");
 }
 
 export function verifyFakeSubToken(ref: string, token: string): boolean {

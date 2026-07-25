@@ -25,7 +25,7 @@ Validación al arrancar: `src/instrumentation.ts` — críticas (`DATABASE_URL`,
 `AUTH_SECRET`) tumban el server en producción si faltan; recomendadas solo
 avisan en logs.
 
-⚠️ **Acción pendiente de humano**: crear `FOOD_PAYMENT_WEBHOOK_SECRET` en
+⚠️ **Acción pendiente de humano**: crear `PAYMENT_WEBHOOK_SECRET` en
 Vercel (32 bytes hex). Desde el commit de seguridad, firmar pagos SIN esta
 variable **lanza error en producción** (antes caía en silencio a `AUTH_SECRET`).
 
@@ -119,7 +119,7 @@ procedimiento manual: reembolsar + cancelar inmediata en Stripe → el webhook
 
 ## 8. Checklist de lanzamiento
 
-1. `FOOD_PAYMENT_WEBHOOK_SECRET` creada en Vercel (§2).
+1. `PAYMENT_WEBHOOK_SECRET` creada en Vercel (§2).
 2. Stripe TEST verificado end-to-end (§3) → decidir fecha de LIVE.
 3. `RESEND_API_KEY` activa y dominio de email verificado en Resend.
 4. Rebuild nativo Android con el package nuevo `es.nidokey.app`

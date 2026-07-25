@@ -14,7 +14,7 @@ import {
 import { signPaymentWebhook } from "@/lib/payments/provider";
 
 beforeEach(() => {
-  process.env.FOOD_PAYMENT_WEBHOOK_SECRET = "test-secret";
+  process.env.PAYMENT_WEBHOOK_SECRET = "test-secret";
   delete process.env.BILLING_PROVIDER;
   delete process.env.STRIPE_SECRET_KEY;
 });
