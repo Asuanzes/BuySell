@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
@@ -43,12 +44,15 @@ export function ShareRecordSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // Conversación donde aterrizó la tarjeta (para el botón "Ver el chat").
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setUsername("");
     setError(null);
     setDone(null);
+    setConversationId(null);
     listContacts()
       .then((c) => setContacts(c.filter((x) => x.user.username)))
       .catch(() => setContacts([]));
@@ -60,11 +64,13 @@ export function ShareRecordSheet({
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ ok: boolean; sharedWith?: { username: string | null; name: string | null } }>(
-        `/api/records/${id}/share`,
-        { method: "POST", body: JSON.stringify({ type, username: u }) },
-      );
+      const res = await api<{
+        ok: boolean;
+        sharedWith?: { username: string | null; name: string | null };
+        conversationId?: string | null;
+      }>(`/api/records/${id}/share`, { method: "POST", body: JSON.stringify({ type, username: u }) });
       setDone(res.sharedWith?.username ? "@" + res.sharedWith.username : "@" + u);
+      setConversationId(res.conversationId ?? null);
     } catch (e) {
       const msg = e instanceof ApiError ? (e.body as { error?: string } | undefined)?.error : null;
       setError(msg || t("share.error"));
@@ -85,10 +91,21 @@ export function ShareRecordSheet({
 
           {done ? (
             <View style={styles.doneBox}>
-              <Ionicons name="checkmark-circle" size={44} color={th.primary} />
+              <Ionicons name="chatbubble-ellipses" size={44} color={th.primary} />
               <Text style={[styles.doneText, { color: th.text }]}>{t("share.done", { user: done })}</Text>
-              <Pressable onPress={onClose} style={[styles.primaryBtn, { backgroundColor: th.primary }]}>
-                <Text style={[styles.primaryBtnText, { color: th.primaryFg }]}>{t("common.understood")}</Text>
+              {conversationId && (
+                <Pressable
+                  onPress={() => {
+                    onClose();
+                    router.push(`/chat/${conversationId}` as never);
+                  }}
+                  style={[styles.primaryBtn, { backgroundColor: th.primary }]}
+                >
+                  <Text style={[styles.primaryBtnText, { color: th.primaryFg }]}>{t("share.view_chat")}</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={onClose} style={styles.ghostBtn}>
+                <Text style={[styles.primaryBtnText, { color: th.textMuted }]}>{t("common.understood")}</Text>
               </Pressable>
             </View>
           ) : (
@@ -165,5 +182,6 @@ const styles = StyleSheet.create({
   doneBox: { alignItems: "center", gap: 12, paddingVertical: 16 },
   doneText: { fontSize: 16, textAlign: "center" },
   primaryBtn: { borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12, marginTop: 4 },
+  ghostBtn: { paddingHorizontal: 24, paddingVertical: 8 },
   primaryBtnText: { fontSize: 15, fontWeight: "600" },
 });

@@ -26,14 +26,15 @@
     "account": "Account"
   },
   "share": {
-    "title": "Share",
-    "hint": "Give someone read-only access by their username.",
+    "title": "Send to a chat",
+    "hint": "The record card is sent to your chat and gives them read-only access.",
     "username_placeholder": "username",
-    "send": "Share",
+    "send": "Send",
     "contacts": "Your contacts",
-    "done": "Shared with {{user}}",
+    "done": "Sent to {{user}} in your chat",
     "error": "Couldn't share.",
-    "action": "Share record",
+    "action": "Send to a chat",
+    "view_chat": "View chat",
     "save_short": "Save",
     "saved": "Saved to your records"
   },
@@ -772,6 +773,7 @@
     "report_category_harassment": "Harassment",
     "report_category_inappropriate": "Inappropriate content",
     "report_category_other": "Other",
+    "record_open": "View record",
     "attach_title": "Attach",
     "attach_camera": "Camera",
     "attach_gallery": "Gallery",

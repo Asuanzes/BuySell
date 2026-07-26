@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Stack, router, useLocalSearchParams } from "expo-router";
+import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 
@@ -27,10 +27,6 @@ import { EmptyState, ResultModal } from "@/components/ui";
 export default function NewChatScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
-  // Chat VINCULADO a un registro: la ficha navega aquí con estos params y la
-  // conversación nace con banner de contexto (solo funciona con registros
-  // propios; el servidor valida la propiedad).
-  const { contextType, contextId } = useLocalSearchParams<{ contextType?: string; contextId?: string }>();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<ChatUser[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -62,12 +58,9 @@ export default function NewChatScreen() {
     if (creating) return;
     setCreating(userId);
     try {
-      const c = await createConversation({
-        kind: "DIRECT",
-        participantIds: [userId],
-        contextType: contextType || null,
-        contextId: contextId || null,
-      });
+      // Siempre el chat GENERAL con esa persona (los registros viajan como
+      // tarjeta-mensaje, nunca como conversación aparte → sin duplicados).
+      const c = await createConversation({ kind: "DIRECT", participantIds: [userId] });
       router.replace(`/chat/${c.id}` as never);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("chat.create_error"));

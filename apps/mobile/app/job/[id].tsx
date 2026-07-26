@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -18,6 +19,7 @@ import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { provinceImage } from "@/lib/records/province-images";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
+import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 
 /**
  * Ficha propia de un empleo guardado. Muestra los datos scrapeados (lugar,
@@ -32,6 +34,7 @@ export default function JobDetail() {
     () => api<BaseRecord>(`/api/records/${id}?type=job`),
     [id]
   );
+  const [shareChatOpen, setShareChatOpen] = useState(false);
 
   if (loading) {
     return (
@@ -132,6 +135,7 @@ export default function JobDetail() {
         <ShareOpenActions
           style={styles.actions}
           onShare={onShare}
+          onSendToChat={() => setShareChatOpen(true)}
           onOpen={externalUrl ? () => void Linking.openURL(externalUrl) : undefined}
           openLabel={t("detail.job.view_offer", { source: platformLabel })}
         />
@@ -143,6 +147,7 @@ export default function JobDetail() {
           </View>
         )}
       </ScrollView>
+      <ShareRecordSheet visible={shareChatOpen} onClose={() => setShareChatOpen(false)} type="job" id={id!} />
     </>
   );
 }

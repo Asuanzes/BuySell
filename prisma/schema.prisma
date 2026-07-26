@@ -1057,6 +1057,11 @@ model ChatMessage {
   // Contenido ÚNICO y opaco (texto hoy; ciphertext si E2E mañana, sin migrar).
   body           String?         @db.Text
   replyToId      String? // soft-ref a otro ChatMessage (cita)
+  // Tarjeta de registro embebida en el mensaje (compartir al chat habitual,
+  // sin conversación aparte). Soft-ref polimórfica, patrón Conversation.context.
+  // El body lleva "📌 Título" de respaldo (clientes viejos y preview/push).
+  contextType    String?
+  contextId      String?
   // Idempotencia + UI optimista: reintento con el mismo clientId no duplica.
   clientId       String?
   editedAt       DateTime?
@@ -1071,6 +1076,8 @@ model ChatMessage {
   @@index([conversationId, id])
   // Rate-limit de envío (count por senderId en ventana de 60 s, ver guard.ts).
   @@index([senderId, createdAt])
+  // Eventos del registro → conversaciones donde se compartió (context-events).
+  @@index([contextType, contextId])
 }
 
 // Reacción a un mensaje (long-press → emoji). Modelo WhatsApp: UNA reacción

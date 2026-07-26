@@ -21,6 +21,7 @@ import { api } from "@/lib/api";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { useTheme } from "@/lib/theme";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
+import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 
 /**
  * Ficha de un libro guardado. Lee el `Book` completo de `meta.book` (lo guarda
@@ -36,6 +37,7 @@ export default function BookDetail() {
     [id]
   );
   const [descExpanded, setDescExpanded] = useState(false);
+  const [shareChatOpen, setShareChatOpen] = useState(false);
   // Comentario propio del usuario (meta.userNotes). Sin caja a la vista: si no hay,
   // solo un "＋ Añadir comentario"; al tocar aparece el editor.
   const [note, setNote] = useState<string | null>(null);
@@ -161,6 +163,7 @@ export default function BookDetail() {
             <ShareOpenActions
               style={styles.heroActions}
               onShare={onShare}
+              onSendToChat={() => setShareChatOpen(true)}
               onOpen={detailUrl ? () => void Linking.openURL(detailUrl) : undefined}
               openLabel={t("detail.book.view_on", { source: sourceLabel })}
             />
@@ -264,6 +267,7 @@ export default function BookDetail() {
         </View>
 
       </ScrollView>
+      <ShareRecordSheet visible={shareChatOpen} onClose={() => setShareChatOpen(false)} type="book" id={id!} />
     </>
   );
 }

@@ -26,14 +26,15 @@
     "account": "Cuenta"
   },
   "share": {
-    "title": "Compartir",
-    "hint": "Da acceso de solo lectura a otra persona por su nombre de usuario.",
+    "title": "Enviar a un chat",
+    "hint": "La tarjeta del registro se envía a vuestro chat y le da acceso de solo lectura.",
     "username_placeholder": "usuario",
-    "send": "Compartir",
+    "send": "Enviar",
     "contacts": "Tus contactos",
-    "done": "Compartido con {{user}}",
+    "done": "Enviado a {{user}} en vuestro chat",
     "error": "No se pudo compartir.",
-    "action": "Compartir registro",
+    "action": "Enviar a un chat",
+    "view_chat": "Ver el chat",
     "save_short": "Guardar",
     "saved": "Guardado en tus registros"
   },
@@ -772,6 +773,7 @@
     "report_category_harassment": "Acoso",
     "report_category_inappropriate": "Contenido inapropiado",
     "report_category_other": "Otro",
+    "record_open": "Ver registro",
     "attach_title": "Adjuntar",
     "attach_camera": "Cámara",
     "attach_gallery": "Galería",

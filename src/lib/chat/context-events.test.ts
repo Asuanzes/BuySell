@@ -16,9 +16,11 @@ test("contextEventText: bajada y subida de precio con importes formateados", () 
   assert.ok(up?.includes("📈"));
 });
 
-test("contextEventText: renta usa 'La renta' (ficha mixta)", () => {
+test("contextEventText: renta usa 'la renta' (ficha mixta) y el título prefija", () => {
   const t = contextEventText({ oldCents: 90_000, newCents: 85_000, isRent: true });
-  assert.ok(t?.startsWith("📉 La renta"));
+  assert.ok(t?.startsWith("📉 la renta"));
+  const withTitle = contextEventText({ oldCents: 90_000, newCents: 85_000 }, "Piso en Gascona");
+  assert.ok(withTitle?.includes("«Piso en Gascona»"));
 });
 
 test("contextEventText: vendido y retirado tienen prioridad sobre el precio", () => {

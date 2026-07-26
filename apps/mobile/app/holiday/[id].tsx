@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { fonts } from "@/lib/fonts";
 import { Image } from "expo-image";
@@ -16,6 +17,8 @@ import {
 import { api } from "@/lib/api";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { useTheme } from "@/lib/theme";
+import { ShareOpenActions } from "@/components/ShareOpenActions";
+import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 
 /**
  * Ficha de un VIAJE guardado (record `holiday`). Muestra destino, fechas,
@@ -30,6 +33,7 @@ export default function HolidayDetail() {
     () => api<BaseRecord>(`/api/records/${id}?type=holiday`),
     [id]
   );
+  const [shareChatOpen, setShareChatOpen] = useState(false);
 
   if (loading) {
     return (
@@ -122,10 +126,15 @@ export default function HolidayDetail() {
         {record.imageUrl ? (
           <Image source={{ uri: record.imageUrl }} style={styles.hero} contentFit="cover" transition={200} />
         ) : null}
-        <Text style={[styles.title, { color: th.text }]}>{record.title}</Text>
-        {record.primaryValue ? (
-          <Text style={[styles.total, { color: th.accent }]}>{record.primaryValue}</Text>
-        ) : null}
+        <View style={styles.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.title, { color: th.text }]}>{record.title}</Text>
+            {record.primaryValue ? (
+              <Text style={[styles.total, { color: th.accent }]}>{record.primaryValue}</Text>
+            ) : null}
+          </View>
+          <ShareOpenActions onSendToChat={() => setShareChatOpen(true)} />
+        </View>
 
         {rows.length > 0 && (
           <View style={[styles.card, { backgroundColor: th.surface, borderColor: th.border }]}>
@@ -157,6 +166,7 @@ export default function HolidayDetail() {
           </Pressable>
         ) : null}
       </ScrollView>
+      <ShareRecordSheet visible={shareChatOpen} onClose={() => setShareChatOpen(false)} type="holiday" id={id!} />
     </>
   );
 }
@@ -165,6 +175,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   content: { padding: 16, gap: 8, paddingBottom: 40 },
   hero: { width: "100%", height: 160, borderRadius: 12 },
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   title: { fontSize: 20, fontFamily: fonts.bodyBold, marginTop: 4 },
   total: { fontSize: 22, fontFamily: fonts.bodyBold, marginTop: 2 },
   card: { borderWidth: 1, borderRadius: 10, padding: 14, marginTop: 10 },

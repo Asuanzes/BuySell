@@ -8,6 +8,15 @@ import { api } from "@/lib/api";
 /** `email` solo viaja para uno mismo, contactos guardados y búsqueda exacta (privacidad). */
 export type ChatUser = { id: string; name: string | null; username: string | null; email: string | null; image: string | null };
 
+/** Tarjeta de un registro (banner de conversación y mensajes-tarjeta). */
+export type RecordCardDto = {
+  title: string;
+  subtitle: string | null;
+  /** Segunda línea rica por categoría ("3 hab · 2 baños", "ahora 64.230 €"…). */
+  meta?: string | null;
+  imageUrl: string | null;
+};
+
 export type ChatParticipant = {
   userId: string;
   role: "OWNER" | "ADMIN" | "MEMBER";
@@ -23,7 +32,7 @@ export type ConversationDto = {
   imageUrl: string | null;
   contextType: string | null;
   contextId: string | null;
-  context: { title: string; imageUrl: string | null; subtitle: string | null } | null;
+  context: RecordCardDto | null;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
   unreadCount: number;
@@ -66,6 +75,11 @@ export type MessageDto = {
   body: string | null;
   replyToId: string | null;
   replyTo: ReplyToDto | null;
+  /** Tarjeta de registro compartido: si viene, se pinta EN VEZ del body
+   *  (el body lleva "📌 Título" de respaldo para clientes viejos). */
+  contextType: string | null;
+  contextId: string | null;
+  context: RecordCardDto | null;
   clientId: string | null;
   editedAt: string | null;
   deleted: boolean;

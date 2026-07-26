@@ -1,11 +1,12 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { RecordType } from "@nidokey/shared";
 import { normalizeUsername } from "@nidokey/shared";
 
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
-import { notifyShare } from "@/lib/chat/bot";
+import { anyBlockBetween } from "@/lib/chat/guard";
+import { deliverRecordCard } from "@/lib/chat/context-events";
 import { ownsRecord, recordTitle } from "@/lib/records/access";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -52,6 +53,11 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (target.id === fromUserId) {
     return NextResponse.json({ error: "No puedes compartir contigo mismo" }, { status: 400 });
   }
+  // Bloqueos: compartir abre (o revive) el chat directo → mismo veto que un
+  // mensaje. 403 genérico sin revelar quién bloqueó a quién.
+  if (await anyBlockBetween(fromUserId, target.id)) {
+    return NextResponse.json({ error: "No disponible" }, { status: 403 });
+  }
 
   await prisma.recordShare.upsert({
     where: { recordType_recordId_toUserId: { recordType: type, recordId: id, toUserId: target.id } },
@@ -59,13 +65,13 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     update: {},
   });
 
-  // Aviso al destinatario (mensaje de Nidokey + push) DESPUÉS de responder.
-  const toId = target.id;
-  after(async () => {
-    const me = await prisma.user.findUnique({ where: { id: fromUserId }, select: { username: true, name: true } });
-    const fromLabel = me?.username ? "@" + me.username : me?.name ?? "Alguien";
-    await notifyShare(toId, fromLabel, type, id, await recordTitle(type, id));
-  });
+  // La tarjeta va al chat DIRECTO habitual con esa persona (no al DM del bot,
+  // no a una conversación aparte por registro): push y tiempo real incluidos.
+  const conversationId = await deliverRecordCard(fromUserId, target.id, type, id, await recordTitle(type, id));
 
-  return NextResponse.json({ ok: true, sharedWith: { username: target.username, name: target.name } });
+  return NextResponse.json({
+    ok: true,
+    sharedWith: { username: target.username, name: target.name },
+    conversationId,
+  });
 }

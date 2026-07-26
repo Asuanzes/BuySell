@@ -14,9 +14,20 @@ import { prisma } from "@/lib/db";
  * la regla 1 a RecordShare — no relajarla sin más.
  */
 
-export type ContextCard = { title: string; imageUrl: string | null; subtitle: string | null };
+export type ContextCard = {
+  title: string;
+  imageUrl: string | null;
+  subtitle: string | null;
+  /** Segunda línea rica por categoría ("3 hab · 2 baños", "ahora 64.230 €"…). */
+  meta?: string | null;
+};
 
 type CardWithOwner = (ContextCard & { ownerId: string | null }) | null;
+
+const fmtPrice = (cents: number | null | undefined, currency = "EUR"): string | null =>
+  cents == null
+    ? null
+    : (cents / 100).toLocaleString("es-ES", { style: "currency", currency, maximumFractionDigits: 2 });
 
 async function fetchCard(contextType: string, contextId: string): Promise<CardWithOwner> {
   if (contextType === "property") {
@@ -29,6 +40,8 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
         currentPrice: true,
         monthlyRent: true,
         operationType: true,
+        rooms: true,
+        bathrooms: true,
         media: { take: 1, orderBy: { order: "asc" }, select: { url: true } },
       },
     });
@@ -41,33 +54,80 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
         : p.currentPrice != null
           ? `${Math.round(p.currentPrice / 100).toLocaleString("es-ES")} €`
           : null;
+    const feats = [p.rooms != null ? `${p.rooms} hab` : null, p.bathrooms != null ? `${p.bathrooms} baños` : null]
+      .filter(Boolean)
+      .join(" · ");
     return {
       ownerId: p.ownerId,
       title: p.title,
       imageUrl: p.media[0]?.url ?? null,
       subtitle: [p.city, price].filter(Boolean).join(" · ") || null,
+      meta: feats || null,
+    };
+  }
+  if (contextType === "crypto") {
+    const c = await prisma.cryptoHolding.findUnique({
+      where: { id: contextId },
+      select: { ownerId: true, title: true, subtitle: true, symbol: true, currentValue: true, currency: true, imageUrl: true },
+    });
+    if (!c) return null;
+    const price = fmtPrice(c.currentValue, c.currency ?? "EUR");
+    return {
+      ownerId: c.ownerId,
+      title: c.title,
+      imageUrl: c.imageUrl,
+      subtitle: c.subtitle ?? c.symbol,
+      meta: price ? `ahora ${price}` : null,
+    };
+  }
+  if (contextType === "market") {
+    const m = await prisma.marketInstrument.findUnique({
+      where: { id: contextId },
+      select: { ownerId: true, title: true, subtitle: true, symbol: true, exchange: true, currentValue: true, currency: true, imageUrl: true },
+    });
+    if (!m) return null;
+    const price = fmtPrice(m.currentValue, m.currency ?? "USD");
+    return {
+      ownerId: m.ownerId,
+      title: m.title,
+      imageUrl: m.imageUrl,
+      subtitle: m.subtitle ?? [m.symbol, m.exchange].filter(Boolean).join(" · "),
+      meta: price ? `ahora ${price}` : null,
     };
   }
   if (contextType === "book") {
     const b = await prisma.bookRecord.findUnique({
       where: { id: contextId },
-      select: { ownerId: true, title: true, authors: true, imageUrl: true },
+      select: { ownerId: true, title: true, authors: true, imageUrl: true, status: true },
     });
-    return b ? { ownerId: b.ownerId, title: b.title, imageUrl: b.imageUrl, subtitle: b.authors } : null;
+    if (!b) return null;
+    const statusLabel =
+      b.status === "READ" ? "Leído" : b.status === "READING" ? "Leyéndolo" : b.status === "WISHLIST" ? "En la lista de deseos" : null;
+    return { ownerId: b.ownerId, title: b.title, imageUrl: b.imageUrl, subtitle: b.authors, meta: statusLabel };
   }
   if (contextType === "holiday") {
     const h = await prisma.holiday.findUnique({
       where: { id: contextId },
-      select: { ownerId: true, title: true, subtitle: true, imageUrl: true },
+      select: { ownerId: true, title: true, subtitle: true, imageUrl: true, status: true },
     });
-    return h ? { ownerId: h.ownerId, title: h.title, imageUrl: h.imageUrl, subtitle: h.subtitle } : null;
+    if (!h) return null;
+    const statusLabel =
+      h.status === "BOOKED" ? "Reservado ✔" : h.status === "PLANNING" ? "En planificación" : h.status === "DONE" ? "Hecho" : null;
+    return { ownerId: h.ownerId, title: h.title, imageUrl: h.imageUrl, subtitle: h.subtitle, meta: statusLabel };
   }
   if (contextType === "job") {
     const j = await prisma.jobListing.findUnique({
       where: { id: contextId },
-      select: { ownerId: true, title: true, subtitle: true, imageUrl: true },
+      select: { ownerId: true, title: true, subtitle: true, imageUrl: true, status: true },
     });
-    return j ? { ownerId: j.ownerId, title: j.title, imageUrl: j.imageUrl, subtitle: j.subtitle } : null;
+    if (!j) return null;
+    return {
+      ownerId: j.ownerId,
+      title: j.title,
+      imageUrl: j.imageUrl,
+      subtitle: j.subtitle,
+      meta: j.status === "CLOSED" ? "Oferta cerrada" : j.status === "OPEN" ? "Oferta abierta" : null,
+    };
   }
   return null;
 }
@@ -98,7 +158,7 @@ export async function contextCard(
     if (!card) return null;
     // Regla 2: el dueño debe seguir siendo participante.
     if (!card.ownerId || !participantIds.includes(card.ownerId)) return null;
-    return { title: card.title, imageUrl: card.imageUrl, subtitle: card.subtitle };
+    return { title: card.title, imageUrl: card.imageUrl, subtitle: card.subtitle, meta: card.meta ?? null };
   } catch {
     // El banner es decorativo: nunca rompe el detalle del chat.
     return null;

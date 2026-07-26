@@ -133,10 +133,19 @@ export function replySnippet(
   };
 }
 
+/** Tarjeta de registro embebida en un mensaje (compartir al chat). */
+export type MessageContextDto = {
+  title: string;
+  subtitle: string | null;
+  meta?: string | null;
+  imageUrl: string | null;
+};
+
 export function messageDto(
   m: ChatMessage & { attachments?: ChatAttachment[]; reactions?: ReactionRow[] },
   meId?: string,
-  replyTo?: ReplyToDto | null
+  replyTo?: ReplyToDto | null,
+  context?: MessageContextDto | null
 ) {
   const deleted = !!m.deletedAt;
   return {
@@ -148,6 +157,11 @@ export function messageDto(
     body: deleted ? null : m.body,
     replyToId: m.replyToId,
     replyTo: replyTo ?? null,
+    // Tarjeta de registro: los clientes nuevos la pintan EN VEZ del body (que
+    // lleva "📌 Título" de respaldo para clientes viejos, lista y push).
+    contextType: deleted ? null : m.contextType,
+    contextId: deleted ? null : m.contextId,
+    context: deleted ? null : context ?? null,
     clientId: m.clientId,
     editedAt: m.editedAt?.toISOString() ?? null,
     deleted,

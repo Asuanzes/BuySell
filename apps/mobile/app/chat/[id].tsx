@@ -62,6 +62,8 @@ import {
   type PickedAttachment,
 } from "@/lib/chat/media";
 import { Avatar, chatTime } from "@/components/chat/ConversationList";
+import { categoryColor } from "@/lib/records/config";
+import type { RecordType } from "@nidokey/shared";
 import { ActionsSheet, type SheetOption } from "@/components/chat/ActionsSheet";
 import { MessageActionsSheet, type MessageAction } from "@/components/chat/MessageSheet";
 import { getDraft, setDraft } from "@/lib/chat/drafts";
@@ -458,6 +460,9 @@ export default function ChatScreen() {
       body,
       replyToId: quoted?.id ?? null,
       replyTo: replySnippet,
+      contextType: null,
+      contextId: null,
+      context: null,
       clientId,
       editedAt: null,
       deleted: false,
@@ -528,7 +533,8 @@ export default function ChatScreen() {
   // Acciones del sheet de mensaje (long-press).
   const editWindowMin = boot?.limits.editWindowMin ?? 15;
   function canEditMessage(m: MessageDto | null): boolean {
-    if (!m || m.deleted || m.senderId !== myId || m.kind !== "TEXT") return false;
+    // Las tarjetas de registro no se editan (su body es el respaldo "📌 …").
+    if (!m || m.deleted || m.senderId !== myId || m.kind !== "TEXT" || m.contextType) return false;
     return Date.now() - new Date(m.createdAt).getTime() < editWindowMin * 60_000;
   }
 
@@ -1394,6 +1400,94 @@ function SearchInChatModal({
   );
 }
 
+/** Icono por categoría para la tarjeta de registro (fallback sin imagen). */
+const CARD_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  property: "home-outline",
+  crypto: "logo-bitcoin",
+  market: "trending-up-outline",
+  book: "book-outline",
+  job: "briefcase-outline",
+  holiday: "airplane-outline",
+};
+
+/**
+ * Tarjeta RICA de registro compartido dentro de una burbuja: acento y datos
+ * por categoría, tap → ficha del registro. Si el registro ya no existe (o su
+ * dueño dejó la conversación), tarjeta atenuada sin navegación.
+ */
+function RecordCardBubble({
+  type,
+  recordId,
+  card,
+  dark,
+}: {
+  type: string;
+  recordId: string;
+  card: { title: string; subtitle: string | null; meta?: string | null; imageUrl: string | null } | null;
+  dark: boolean;
+}) {
+  const { th } = useTheme();
+  const { t } = useTranslation();
+  const accent = categoryColor(type as RecordType, dark) ?? th.primary;
+  const icon = CARD_ICONS[type] ?? "bookmark-outline";
+
+  if (!card) {
+    return (
+      <View style={[styles.recordCard, { borderColor: th.border, backgroundColor: th.bg }]}>
+        <View style={[styles.recordCardBar, { backgroundColor: th.border }]} />
+        <View style={[styles.recordCardImg, { backgroundColor: th.imagePlaceholder, alignItems: "center", justifyContent: "center" }]}>
+          <Ionicons name="bookmark-outline" size={20} color={th.textSubtle} />
+        </View>
+        <View style={styles.recordCardBody}>
+          <Text style={[styles.recordCardTitle, { color: th.textSubtle }]}>{t("chat.context_deleted")}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={() => router.push(`/${type}/${recordId}` as never)}
+      accessibilityRole="button"
+      accessibilityLabel={card.title}
+      style={({ pressed }) => [
+        styles.recordCard,
+        { borderColor: th.border, backgroundColor: th.bg },
+        pressed && { opacity: 0.75 },
+      ]}
+    >
+      <View style={[styles.recordCardBar, { backgroundColor: accent }]} />
+      {card.imageUrl ? (
+        <Image source={{ uri: card.imageUrl }} style={[styles.recordCardImg, { backgroundColor: th.imagePlaceholder }]} contentFit="cover" />
+      ) : (
+        <View style={[styles.recordCardImg, { backgroundColor: accent + "22", alignItems: "center", justifyContent: "center" }]}>
+          <Ionicons name={icon} size={22} color={accent} />
+        </View>
+      )}
+      <View style={styles.recordCardBody}>
+        <Text style={[styles.recordCardTitle, { color: th.text }]} numberOfLines={2}>
+          {card.title}
+        </Text>
+        {!!card.subtitle && (
+          <Text style={[styles.recordCardSub, { color: th.textMuted }]} numberOfLines={1}>
+            {card.subtitle}
+          </Text>
+        )}
+        {!!card.meta && (
+          <Text style={[styles.recordCardMeta, { color: accent }]} numberOfLines={1}>
+            {card.meta}
+          </Text>
+        )}
+        <View style={styles.recordCardFooter}>
+          <Ionicons name={icon} size={11} color={accent} />
+          <Text style={[styles.recordCardOpen, { color: accent }]}>{t("chat.record_open")}</Text>
+          <Ionicons name="chevron-forward" size={11} color={accent} />
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 /** Un adjunto dentro de la burbuja: imagen (tap = visor), audio o fila de archivo. */
 function AttachmentView({ a, onOpenImage }: { a: AttachmentDto; onOpenImage: (url: string) => void }) {
   const { th } = useTheme();
@@ -1501,6 +1595,9 @@ const Bubble = memo(BubbleInner, (prev, next) => {
   if (prev.mine !== next.mine || prev.dark !== next.dark) return false;
   if (prev.senderName !== next.senderName || prev.quoteName !== next.quoteName) return false;
   if ((a.replyTo?.id ?? null) !== (b.replyTo?.id ?? null)) return false;
+  if (a.contextId !== b.contextId || (a.context?.title ?? null) !== (b.context?.title ?? null)) return false;
+  if ((a.context?.meta ?? null) !== (b.context?.meta ?? null) || (a.context?.subtitle ?? null) !== (b.context?.subtitle ?? null))
+    return false;
   if (prev.otherReadAt !== next.otherReadAt || prev.otherDeliveredAt !== next.otherDeliveredAt) return false;
   if (!reactionsEq(a.reactions, b.reactions)) return false;
   if (a.attachments.length !== b.attachments.length) return false;
@@ -1616,7 +1713,13 @@ function BubbleInner({
                 ))}
               </View>
             )}
-            {!!m.body && <MessageBody body={m.body} color={th.text} linkColor={th.primary} />}
+            {m.contextType && m.contextId ? (
+              // Tarjeta de registro: sustituye al body (que lleva "📌 Título"
+              // de respaldo para clientes viejos).
+              <RecordCardBubble type={m.contextType} recordId={m.contextId} card={m.context} dark={dark} />
+            ) : (
+              !!m.body && <MessageBody body={m.body} color={th.text} linkColor={th.primary} />
+            )}
           </>
         )}
         <View style={styles.bubbleMeta}>
@@ -1802,6 +1905,26 @@ const styles = StyleSheet.create({
   },
   fileName: { fontSize: 13, fontFamily: fonts.bodyMedium },
   fileMeta: { fontSize: 11 },
+  // Tarjeta de registro compartido
+  recordCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 220,
+    maxWidth: 260,
+    overflow: "hidden",
+  },
+  recordCardBar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 4 },
+  recordCardImg: { width: 54, height: 54, borderRadius: 8, marginLeft: 4 },
+  recordCardBody: { flex: 1, gap: 1 },
+  recordCardTitle: { fontSize: 13.5, fontFamily: fonts.bodySemibold },
+  recordCardSub: { fontSize: 12 },
+  recordCardMeta: { fontSize: 12, fontFamily: fonts.bodyMedium },
+  recordCardFooter: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 },
+  recordCardOpen: { fontSize: 11, fontFamily: fonts.bodyMedium },
   // Búsqueda en el chat
   searchResultRow: {
     borderWidth: 1,

@@ -39,7 +39,8 @@ const PROPERTY_TOOLS: ToolDef[] = [
   { id: "catastro", labelKey: "tools.catastro.title", icon: "document-text-outline", kind: "route", enabled: true, hintKey: "tools.panel.catastro_hint" },
   { id: "registro", labelKey: "tools.registro.title", icon: "ribbon-outline", kind: "route", enabled: true, hintKey: "tools.panel.registro_hint" },
   { id: "ine", labelKey: "tools.ine.title", icon: "bar-chart-outline", kind: "route", enabled: true, hintKey: "tools.panel.ine_hint" },
-  { id: "chat", labelKey: "tools.panel.chat_label", icon: "chatbubble-ellipses-outline", kind: "route", enabled: true, hintKey: "tools.panel.chat_hint" },
+  // "Enviar a un chat" NO va aquí: es el botón visible person-add de la ficha
+  // (ShareRecordSheet) — enterrado en herramientas nadie lo encontraba.
   { id: "share", labelKey: "common.share", icon: "share-outline", kind: "share", enabled: true },
 ];
 

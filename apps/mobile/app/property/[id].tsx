@@ -147,12 +147,6 @@ export default function PropertyDetailScreen() {
         setSheetOpen(false);
         setAlertsOpen(true);
         return;
-      case "chat":
-        // Chat VINCULADO al inmueble: la conversación nace con banner de
-        // contexto y recibirá los mensajes SYSTEM de cambio de precio/estado.
-        setSheetOpen(false);
-        router.push(`/chat/new?contextType=property&contextId=${p.id}` as never);
-        return;
       case "share":
         setSheetOpen(false);
         nativeShare();

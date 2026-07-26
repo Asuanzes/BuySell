@@ -14,11 +14,15 @@ import { useTheme } from "@/lib/theme";
 export function ShareOpenActions({
   onShare,
   onOpen,
+  onSendToChat,
   openLabel,
   style,
 }: {
-  onShare: () => void;
+  /** Compartir nativo (captura/texto). Opcional: hay fichas sin él. */
+  onShare?: () => void;
   onOpen?: () => void;
+  /** Enviar la tarjeta del registro a un chat (ShareRecordSheet). */
+  onSendToChat?: () => void;
   openLabel?: string;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -26,19 +30,36 @@ export function ShareOpenActions({
   const { t } = useTranslation();
   return (
     <View style={[styles.group, style]}>
-      <Pressable
-        onPress={onShare}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={t("common.share")}
-        style={({ pressed }) => [
-          styles.btn,
-          { backgroundColor: th.surface, borderColor: th.border },
-          pressed && { opacity: 0.85 },
-        ]}
-      >
-        <Ionicons name="share-social-outline" size={22} color={th.primary} />
-      </Pressable>
+      {onSendToChat ? (
+        <Pressable
+          onPress={onSendToChat}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t("share.action")}
+          style={({ pressed }) => [
+            styles.btn,
+            { backgroundColor: th.surface, borderColor: th.border },
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={22} color={th.primary} />
+        </Pressable>
+      ) : null}
+      {onShare ? (
+        <Pressable
+          onPress={onShare}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.share")}
+          style={({ pressed }) => [
+            styles.btn,
+            { backgroundColor: th.surface, borderColor: th.border },
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <Ionicons name="share-social-outline" size={22} color={th.primary} />
+        </Pressable>
+      ) : null}
       {onOpen ? (
         <Pressable
           onPress={onOpen}

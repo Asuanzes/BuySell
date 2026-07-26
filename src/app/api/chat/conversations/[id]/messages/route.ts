@@ -5,7 +5,8 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { allowedMimesFor, CHAT_FLAGS, CHAT_LIMITS, maxAttachmentBytes } from "@/lib/chat/config";
 import { anyBlockBetween, getParticipantOrNull, withinMessageRate } from "@/lib/chat/guard";
 import { messagePreview, sanitizeMessageBody, sniffImageMime } from "@/lib/chat/util";
-import { messageDto, replySnippet, type ReplyToDto } from "@/lib/chat/serialize";
+import { messageDto, replySnippet, type MessageContextDto, type ReplyToDto } from "@/lib/chat/serialize";
+import { contextCard } from "@/lib/chat/context";
 import { headObject, readObjectRange, signMessageAttachments } from "@/lib/chat/r2";
 import { sendChatPush } from "@/lib/chat/push";
 import { notifyMessage } from "@/lib/chat/gateway";
@@ -57,12 +58,40 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     for (const q of quoted) replyMap.set(q.id, replySnippet(q));
   }
 
+  // Tarjetas de registro compartido: resolver cada par (tipo,id) UNA vez.
+  // contextCard aplica la regla de dueño-participante (nunca sirve registros
+  // ajenos) y devuelve null si el registro ya no existe.
+  const cardPairs = [...new Set(rows.filter((r) => r.contextType && r.contextId).map((r) => `${r.contextType}|${r.contextId}`))];
+  const cardMap = new Map<string, MessageContextDto | null>();
+  if (cardPairs.length > 0) {
+    const participants = await prisma.conversationParticipant.findMany({
+      where: { conversationId: id },
+      select: { userId: true },
+    });
+    const participantIds = participants.map((p) => p.userId);
+    await Promise.all(
+      cardPairs.map(async (pair) => {
+        const [type, rid] = pair.split("|");
+        cardMap.set(pair, await contextCard(type, rid, participantIds));
+      })
+    );
+  }
+
   // ASC para que el cliente pinte de arriba (viejo) a abajo (nuevo). Las URLs
   // de adjuntos se firman al servir (R2 privado; firmar es crypto local).
   const messages = await Promise.all(
     rows
       .reverse()
-      .map((m) => signMessageAttachments(messageDto(m, userId, m.replyToId ? replyMap.get(m.replyToId) ?? null : null)))
+      .map((m) =>
+        signMessageAttachments(
+          messageDto(
+            m,
+            userId,
+            m.replyToId ? replyMap.get(m.replyToId) ?? null : null,
+            m.contextType && m.contextId ? cardMap.get(`${m.contextType}|${m.contextId}`) ?? null : null
+          )
+        )
+      )
   );
 
   // Recibo de ENTREGA: si mi dispositivo ha descargado los mensajes, están
