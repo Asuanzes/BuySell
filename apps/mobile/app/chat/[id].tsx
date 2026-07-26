@@ -25,6 +25,7 @@ import { VerifiedBadge, isOfficialConversation } from "@/components/chat/Verifie
 import { useAuth } from "@/lib/auth-context";
 import { useQuery } from "@/lib/hooks/useQuery";
 import {
+  adoptRecord,
   blockUser,
   chatBootstrap,
   deleteContact,
@@ -1411,16 +1412,32 @@ function RecordCardBubble({
   recordId,
   card,
   dark,
+  mine,
 }: {
   type: string;
   recordId: string;
   card: { title: string; subtitle: string | null; meta?: string | null; imageUrl: string | null } | null;
   dark: boolean;
+  /** Tarjeta propia: sin botón de guardar (ya es tu registro). */
+  mine: boolean;
 }) {
   const { th } = useTheme();
   const { t } = useTranslation();
   const accent = categoryColor(type as RecordType, dark) ?? th.primary;
   const icon: keyof typeof Ionicons.glyphMap = RECORD_TYPE_CONFIG[type as RecordType]?.icon ?? "bookmark-outline";
+  // Guardar copia en mis registros (adopt): idle → saving → saved.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+
+  async function onSave() {
+    if (saveState !== "idle") return;
+    setSaveState("saving");
+    try {
+      await adoptRecord(recordId, type);
+      setSaveState("saved");
+    } catch {
+      setSaveState("idle"); // reintentable; sin modal para algo tan sutil
+    }
+  }
 
   if (!card) {
     return (
@@ -1474,10 +1491,30 @@ function RecordCardBubble({
           <Ionicons name="chevron-forward" size={11} color={accent} />
         </View>
       </View>
-      {/* Badge con el ICONO oficial de la categoría (siempre visible, con o
-          sin imagen): identifica el tipo de un vistazo, como en el rail. */}
-      <View style={[styles.recordCardBadge, { backgroundColor: accent + "22" }]}>
-        <Ionicons name={icon} size={15} color={accent} />
+      {/* Columna derecha: badge de categoría + guardar (solo tarjetas ajenas). */}
+      <View style={styles.recordCardSide}>
+        <View style={[styles.recordCardBadge, { backgroundColor: accent + "22" }]}>
+          <Ionicons name={icon} size={15} color={accent} />
+        </View>
+        {!mine && (
+          <Pressable
+            onPress={() => void onSave()}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={saveState === "saved" ? t("share.saved") : t("share.save_short")}
+            style={styles.recordCardSave}
+          >
+            {saveState === "saving" ? (
+              <ActivityIndicator size="small" color={th.textSubtle} />
+            ) : (
+              <Ionicons
+                name={saveState === "saved" ? "checkmark-circle" : "download-outline"}
+                size={17}
+                color={saveState === "saved" ? accent : th.textSubtle}
+              />
+            )}
+          </Pressable>
+        )}
       </View>
     </Pressable>
   );
@@ -1711,7 +1748,7 @@ function BubbleInner({
             {m.contextType && m.contextId ? (
               // Tarjeta de registro: sustituye al body (que lleva "📌 Título"
               // de respaldo para clientes viejos).
-              <RecordCardBubble type={m.contextType} recordId={m.contextId} card={m.context} dark={dark} />
+              <RecordCardBubble type={m.contextType} recordId={m.contextId} card={m.context} dark={dark} mine={mine} />
             ) : (
               !!m.body && <MessageBody body={m.body} color={th.text} linkColor={th.primary} />
             )}
@@ -1920,14 +1957,15 @@ const styles = StyleSheet.create({
   recordCardMeta: { fontSize: 12, fontFamily: fonts.bodyMedium },
   recordCardFooter: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 },
   recordCardOpen: { fontSize: 11, fontFamily: fonts.bodyMedium },
+  recordCardSide: { alignItems: "center", gap: 8, alignSelf: "flex-start" },
   recordCardBadge: {
     width: 28,
     height: 28,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "flex-start",
   },
+  recordCardSave: { width: 28, height: 20, alignItems: "center", justifyContent: "center" },
   // Búsqueda en el chat
   searchResultRow: {
     borderWidth: 1,

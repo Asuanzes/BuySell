@@ -209,6 +209,10 @@ export const blockUser = (userId: string) =>
 export const unblockUser = (userId: string) =>
   api("/api/chat/blocks", { method: "DELETE", body: JSON.stringify({ userId }) });
 
+/** Guarda una COPIA de un registro compartido en mis registros (adopt). */
+export const adoptRecord = (recordId: string, type: string) =>
+  api(`/api/records/${recordId}/adopt`, { method: "POST", body: JSON.stringify({ type }) });
+
 export type ReportCategory = "spam" | "scam" | "harassment" | "inappropriate" | "other";
 
 /** Denunciar mensaje / conversación / usuario (moderación). */

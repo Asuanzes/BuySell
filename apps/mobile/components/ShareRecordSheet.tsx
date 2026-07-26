@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -97,11 +98,18 @@ export function ShareRecordSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      {/* KAV: el teclado empuja la hoja hacia arriba (Android edge-to-edge
+          ignora adjustResize → "padding" en ambas plataformas, como el
+          composer del chat). El velo es HERMANO de la hoja, no padre: tocar
+          dentro de la hoja jamás burbujea al onClose del fondo. */}
+      <KeyboardAvoidingView style={styles.kav} behavior="padding">
         <Pressable
-          style={[styles.sheet, { backgroundColor: th.surface, paddingBottom: insets.bottom + 16 }]}
-          onPress={() => {}}
-        >
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.cancel")}
+        />
+        <View style={[styles.sheet, { backgroundColor: th.surface, paddingBottom: insets.bottom + 16 }]}>
           <View style={[styles.grabber, { backgroundColor: th.border }]} />
           <View style={styles.titleRow}>
             {recipient && (
@@ -226,14 +234,14 @@ export function ShareRecordSheet({
               )}
             </>
           )}
-        </Pressable>
-      </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  kav: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 20, gap: 10 },
   grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, marginBottom: 6 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
