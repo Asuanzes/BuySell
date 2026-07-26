@@ -35,6 +35,8 @@
     "error": "Couldn't share.",
     "action": "Send to a chat",
     "view_chat": "View chat",
+    "to": "To:",
+    "message_placeholder": "Write a message (optional)…",
     "save_short": "Save",
     "saved": "Saved to your records"
   },

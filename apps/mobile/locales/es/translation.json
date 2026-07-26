@@ -35,6 +35,8 @@
     "error": "No se pudo compartir.",
     "action": "Enviar a un chat",
     "view_chat": "Ver el chat",
+    "to": "Para:",
+    "message_placeholder": "Escribe un mensaje (opcional)…",
     "save_short": "Guardar",
     "saved": "Guardado en tus registros"
   },

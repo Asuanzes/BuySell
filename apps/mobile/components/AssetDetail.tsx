@@ -412,7 +412,13 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
         </View>
       </View>
 
-      <ShareRecordSheet visible={shareOpen} onClose={() => setShareOpen(false)} type={type} id={id} />
+      <ShareRecordSheet
+        visible={shareOpen}
+        onClose={() => setShareOpen(false)}
+        type={type}
+        id={id}
+        preview={{ title: recordTitle, subtitle: symbol, imageUrl: logoUri }}
+      />
       <AlertsSheet
         visible={alertsOpen}
         onClose={() => setAlertsOpen(false)}

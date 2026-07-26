@@ -147,7 +147,13 @@ export default function JobDetail() {
           </View>
         )}
       </ScrollView>
-      <ShareRecordSheet visible={shareChatOpen} onClose={() => setShareChatOpen(false)} type="job" id={id!} />
+      <ShareRecordSheet
+        visible={shareChatOpen}
+        onClose={() => setShareChatOpen(false)}
+        type="job"
+        id={id!}
+        preview={{ title: record.title, subtitle: record.subtitle ?? null, imageUrl: record.imageUrl ?? null }}
+      />
     </>
   );
 }

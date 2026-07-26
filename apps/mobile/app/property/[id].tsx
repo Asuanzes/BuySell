@@ -378,7 +378,13 @@ export default function PropertyDetailScreen() {
         onRequestClose={() => setNotice(null)}
       />
 
-      <ShareRecordSheet visible={shareOpen} onClose={() => setShareOpen(false)} type="property" id={id} />
+      <ShareRecordSheet
+        visible={shareOpen}
+        onClose={() => setShareOpen(false)}
+        type="property"
+        id={id}
+        preview={{ title: p.title, subtitle: p.city ?? null, imageUrl: photos[0]?.url ?? null }}
+      />
       <AlertsSheet
         visible={alertsOpen}
         onClose={() => setAlertsOpen(false)}

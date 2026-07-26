@@ -16,6 +16,8 @@ const RECORD_TYPES = ["property", "crypto", "market", "job", "book", "holiday"] 
 const Body = z.object({
   type: z.enum(RECORD_TYPES),
   username: z.string().min(1),
+  /** Mensaje opcional que acompaña a la tarjeta en el chat. */
+  message: z.string().trim().max(4000).optional().nullable(),
 });
 
 // ownsRecord/recordTitle viven en @/lib/records/access — compartidos con las
@@ -37,7 +39,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Body inválido", detail: parsed.error.flatten() }, { status: 400 });
   }
-  const { type, username } = parsed.data;
+  const { type, username, message } = parsed.data;
 
   if (!(await ownsRecord(type, id, fromUserId))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -67,7 +69,14 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
   // La tarjeta va al chat DIRECTO habitual con esa persona (no al DM del bot,
   // no a una conversación aparte por registro): push y tiempo real incluidos.
-  const conversationId = await deliverRecordCard(fromUserId, target.id, type, id, await recordTitle(type, id));
+  const conversationId = await deliverRecordCard(
+    fromUserId,
+    target.id,
+    type,
+    id,
+    await recordTitle(type, id),
+    message
+  );
 
   return NextResponse.json({
     ok: true,

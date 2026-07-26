@@ -166,7 +166,13 @@ export default function HolidayDetail() {
           </Pressable>
         ) : null}
       </ScrollView>
-      <ShareRecordSheet visible={shareChatOpen} onClose={() => setShareChatOpen(false)} type="holiday" id={id!} />
+      <ShareRecordSheet
+        visible={shareChatOpen}
+        onClose={() => setShareChatOpen(false)}
+        type="holiday"
+        id={id!}
+        preview={{ title: record.title, subtitle: record.subtitle ?? null, imageUrl: record.imageUrl ?? null }}
+      />
     </>
   );
 }

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { notifyConversation, notifyMessage } from "@/lib/chat/gateway";
 import { sendChatPush } from "@/lib/chat/push";
-import { directKey, truncateSafe } from "@/lib/chat/util";
+import { directKey, sanitizeMessageBody, truncateSafe } from "@/lib/chat/util";
 import { fmtCents } from "@/lib/alerts/evaluate";
 
 /**
@@ -54,7 +54,9 @@ export async function deliverRecordCard(
   toUserId: string,
   contextType: string,
   contextId: string,
-  title: string
+  title: string,
+  /** Mensaje opcional del usuario: va como SEGUNDO mensaje tras la tarjeta. */
+  userMessage?: string | null
 ): Promise<string | null> {
   try {
     const key = directKey(fromUserId, toUserId, null);
@@ -92,6 +94,7 @@ export async function deliverRecordCard(
     });
 
     const body = truncateSafe(`📌 ${title}`, 140);
+    const text = sanitizeMessageBody(userMessage, 4000);
     const now = new Date();
     const [message] = await prisma.$transaction([
       prisma.chatMessage.create({
@@ -99,7 +102,7 @@ export async function deliverRecordCard(
       }),
       prisma.conversation.update({
         where: { id: cid },
-        data: { lastMessageAt: now, lastMessagePreview: body },
+        data: { lastMessageAt: now, lastMessagePreview: text ? truncateSafe(text, 140) : body },
       }),
       prisma.conversationParticipant.updateMany({
         where: { conversationId: cid, userId: fromUserId },
@@ -107,7 +110,15 @@ export async function deliverRecordCard(
       }),
     ]);
 
-    await Promise.allSettled([sendChatPush(message), notifyMessage(message)]);
+    // El texto del usuario acompaña a la tarjeta como mensaje normal (patrón
+    // WhatsApp). Push y tiempo real UNA vez, con el último mensaje.
+    let last = message;
+    if (text) {
+      last = await prisma.chatMessage.create({
+        data: { conversationId: cid, senderId: fromUserId, kind: "TEXT", body: text },
+      });
+    }
+    await Promise.allSettled([sendChatPush(last), notifyMessage(last)]);
     return cid;
   } catch (err) {
     console.error("[chat-context] tarjeta de registro fallida:", err);

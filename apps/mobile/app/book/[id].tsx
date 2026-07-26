@@ -267,7 +267,13 @@ export default function BookDetail() {
         </View>
 
       </ScrollView>
-      <ShareRecordSheet visible={shareChatOpen} onClose={() => setShareChatOpen(false)} type="book" id={id!} />
+      <ShareRecordSheet
+        visible={shareChatOpen}
+        onClose={() => setShareChatOpen(false)}
+        type="book"
+        id={id!}
+        preview={{ title: book.title, subtitle: book.authors.join(", ") || null, imageUrl: cover ?? null }}
+      />
     </>
   );
 }
