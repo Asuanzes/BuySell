@@ -25,19 +25,29 @@ function gatewayEnabled(): boolean {
 }
 
 export async function notifyMessage(message: ChatMessage): Promise<void> {
-  if (!gatewayEnabled() || !message.senderId) return;
+  if (!message.senderId) return;
+  return notifyConversation(message.conversationId, message.senderId);
+}
+
+/**
+ * Aviso genérico "algo cambió en esta conversación" (mensaje nuevo, edición,
+ * borrado, reacción, recibo de lectura): los demás participantes refetchean.
+ * `actorId` queda excluido (su dispositivo ya tiene el cambio en local).
+ */
+export async function notifyConversation(conversationId: string, actorId: string): Promise<void> {
+  if (!gatewayEnabled()) return;
   const start = Date.now();
   try {
     const participants = await prisma.conversationParticipant.findMany({
-      where: { conversationId: message.conversationId, leftAt: null, userId: { not: message.senderId } },
+      where: { conversationId, leftAt: null, userId: { not: actorId } },
       select: { userId: true },
     });
     if (participants.length === 0) return;
 
     const body = JSON.stringify({
       event: "message",
-      conversationId: message.conversationId,
-      senderId: message.senderId,
+      conversationId,
+      senderId: actorId,
       participantIds: participants.map((p) => p.userId),
     });
     const signature = "sha256=" + createHmac("sha256", secret()).update(body).digest("hex");
@@ -49,11 +59,11 @@ export async function notifyMessage(message: ChatMessage): Promise<void> {
       signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) {
-      console.error(`[chat-gw] notify ${res.status} en ${Date.now() - start}ms (conv ${message.conversationId})`);
+      console.error(`[chat-gw] notify ${res.status} en ${Date.now() - start}ms (conv ${conversationId})`);
     }
   } catch (e) {
-    // Tiempo real best-effort: nunca rompe el envío del mensaje, pero queda
-    // rastro en los logs de Vercel (gateway caído / timeout / DNS).
+    // Tiempo real best-effort: nunca rompe la operación que lo originó, pero
+    // queda rastro en los logs de Vercel (gateway caído / timeout / DNS).
     console.error(
       `[chat-gw] notify error en ${Date.now() - start}ms: ${e instanceof Error ? e.message : String(e)}`
     );

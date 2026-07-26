@@ -18,7 +18,8 @@ const BASE = (process.env.NEXTAUTH_URL || "").replace(/\/+$/, "");
 
 /** JWT efímero del usuario para que el bot llame a sus propios endpoints. */
 export async function mintUserToken(userId: string, email: string): Promise<string> {
-  return issueMobileJwt(userId, email || `${userId}@nidokey.local`);
+  // 15 min: el uso real dura segundos; si se filtra en un log no vale 90 días.
+  return issueMobileJwt(userId, email || `${userId}@nidokey.local`, "15m");
 }
 
 function cap(s: string, n = 3000): string {

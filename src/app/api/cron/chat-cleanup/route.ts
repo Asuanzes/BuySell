@@ -113,6 +113,11 @@ export async function GET(req: NextRequest) {
     });
     summary.tokensDeleted = tokens.count;
 
+    // ── 3b. Denuncias: conservación LIMITADA de evidencias (180 días) ───────
+    await prisma.chatReport.deleteMany({
+      where: { createdAt: { lt: new Date(Date.now() - 180 * 86400_000) } },
+    });
+
     // ── 4. Ventanas de rate limit ya cerradas ───────────────────────────────
     summary.rateLimitsDeleted = await cleanupRateLimits();
 

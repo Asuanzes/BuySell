@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -87,6 +88,36 @@ async function presignGetCached(key: string): Promise<string> {
   if (signCache.size >= SIGN_CACHE_MAX) signCache.clear();
   signCache.set(key, { url, expiresAt: Date.now() + SIGN_CACHE_TTL_MS });
   return url;
+}
+
+/**
+ * Metadatos REALES del objeto subido (el presigned PUT no impone tamaño, así
+ * que el sizeBytes declarado por el cliente no es de fiar). null si no existe.
+ */
+export async function headObject(key: string): Promise<{ sizeBytes: number; contentType: string | null } | null> {
+  if (!r2Enabled()) return null;
+  try {
+    const { client, bucket } = getClient();
+    const res = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return { sizeBytes: res.ContentLength ?? 0, contentType: res.ContentType ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/** Primeros `n` bytes del objeto (magic bytes). null si no existe o R2 falla. */
+export async function readObjectRange(key: string, n: number): Promise<Uint8Array | null> {
+  if (!r2Enabled()) return null;
+  try {
+    const { client, bucket } = getClient();
+    const res = await client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: key, Range: `bytes=0-${n - 1}` })
+    );
+    const bytes = await res.Body?.transformToByteArray();
+    return bytes ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Borra un objeto (best-effort): cron de limpieza y cambio de avatar. */

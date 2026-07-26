@@ -78,6 +78,17 @@ export function allowedMimesFor(kind: "IMAGE" | "FILE" | "AUDIO"): readonly stri
   return kind === "FILE" ? [...CHAT_MIME_ALLOW.FILE, ...CHAT_MIME_ALLOW.IMAGE] : CHAT_MIME_ALLOW[kind];
 }
 
+/** Tope de bytes por tipo de adjunto (fuente única para presign y verificación). */
+export function maxAttachmentBytes(kind: "IMAGE" | "FILE" | "AUDIO"): number {
+  const mb =
+    kind === "IMAGE"
+      ? CHAT_LIMITS.maxAttachmentMbImage
+      : kind === "AUDIO"
+        ? CHAT_LIMITS.maxAttachmentMbAudio
+        : CHAT_LIMITS.maxAttachmentMbFile;
+  return mb * 1024 * 1024;
+}
+
 /** Retención en días; null = no borrar nunca (default). */
 export const CHAT_RETENTION_DAYS: number | null = (() => {
   const n = parseInt(process.env.CHAT_RETENTION_DAYS ?? "", 10);

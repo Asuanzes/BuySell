@@ -154,6 +154,7 @@ model User {
   contacts           Contact[]   @relation("contactOwner")
   contactOf          Contact[]   @relation("contactTarget")
   chatReactions      ChatMessageReaction[]
+  chatReports        ChatReport[] @relation("reporter")
 }
 
 // Tablas estándar de NextAuth / Auth.js (Prisma adapter).
@@ -1106,6 +1107,34 @@ model ChatAttachment {
   createdAt  DateTime        @default(now())
 
   @@index([messageId])
+}
+
+// Denuncia de moderación (requisito de tiendas para apps con UGC). Los
+// destinos (mensaje/conversación/usuario) van como SOFT-REF a propósito: la
+// evidencia debe sobrevivir a que el denunciado edite/borre el mensaje o su
+// cuenta. `snapshot` congela el cuerpo del mensaje en el momento de denunciar.
+// Retención limitada: el cron chat-cleanup purga denuncias de más de 180 días.
+enum ChatReportStatus {
+  OPEN
+  REVIEWED
+  DISMISSED
+}
+
+model ChatReport {
+  id             String           @id @default(cuid())
+  reporterId     String
+  reporter       User             @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUserId   String? // soft-ref
+  messageId      String? // soft-ref
+  conversationId String? // soft-ref
+  category       String // "spam" | "scam" | "harassment" | "inappropriate" | "other"
+  comment        String?          @db.VarChar(500)
+  snapshot       String?          @db.Text
+  status         ChatReportStatus @default(OPEN)
+  createdAt      DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@index([reporterId])
 }
 
 model UserBlock {

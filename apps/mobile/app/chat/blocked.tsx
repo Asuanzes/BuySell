@@ -51,8 +51,9 @@ export default function BlockedUsersScreen() {
             const name =
               item.user.name?.trim() ||
               (item.user.username ? "@" + item.user.username : null) ||
-              item.user.email.split("@")[0];
-            const secondary = item.user.username ? "@" + item.user.username : item.user.email;
+              item.user.email?.split("@")[0] ||
+              "—";
+            const secondary = item.user.username ? "@" + item.user.username : item.user.email ?? "";
             return (
               <View style={[styles.row, { backgroundColor: th.surface, borderColor: th.border }]}>
                 <Avatar title={name} imageUrl={item.user.image} size={40} />

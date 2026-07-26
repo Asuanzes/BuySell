@@ -27,11 +27,16 @@ export async function POST(req: NextRequest) {
   const blockedId = parsed.data.userId;
   if (blockedId === userId) return NextResponse.json({ error: "No puedes bloquearte" }, { status: 400 });
 
-  await prisma.userBlock.upsert({
-    where: { blockerId_blockedId: { blockerId: userId, blockedId } },
-    create: { blockerId: userId, blockedId },
-    update: {},
-  });
+  try {
+    await prisma.userBlock.upsert({
+      where: { blockerId_blockedId: { blockerId: userId, blockedId } },
+      create: { blockerId: userId, blockedId },
+      update: {},
+    });
+  } catch {
+    // FK (P2003): el userId no existe → 404 limpio, no 500 (mismo trato que contacts).
+    return NextResponse.json({ error: "Usuario desconocido" }, { status: 404 });
+  }
   return NextResponse.json({ ok: true }, { status: 201 });
 }
 

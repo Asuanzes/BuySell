@@ -18,13 +18,18 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-export async function issueMobileJwt(userId: string, email: string): Promise<string> {
+/**
+ * `expiry` opcional: la sesión del móvil usa el default largo; los tokens
+ * internos (bot) deben pedir uno corto — un JWT filtrado en un log solo
+ * valdría minutos, no 90 días.
+ */
+export async function issueMobileJwt(userId: string, email: string, expiry: string = EXPIRY): Promise<string> {
   return await new jose.SignJWT({ email })
     .setProtectedHeader({ alg: ALG })
     .setIssuer(ISSUER)
     .setSubject(userId)
     .setIssuedAt()
-    .setExpirationTime(EXPIRY)
+    .setExpirationTime(expiry)
     .sign(getSecret());
 }
 

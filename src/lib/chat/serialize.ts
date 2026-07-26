@@ -1,4 +1,5 @@
 import type { ChatAttachment, ChatMessage, Conversation, ConversationParticipant, User } from "@prisma/client";
+import { truncateSafe } from "@/lib/chat/util";
 
 /**
  * DTOs del chat hacia los clientes. Centralizado para que la forma del JSON
@@ -13,7 +14,13 @@ export type ChatUserDto = {
   id: string;
   name: string | null;
   username: string | null;
-  email: string;
+  /**
+   * Dato personal: solo se emite para UNO MISMO, para los contactos guardados
+   * y para el resultado de búsqueda por dato exacto. En el resto de
+   * superficies (participantes de grupos, bloqueados) va null — un co-miembro
+   * de grupo no tiene por qué cosechar el email de todos.
+   */
+  email: string | null;
   image: string | null;
 };
 
@@ -31,8 +38,11 @@ export function avatarUrl(u: Pick<User, "id" | "image">): string | null {
   return `${base}/api/avatar/${u.id}?v=${encodeURIComponent(v)}`;
 }
 
-export function userDto(u: Pick<User, "id" | "name" | "username" | "email" | "image">): ChatUserDto {
-  return { id: u.id, name: u.name, username: u.username, email: u.email, image: avatarUrl(u) };
+export function userDto(
+  u: Pick<User, "id" | "name" | "username" | "email" | "image">,
+  opts: { withEmail?: boolean } = {}
+): ChatUserDto {
+  return { id: u.id, name: u.name, username: u.username, email: opts.withEmail ? u.email : null, image: avatarUrl(u) };
 }
 
 /** Nombre a mostrar: name, si no @username, si no la parte local del email. */
@@ -40,13 +50,14 @@ export function displayName(u: Pick<User, "name" | "username" | "email">): strin
   return u.name?.trim() || (u.username ? "@" + u.username : null) || u.email.split("@")[0];
 }
 
-export function participantDto(p: ParticipantWithUser) {
+export function participantDto(p: ParticipantWithUser, meId?: string) {
   return {
     userId: p.userId,
     role: p.role,
     lastReadAt: p.lastReadAt?.toISOString() ?? null,
     lastDeliveredAt: p.lastDeliveredAt?.toISOString() ?? null,
-    user: userDto(p.user),
+    // El email solo viaja para uno mismo (privacidad frente a co-miembros).
+    user: userDto(p.user, { withEmail: p.userId === meId }),
   };
 }
 
@@ -74,7 +85,7 @@ export function conversationDto(
     muteUntil: me?.muteUntil?.toISOString() ?? null,
     pinnedAt: me?.pinnedAt?.toISOString() ?? null,
     myRole: me?.role ?? "MEMBER",
-    participants: c.participants.filter((p) => !p.leftAt).map(participantDto),
+    participants: c.participants.filter((p) => !p.leftAt).map((p) => participantDto(p, meId)),
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -95,9 +106,37 @@ export function aggregateReactions(rows: ReactionRow[], meId?: string) {
   return [...byEmoji.values()].sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
 }
 
+/**
+ * Snippet del mensaje citado (responder-cita). Se resuelve en el servidor
+ * porque el citado puede no estar en la página cargada por el cliente.
+ */
+export type ReplyToDto = {
+  id: string;
+  senderId: string | null;
+  kind: string;
+  /** Truncado a 140 chars; null si el citado está borrado o es media sin pie. */
+  body: string | null;
+  deleted: boolean;
+};
+
+export function replySnippet(
+  m: Pick<ChatMessage, "id" | "senderId" | "kind" | "body" | "deletedAt">
+): ReplyToDto {
+  const deleted = !!m.deletedAt;
+  const body = deleted ? null : m.body;
+  return {
+    id: m.id,
+    senderId: m.senderId,
+    kind: m.kind,
+    body: body ? truncateSafe(body, 140) : body,
+    deleted,
+  };
+}
+
 export function messageDto(
   m: ChatMessage & { attachments?: ChatAttachment[]; reactions?: ReactionRow[] },
-  meId?: string
+  meId?: string,
+  replyTo?: ReplyToDto | null
 ) {
   const deleted = !!m.deletedAt;
   return {
@@ -108,6 +147,7 @@ export function messageDto(
     // Borrado suave: el cuerpo desaparece, el hueco queda ("mensaje eliminado").
     body: deleted ? null : m.body,
     replyToId: m.replyToId,
+    replyTo: replyTo ?? null,
     clientId: m.clientId,
     editedAt: m.editedAt?.toISOString() ?? null,
     deleted,

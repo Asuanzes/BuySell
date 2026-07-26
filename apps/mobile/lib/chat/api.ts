@@ -5,7 +5,8 @@ import { api } from "@/lib/api";
  * Todo pasa por el helper api() (JWT automático).
  */
 
-export type ChatUser = { id: string; name: string | null; username: string | null; email: string; image: string | null };
+/** `email` solo viaja para uno mismo, contactos guardados y búsqueda exacta (privacidad). */
+export type ChatUser = { id: string; name: string | null; username: string | null; email: string | null; image: string | null };
 
 export type ChatParticipant = {
   userId: string;
@@ -48,6 +49,15 @@ export type AttachmentDto = {
   blurhash: string | null;
 };
 
+/** Snippet del mensaje citado, resuelto en el servidor (puede no estar en la página cargada). */
+export type ReplyToDto = {
+  id: string;
+  senderId: string | null;
+  kind: string;
+  body: string | null;
+  deleted: boolean;
+};
+
 export type MessageDto = {
   id: string;
   conversationId: string;
@@ -55,12 +65,15 @@ export type MessageDto = {
   kind: "TEXT" | "IMAGE" | "FILE" | "AUDIO" | "SYSTEM";
   body: string | null;
   replyToId: string | null;
+  replyTo: ReplyToDto | null;
   clientId: string | null;
   editedAt: string | null;
   deleted: boolean;
   createdAt: string;
   reactions: ReactionChip[];
   attachments: AttachmentDto[];
+  /** SOLO cliente: envío optimista que falló; se ofrece reintentar/descartar. */
+  failed?: boolean;
 };
 
 export type ChatBootstrap = {
@@ -145,11 +158,26 @@ export function stableAttachmentUrl(a: { id: string; url: string }): string {
   return a.url;
 }
 
+export type MessageSearchResult = { id: string; senderId: string | null; snippet: string; createdAt: string };
+
+/** Búsqueda de texto dentro de una conversación (20 más recientes). */
+export const searchInConversation = (conversationId: string, q: string) =>
+  api<{ results: MessageSearchResult[] }>(
+    `/api/chat/conversations/${conversationId}/messages/search?q=${encodeURIComponent(q)}`
+  ).then((d) => d.results);
+
 export const markRead = (conversationId: string) =>
   api<{ ok: true; lastReadAt: string }>(`/api/chat/conversations/${conversationId}/read`, { method: "POST" });
 
 export const deleteMessage = (messageId: string) =>
   api<MessageDto>(`/api/chat/messages/${messageId}`, { method: "DELETE" });
+
+/** Editar mensaje propio (ventana de 15 min server-side). */
+export const editMessage = (messageId: string, body: string) =>
+  api<MessageDto>(`/api/chat/messages/${messageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body }),
+  });
 
 /** Toggle de reacción (mismo emoji = quitar; otro = sustituir). */
 export const toggleReaction = (messageId: string, emoji: string) =>
@@ -167,6 +195,17 @@ export const blockUser = (userId: string) =>
 export const unblockUser = (userId: string) =>
   api("/api/chat/blocks", { method: "DELETE", body: JSON.stringify({ userId }) });
 
+export type ReportCategory = "spam" | "scam" | "harassment" | "inappropriate" | "other";
+
+/** Denunciar mensaje / conversación / usuario (moderación). */
+export const reportChat = (input: {
+  category: ReportCategory;
+  messageId?: string | null;
+  conversationId?: string | null;
+  targetUserId?: string | null;
+  comment?: string | null;
+}) => api("/api/chat/reports", { method: "POST", body: JSON.stringify(input) });
+
 export type BlockDto = { userId: string; user: ChatUser; createdAt: string };
 
 export const listBlocks = () =>
@@ -180,6 +219,13 @@ export const muteConversation = (conversationId: string, muteUntil: string | nul
   api<ConversationDto>(`/api/chat/conversations/${conversationId}`, {
     method: "PATCH",
     body: JSON.stringify({ muteUntil }),
+  });
+
+/** Fijar/desfijar en mi lista (la ordenación ya pone las fijadas primero). */
+export const setPinned = (conversationId: string, pinned: boolean) =>
+  api<ConversationDto>(`/api/chat/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ pinned }),
   });
 
 // ——— Contactos (agenda propia de la app; no se lee la agenda del teléfono) ———
@@ -200,4 +246,5 @@ export const contactDisplayName = (c: ContactDto): string =>
   c.alias?.trim() ||
   c.user.name?.trim() ||
   (c.user.username ? "@" + c.user.username : "") ||
-  c.user.email.split("@")[0];
+  c.user.email?.split("@")[0] ||
+  "—";

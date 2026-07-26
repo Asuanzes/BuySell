@@ -4,7 +4,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { avatarUrl } from "@/lib/chat/serialize";
-import { deleteObject } from "@/lib/chat/r2";
+import { deleteObject, listObjects } from "@/lib/chat/r2";
+import { NIDOKEY_BOT_ID } from "@/lib/chat/bot";
 import { isProtectedName, normalizeUsername, usernameError } from "@nidokey/shared";
 
 /** En BBDD `image` es una key de R2; hacia el cliente siempre va como URL. */
@@ -166,18 +167,34 @@ export async function DELETE() {
   await prisma.verificationToken.deleteMany({ where: { identifier: user.email } });
   await prisma.rateLimit.deleteMany({ where: { key: { contains: userId } } });
 
+  // Chat RGPD: (1) los ADJUNTOS del usuario (fotos/notas de voz) son dato
+  // personal — borrar las filas ahora (sus keys llevan el prefijo del usuario y
+  // los objetos R2 se borran por prefijo fuera del camino crítico); (2) el DM
+  // con el bot contiene su historial privado de consultas y ningún otro humano:
+  // borrarlo entero (los DMs/grupos con otras personas se conservan
+  // anonimizados, estilo WhatsApp).
+  await prisma.chatAttachment.deleteMany({ where: { message: { senderId: userId } } });
+  await prisma.conversation.deleteMany({
+    where: {
+      kind: "DIRECT",
+      participants: { some: { userId } },
+      AND: { participants: { every: { userId: { in: [userId, NIDOKEY_BOT_ID] } } } },
+    },
+  });
+
   // Usuario: la cascada borra sesiones, ApiToken, devices, contactos, bloqueos,
   // participaciones de chat, reacciones, direcciones, suscripción y perfiles
   // courier/staff.
   await prisma.user.delete({ where: { id: userId } });
 
-  // Avatar en R2 fuera del camino crítico (el cron de huérfanos es la red).
+  // R2 fuera del camino crítico: avatar + TODOS los objetos de chat del usuario
+  // (prefijo chat/u/<userId>/). El cron de huérfanos es la red de seguridad.
   const image = user.image;
-  if (image && image.startsWith("avatars/")) {
-    after(async () => {
-      await deleteObject(image);
-    });
-  }
+  after(async () => {
+    if (image && image.startsWith("avatars/")) await deleteObject(image);
+    const objects = await listObjects(`chat/u/${userId}/`);
+    await Promise.allSettled(objects.map((o) => deleteObject(o.key)));
+  });
 
   // Limitación documentada: el JWT móvil es stateless y no se puede revocar;
   // tras el borrado resuelve a un usuario inexistente (lecturas vacías, 4xx).

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
@@ -6,6 +6,8 @@ import { CHAT_LIMITS } from "@/lib/chat/config";
 import { getParticipantOrNull } from "@/lib/chat/guard";
 import { messagePreview, sanitizeMessageBody } from "@/lib/chat/util";
 import { messageDto } from "@/lib/chat/serialize";
+import { notifyConversation } from "@/lib/chat/gateway";
+import { deleteObject } from "@/lib/chat/r2";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -60,6 +62,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     });
   }
 
+  // Tiempo real: sin este aviso, los demás solo verían la edición en el
+  // siguiente poll lento (30-60 s con el socket abierto).
+  after(() => notifyConversation(m.conversationId, userId));
+
   return NextResponse.json(messageDto(updated));
 }
 
@@ -80,10 +86,38 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Borrado REAL, no solo la marca: el cuerpo sale de la BBDD y los adjuntos
+  // de R2 (la expectativa del usuario al "eliminar" es que desaparezca, no que
+  // quede oculto para siempre — la retención por defecto es infinita).
   const deleted = await prisma.chatMessage.update({
     where: { id },
-    data: { deletedAt: new Date() },
+    data: { deletedAt: new Date(), body: null },
     include: { attachments: true },
   });
+  if (deleted.attachments.length > 0) {
+    await prisma.chatAttachment.deleteMany({ where: { messageId: id } });
+    after(() =>
+      Promise.allSettled(
+        deleted.attachments
+          .filter((a) => !/^https?:\/\//i.test(a.url)) // solo keys de R2, no URLs legacy
+          .map((a) => deleteObject(a.url))
+      )
+    );
+  }
+
+  // Si era el último mensaje, que la lista no siga enseñando su contenido.
+  const conv = await prisma.conversation.findUnique({
+    where: { id: m.conversationId },
+    select: { lastMessageAt: true },
+  });
+  if (conv?.lastMessageAt && conv.lastMessageAt.getTime() === m.createdAt.getTime()) {
+    await prisma.conversation.update({
+      where: { id: m.conversationId },
+      data: { lastMessagePreview: "🚫 Mensaje eliminado" },
+    });
+  }
+
+  after(() => notifyConversation(m.conversationId, userId));
+
   return NextResponse.json(messageDto(deleted));
 }

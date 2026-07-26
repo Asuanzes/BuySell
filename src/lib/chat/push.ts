@@ -40,7 +40,28 @@ export async function sendChatPush(message: ChatMessage): Promise<void> {
   });
   if (!conversation || conversation.participants.length === 0) return;
 
-  const recipientIds = conversation.participants.map((p) => p.user.id);
+  let recipientIds = conversation.participants.map((p) => p.user.id);
+
+  // Bloqueos: en DIRECT el envío ya está vetado antes, pero en GRUPOS el
+  // mensaje sí se persiste — lo que NO debe pasar es que el bloqueado haga
+  // sonar el móvil del bloqueador (ni al revés).
+  if (recipientIds.length > 0) {
+    const blocks = await prisma.userBlock.findMany({
+      where: {
+        OR: [
+          { blockerId: { in: recipientIds }, blockedId: message.senderId },
+          { blockerId: message.senderId, blockedId: { in: recipientIds } },
+        ],
+      },
+      select: { blockerId: true, blockedId: true },
+    });
+    if (blocks.length > 0) {
+      const excluded = new Set(blocks.flatMap((b) => [b.blockerId, b.blockedId]));
+      recipientIds = recipientIds.filter((uid) => !excluded.has(uid));
+    }
+  }
+  if (recipientIds.length === 0) return;
+
   const tokens = await pushableTokens(recipientIds, "chat");
   if (tokens.length === 0) return;
 

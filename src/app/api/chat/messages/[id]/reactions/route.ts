@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { getParticipantOrNull } from "@/lib/chat/guard";
 import { aggregateReactions } from "@/lib/chat/serialize";
+import { notifyConversation } from "@/lib/chat/gateway";
+import { rateLimit } from "@/lib/rate-limit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -25,6 +27,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const parsed = Input.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { emoji } = parsed.data;
+
+  // Cada toggle son 2-3 queries contra Neon: mismo tope de ráfaga que mensajes.
+  const limit = await rateLimit("chat-react", userId, { limit: 60, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Demasiadas reacciones, espera un momento" }, { status: 429 });
+  }
 
   const message = await prisma.chatMessage.findUnique({
     where: { id },
@@ -55,5 +63,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     where: { messageId: id },
     select: { emoji: true, userId: true },
   });
+
+  // Tiempo real: que la reacción aparezca en el otro lado sin esperar al poll.
+  after(() => notifyConversation(message.conversationId, userId));
+
   return NextResponse.json({ reactions: aggregateReactions(rows, userId) });
 }

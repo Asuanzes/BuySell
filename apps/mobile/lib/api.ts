@@ -38,7 +38,15 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiOptions = RequestInit & { skipAuth?: boolean };
+export type ApiOptions = RequestInit & { skipAuth?: boolean; timeoutMs?: number };
+
+/**
+ * Timeout por defecto de toda petición. Sin él, un POST sobre red móvil
+ * degradada puede colgar minutos y dejar la UI en "enviando…" para siempre
+ * (P1 de la auditoría del chat). AbortController manual: Hermes no trae
+ * AbortSignal.timeout.
+ */
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 /**
  * Construye el header Authorization con el JWT móvil emitido por el servidor.
@@ -54,16 +62,28 @@ async function authHeader(): Promise<{ Authorization?: string }> {
 }
 
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
-  const { skipAuth, headers, ...rest } = opts;
+  const { skipAuth, headers, timeoutMs, ...rest } = opts;
   const auth = skipAuth ? {} : await authHeader();
-  const res = await fetch(`${API_URL}${path}`, {
-    ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      ...auth,
-      ...(headers as Record<string, string> | undefined),
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...rest,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...auth,
+        ...(headers as Record<string, string> | undefined),
+      },
+    });
+  } catch (e) {
+    // Abort → error entendible (el caller lo enseña tal cual al usuario).
+    if (controller.signal.aborted) throw new ApiError(0, "Sin respuesta del servidor, reintenta", null);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   const text = await res.text();
   let body: unknown = text;
   try { body = JSON.parse(text); } catch { /* not json */ }

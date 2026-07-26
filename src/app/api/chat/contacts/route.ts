@@ -16,7 +16,8 @@ function contactDto(c: {
   return {
     userId: c.contactUserId,
     alias: c.alias,
-    user: userDto(c.contactUser),
+    // withEmail: son MIS contactos guardados (los añadí conociendo su dato).
+    user: userDto(c.contactUser, { withEmail: true }),
     createdAt: c.createdAt.toISOString(),
   };
 }

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { isReasonablePriceChange } from "@nidokey/shared";
 import { logImportEvent } from "@/lib/import-log";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
+import { notifyLinkedConversations } from "@/lib/chat/context-events";
 import type { PortalAdapter, ScrapeOutcome } from "./types";
 import { idealistaAdapter } from "./adapters/idealista";
 import { fotocasaAdapter } from "./adapters/fotocasa";
@@ -82,6 +83,12 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
     // El anuncio desapareció: dispara las alertas de cambio de estado (que
     // siempre se guardan con field "price", ver la API de alertas).
     await evaluateAlerts("property", listing.propertyId, "price", {
+      oldCents: listing.lastPrice,
+      newCents: listing.lastPrice,
+      status: "REMOVED",
+    });
+    // Conversaciones vinculadas al inmueble: mensaje SYSTEM "ha desaparecido".
+    await notifyLinkedConversations("property", listing.propertyId, {
       oldCents: listing.lastPrice,
       newCents: listing.lastPrice,
       status: "REMOVED",
@@ -168,6 +175,13 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
       oldCents: previousPrice,
       newCents: r.price,
       status: newStatus,
+    });
+    // Conversaciones vinculadas: cambio de precio/renta o vendido, en el hilo.
+    await notifyLinkedConversations("property", listing.propertyId, {
+      oldCents: previousPrice,
+      newCents: r.price,
+      status: newStatus,
+      isRent,
     });
   }
 

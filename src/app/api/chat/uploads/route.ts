@@ -2,8 +2,9 @@ import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUserId } from "@/lib/auth-helpers";
-import { allowedMimesFor, CHAT_FLAGS, CHAT_LIMITS } from "@/lib/chat/config";
+import { allowedMimesFor, CHAT_FLAGS, maxAttachmentBytes } from "@/lib/chat/config";
 import { presignPut, r2Enabled } from "@/lib/chat/r2";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/chat/uploads — presigned PUT a R2 para un adjunto del chat.
@@ -41,21 +42,17 @@ const Input = z.object({
   fileName: z.string().trim().max(180).optional().nullable(),
 });
 
-function maxBytesFor(kind: "IMAGE" | "FILE" | "AUDIO"): number {
-  const mb =
-    kind === "IMAGE"
-      ? CHAT_LIMITS.maxAttachmentMbImage
-      : kind === "AUDIO"
-        ? CHAT_LIMITS.maxAttachmentMbAudio
-        : CHAT_LIMITS.maxAttachmentMbFile;
-  return mb * 1024 * 1024;
-}
-
 export async function POST(req: NextRequest) {
   const userId = await requireUserId();
 
   if (!r2Enabled()) {
     return NextResponse.json({ error: "Adjuntos no disponibles (R2 sin configurar)" }, { status: 503 });
+  }
+
+  // Cuota: cada presign puede acabar en un objeto que vive días en R2 (coste).
+  const limit = await rateLimit("chat-upload", userId, { limit: 120, windowMs: 3600_000 });
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Demasiadas subidas, espera un rato" }, { status: 429 });
   }
   const parsed = Input.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -71,17 +68,18 @@ export async function POST(req: NextRequest) {
   if (!allowedMimesFor(kind).includes(mimeLc)) {
     return NextResponse.json({ error: `Tipo no admitido (${mimeLc})` }, { status: 400 });
   }
-  if (sizeBytes > maxBytesFor(kind)) {
+  if (sizeBytes > maxAttachmentBytes(kind)) {
     return NextResponse.json({ error: "Archivo demasiado grande" }, { status: 413 });
   }
 
-  // Extensión por MIME; si no, por el nombre original; si no, "bin".
-  const ext =
-    EXT_BY_MIME[mimeLc] ??
-    (fileName?.includes(".") ? fileName.split(".").pop()!.toLowerCase().slice(0, 8) : null) ??
-    "bin";
+  // Extensión por MIME; si no, por el nombre original SANEADA (solo [a-z0-9]:
+  // un fileName "x.a/b" no debe crear pseudo-directorios en la key); si no, "bin".
+  const fromName = fileName?.includes(".")
+    ? fileName.split(".").pop()!.toLowerCase().slice(0, 8).replace(/[^a-z0-9]/g, "")
+    : "";
+  const ext = EXT_BY_MIME[mimeLc] ?? (fromName || "bin");
   const key = `chat/u/${userId}/${Date.now().toString(36)}${randomBytes(8).toString("hex")}.${ext}`;
 
   const uploadUrl = await presignPut(key, mimeLc);
-  return NextResponse.json({ key, uploadUrl, maxBytes: maxBytesFor(kind) }, { status: 201 });
+  return NextResponse.json({ key, uploadUrl, maxBytes: maxAttachmentBytes(kind) }, { status: 201 });
 }

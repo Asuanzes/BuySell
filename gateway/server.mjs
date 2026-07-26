@@ -40,6 +40,11 @@ const MAX_SOCKETS_PER_USER = 8;
 // Backpressure: si el buffer TCP de un cliente lento acumula más de esto, se
 // termina el socket (el cliente reconecta o cae a polling) en vez de crecer en RAM.
 const MAX_BUFFERED_BYTES = 64 * 1024;
+// Frames entrantes: un cliente legítimo manda subscribe + typing esporádicos.
+// Más de esto por ventana = hostil o roto → cierre 1008 (anti-amplificación:
+// cada typing se relaya a todos los suscriptores).
+const MAX_CLIENT_MSGS_PER_WINDOW = 40;
+const CLIENT_MSG_WINDOW_MS = 10_000;
 
 if (!WS_SECRET) console.warn("[gateway] CHAT_WS_SECRET sin definir: rechazará todas las conexiones WS");
 if (!GATEWAY_SECRET) console.warn("[gateway] CHAT_GATEWAY_SECRET sin definir: rechazará todos los webhooks");
@@ -244,7 +249,9 @@ function handleNotify(body) {
 }
 
 // ── WSS: /ws?ticket=… ────────────────────────────────────────────────────────
-const wss = new WebSocketServer({ noServer: true });
+// maxPayload: el mensaje legítimo más grande (subscribe con 500 ids) ronda los
+// 35 KB; 64 KB corta los frames-bomba (el default de ws es 100 MiB).
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
 server.on("upgrade", async (req, socket, head) => {
   const url = new URL(req.url, "http://localhost");
@@ -310,7 +317,9 @@ server.on("upgrade", async (req, socket, head) => {
 async function verifyTicket(ticket) {
   if (!ticket || !WS_SECRET) return null;
   try {
-    const { payload } = await jose.jwtVerify(ticket, WS_SECRET, { issuer: WS_ISSUER });
+    // algorithms pinneado: sin esto, jose aceptaría cualquier HS* con el mismo
+    // secreto (defensa en profundidad, no explotable hoy).
+    const { payload } = await jose.jwtVerify(ticket, WS_SECRET, { issuer: WS_ISSUER, algorithms: ["HS256"] });
     return payload.sub ? String(payload.sub) : null;
   } catch {
     return null;
@@ -321,6 +330,21 @@ async function verifyTicket(ticket) {
 function onClientMessage(ws, data) {
   const m = meta.get(ws);
   if (!m) return;
+  // Rate limit de entrada por socket (ventana fija en memoria del proceso).
+  const now = Date.now();
+  if (!m.msgWindowStart || now - m.msgWindowStart > CLIENT_MSG_WINDOW_MS) {
+    m.msgWindowStart = now;
+    m.msgCount = 0;
+  }
+  if (++m.msgCount > MAX_CLIENT_MSGS_PER_WINDOW) {
+    stats.overLimitClosed++;
+    try {
+      ws.close(1008, "too many messages");
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
   let msg;
   try {
     msg = JSON.parse(data.toString());

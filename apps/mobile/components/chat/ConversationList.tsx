@@ -1,25 +1,42 @@
-import { memo, useEffect, type ReactNode } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { useQuery } from "@/lib/hooks/useQuery";
-import { listConversations, type ConversationDto } from "@/lib/chat/api";
+import {
+  leaveConversation,
+  listConversations,
+  markRead,
+  setPinned,
+  type ConversationDto,
+} from "@/lib/chat/api";
 import { chatSocket } from "@/lib/chat/socket";
 import { useSocketOpen } from "@/lib/chat/use-socket-open";
 import { categoryColor } from "@/lib/records/config";
 import type { RecordType } from "@nidokey/shared";
 import { stripRecordLinks } from "@nidokey/shared";
-import { AdBannerSlot, EmptyState } from "@/components/ui";
+import { AdBannerSlot, EmptyState, ResultModal } from "@/components/ui";
+import { ActionsSheet, type SheetOption } from "@/components/chat/ActionsSheet";
 import { VerifiedBadge, isOfficialConversation } from "@/components/chat/VerifiedBadge";
 
 /**
- * Lista de conversaciones (categoría Chat del rail). Polling suave de 20 s +
- * revalidación on-focus; la pantalla de conversación abierta usa 4 s.
+ * Lista de conversaciones (categoría Chat del rail): búsqueda, filtro de no
+ * leídos, long-press (fijar / marcar leído / eliminar) y refetch al volver del
+ * chat (sin él, el badge de no-leídos quedaba "fantasma" hasta el próximo poll).
  */
 export function ConversationList() {
   const { th, dark } = useTheme();
@@ -31,9 +48,22 @@ export function ConversationList() {
     refreshInterval: socketOpen ? 60_000 : 20_000,
   });
 
-  // Tiempo real (F3): un mensaje nuevo refresca la lista. Coalescing trailing
-  // de 500 ms: una ráfaga (grupo activo) = UN refetch, y medio segundo de
-  // retraso en la LISTA es imperceptible (la conversación abierta va aparte).
+  const [query, setQuery] = useState("");
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const [rowActions, setRowActions] = useState<ConversationDto | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState<ConversationDto | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Al VOLVER a esta pantalla (p. ej. desde una conversación recién leída),
+  // refrescar ya: el unreadCount viejo no debe sobrevivir hasta el poll.
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch])
+  );
+
+  // Tiempo real (F3): un cambio en cualquier conversación refresca la lista.
+  // Coalescing trailing de 500 ms: una ráfaga (grupo activo) = UN refetch.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const off = chatSocket.onMessageEvent(() => {
@@ -49,6 +79,66 @@ export function ConversationList() {
     };
   }, [refetch]);
 
+  const filtered = useMemo(() => {
+    let list = data ?? [];
+    if (onlyUnread) list = list.filter((c) => c.unreadCount > 0);
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.title.toLowerCase().includes(q) ||
+          (c.lastMessagePreview ?? "").toLowerCase().includes(q) ||
+          (c.context?.title ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [data, query, onlyUnread]);
+
+  async function onRowAction(o: SheetOption) {
+    const c = rowActions;
+    setRowActions(null);
+    if (!c) return;
+    try {
+      if (o.id === "pin") {
+        await setPinned(c.id, !c.pinnedAt);
+        await refetch();
+      } else if (o.id === "read") {
+        await markRead(c.id);
+        await refetch();
+      } else if (o.id === "leave") {
+        setConfirmLeave(c);
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t("chat.action_error"));
+    }
+  }
+
+  async function onLeave() {
+    const c = confirmLeave;
+    setConfirmLeave(null);
+    if (!c) return;
+    try {
+      await leaveConversation(c.id);
+      await refetch();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t("chat.action_error"));
+    }
+  }
+
+  const rowOptions: SheetOption[] = rowActions
+    ? [
+        {
+          id: "pin",
+          icon: "pin-outline",
+          label: rowActions.pinnedAt ? t("chat.menu_unpin") : t("chat.menu_pin"),
+        },
+        ...(rowActions.unreadCount > 0
+          ? [{ id: "read", icon: "checkmark-done-outline" as const, label: t("chat.menu_mark_read") }]
+          : []),
+        { id: "leave", icon: "trash-outline", label: t("chat.menu_leave"), danger: true },
+      ]
+    : [];
+
   let content: ReactNode;
   if (loading && !data) {
     content = (
@@ -56,7 +146,7 @@ export function ConversationList() {
         <ActivityIndicator color={th.primary} />
       </View>
     );
-  } else if (error) {
+  } else if (error && !data) {
     content = (
       <EmptyState
         icon="cloud-offline-outline"
@@ -80,16 +170,52 @@ export function ConversationList() {
     content = (
       <>
         {/* Hueco de anuncios sobre la lista de conversaciones. Inerte mientras
-            `adsEnabled` esté apagado — el componente devuelve null y la lista
-            ocupa exactamente el espacio de antes. */}
+            `adsEnabled` esté apagado. */}
         <AdBannerSlot />
-        <FlatList
-          data={data ?? []}
-          keyExtractor={(c) => c.id}
-          renderItem={({ item }) => <Row c={item} dark={dark} />}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={th.primary} />}
-        />
+
+        {/* Búsqueda + filtro no leídos */}
+        <View style={styles.toolsRow}>
+          <View style={[styles.searchBox, { backgroundColor: th.surface, borderColor: th.border }]}>
+            <Ionicons name="search-outline" size={16} color={th.textSubtle} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder={t("chat.list_search_placeholder")}
+              placeholderTextColor={th.textSubtle}
+              accessibilityLabel={t("chat.list_search_placeholder")}
+              style={[styles.searchInput, { color: th.text }]}
+            />
+            {query.length > 0 && (
+              <Pressable onPress={() => setQuery("")} hitSlop={8} accessibilityRole="button" accessibilityLabel={t("common.cancel")}>
+                <Ionicons name="close-circle" size={16} color={th.textSubtle} />
+              </Pressable>
+            )}
+          </View>
+          <Pressable
+            onPress={() => setOnlyUnread((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: onlyUnread }}
+            accessibilityLabel={t("chat.filter_unread")}
+            style={[
+              styles.unreadFilter,
+              { borderColor: onlyUnread ? th.primary : th.border, backgroundColor: onlyUnread ? th.primarySoft : th.surface },
+            ]}
+          >
+            <Ionicons name="mail-unread-outline" size={16} color={onlyUnread ? th.primary : th.textMuted} />
+          </Pressable>
+        </View>
+
+        {filtered.length === 0 ? (
+          <EmptyState icon="search-outline" title={t("chat.no_results")} />
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(c) => c.id}
+            renderItem={({ item }) => <Row c={item} dark={dark} onLongPress={() => setRowActions(item)} />}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={th.primary} />}
+          />
+        )}
         <View style={styles.fabWrap} pointerEvents="box-none">
           <Pressable
             onPress={() => router.push("/chat/contacts" as never)}
@@ -112,13 +238,39 @@ export function ConversationList() {
             <Ionicons name="create-outline" size={22} color="#fff" />
           </Pressable>
         </View>
+
+        <ActionsSheet
+          visible={!!rowActions}
+          title={rowActions?.title ?? ""}
+          options={rowOptions}
+          onSelect={(o) => void onRowAction(o)}
+          onClose={() => setRowActions(null)}
+        />
+        <ResultModal
+          visible={!!confirmLeave}
+          tone="error"
+          icon="trash-outline"
+          title={t("chat.leave_confirm_title")}
+          message={t("chat.leave_confirm_message")}
+          actions={[
+            { label: t("common.delete"), variant: "danger", onPress: () => void onLeave() },
+            { label: t("common.cancel"), variant: "ghost", onPress: () => setConfirmLeave(null) },
+          ]}
+          onRequestClose={() => setConfirmLeave(null)}
+        />
+        <ResultModal
+          visible={!!actionError}
+          tone="error"
+          title={t("chat.action_error")}
+          message={actionError ?? undefined}
+          actions={[{ label: t("common.understood"), onPress: () => setActionError(null) }]}
+          onRequestClose={() => setActionError(null)}
+        />
       </>
     );
   }
 
-  // Sin fondo propio: el <Screen background> padre pinta el fondo dinámico
-  // (dunas/ondas con movimiento). Esta vista es transparente para que se vea
-  // (antes un wallpaper estático rotativo lo tapaba).
+  // Sin fondo propio: el <Screen background> padre pinta el fondo dinámico.
   return <View style={styles.fill}>{content}</View>;
 }
 
@@ -145,15 +297,20 @@ const Row = memo(RowInner, (prev, next) => {
   );
 });
 
-function RowInner({ c, dark }: { c: ConversationDto; dark: boolean }) {
+function RowInner({ c, dark, onLongPress }: { c: ConversationDto; dark: boolean; onLongPress: () => void }) {
   const { th } = useTheme();
   const { t, i18n } = useTranslation();
   const accent = c.contextType ? categoryColor(c.contextType as RecordType, dark) : null;
   const official = isOfficialConversation(c);
+  const muted = !!c.muteUntil && new Date(c.muteUntil) > new Date();
 
   return (
     <Pressable
       onPress={() => router.push(`/chat/${c.id}` as never)}
+      onLongPress={onLongPress}
+      delayLongPress={350}
+      accessibilityRole="button"
+      accessibilityLabel={c.title}
       style={({ pressed }) => [
         styles.row,
         { backgroundColor: th.surface, borderColor: th.border },
@@ -168,6 +325,8 @@ function RowInner({ c, dark }: { c: ConversationDto; dark: boolean }) {
               {c.title}
             </Text>
             {official && <VerifiedBadge size={14} />}
+            {c.pinnedAt && <Ionicons name="pin" size={12} color={th.textSubtle} />}
+            {muted && <Ionicons name="notifications-off-outline" size={12} color={th.textSubtle} />}
           </View>
           {c.lastMessageAt && (
             <Text style={[styles.rowTime, { color: th.textSubtle }]}>{chatTime(c.lastMessageAt, i18n.language)}</Text>
@@ -255,6 +414,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  toolsRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 10 },
+  searchBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
+  searchInput: { flex: 1, paddingVertical: 7, fontSize: 13 },
+  unreadFilter: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   list: { padding: 12, paddingBottom: 90 },
   row: {
     flexDirection: "row",

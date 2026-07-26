@@ -84,7 +84,7 @@ export function ContactsList({
         }
         renderItem={({ item }) => {
           const name = contactDisplayName(item);
-          const secondary = item.user.username ? "@" + item.user.username : item.user.email;
+          const secondary = item.user.username ? "@" + item.user.username : item.user.email ?? "";
           return (
             <Pressable
               onPress={() => onStartChat(item.userId)}
