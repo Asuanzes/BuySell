@@ -389,7 +389,7 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
             accessibilityRole="button"
             accessibilityLabel={t("share.action")}
           >
-            <Ionicons name="person-add-outline" size={22} color={th.primary} />
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color={th.primary} />
           </Pressable>
           <Pressable
             onPress={onShare}

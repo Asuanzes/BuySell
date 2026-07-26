@@ -62,7 +62,7 @@ import {
   type PickedAttachment,
 } from "@/lib/chat/media";
 import { Avatar, chatTime } from "@/components/chat/ConversationList";
-import { categoryColor } from "@/lib/records/config";
+import { categoryColor, RECORD_TYPE_CONFIG } from "@/lib/records/config";
 import type { RecordType } from "@nidokey/shared";
 import { ActionsSheet, type SheetOption } from "@/components/chat/ActionsSheet";
 import { MessageActionsSheet, type MessageAction } from "@/components/chat/MessageSheet";
@@ -1400,19 +1400,10 @@ function SearchInChatModal({
   );
 }
 
-/** Icono por categoría para la tarjeta de registro (fallback sin imagen). */
-const CARD_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  property: "home-outline",
-  crypto: "logo-bitcoin",
-  market: "trending-up-outline",
-  book: "book-outline",
-  job: "briefcase-outline",
-  holiday: "airplane-outline",
-};
-
 /**
- * Tarjeta RICA de registro compartido dentro de una burbuja: acento y datos
- * por categoría, tap → ficha del registro. Si el registro ya no existe (o su
+ * Tarjeta RICA de registro compartido dentro de una burbuja: acento, ICONO
+ * OFICIAL de la categoría (RECORD_TYPE_CONFIG, la misma fuente que el rail) y
+ * datos por tipo; tap → ficha del registro. Si el registro ya no existe (o su
  * dueño dejó la conversación), tarjeta atenuada sin navegación.
  */
 function RecordCardBubble({
@@ -1429,7 +1420,7 @@ function RecordCardBubble({
   const { th } = useTheme();
   const { t } = useTranslation();
   const accent = categoryColor(type as RecordType, dark) ?? th.primary;
-  const icon = CARD_ICONS[type] ?? "bookmark-outline";
+  const icon: keyof typeof Ionicons.glyphMap = RECORD_TYPE_CONFIG[type as RecordType]?.icon ?? "bookmark-outline";
 
   if (!card) {
     return (
@@ -1479,10 +1470,14 @@ function RecordCardBubble({
           </Text>
         )}
         <View style={styles.recordCardFooter}>
-          <Ionicons name={icon} size={11} color={accent} />
           <Text style={[styles.recordCardOpen, { color: accent }]}>{t("chat.record_open")}</Text>
           <Ionicons name="chevron-forward" size={11} color={accent} />
         </View>
+      </View>
+      {/* Badge con el ICONO oficial de la categoría (siempre visible, con o
+          sin imagen): identifica el tipo de un vistazo, como en el rail. */}
+      <View style={[styles.recordCardBadge, { backgroundColor: accent + "22" }]}>
+        <Ionicons name={icon} size={15} color={accent} />
       </View>
     </Pressable>
   );
@@ -1925,6 +1920,14 @@ const styles = StyleSheet.create({
   recordCardMeta: { fontSize: 12, fontFamily: fonts.bodyMedium },
   recordCardFooter: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 },
   recordCardOpen: { fontSize: 11, fontFamily: fonts.bodyMedium },
+  recordCardBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
   // Búsqueda en el chat
   searchResultRow: {
     borderWidth: 1,

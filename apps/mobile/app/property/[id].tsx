@@ -255,7 +255,7 @@ export default function PropertyDetailScreen() {
         <View style={styles.actionsRow}>
           <ActionBtn icon="construct-outline" label={t("detail.property.tools_title")} onPress={() => setSheetOpen(true)} />
           <ActionBtn icon="share-social-outline" label={t("common.share")} onPress={nativeShare} />
-          <ActionBtn icon="person-add-outline" label={t("share.action")} onPress={() => setShareOpen(true)} />
+          <ActionBtn icon="chatbubble-ellipses-outline" label={t("share.action")} onPress={() => setShareOpen(true)} />
           <ActionBtn icon="create-outline" label={t("common.edit")} onPress={() => router.push(`/property/form?id=${p.id}` as never)} />
         </View>
 
