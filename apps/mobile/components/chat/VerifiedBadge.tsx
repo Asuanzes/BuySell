@@ -13,11 +13,18 @@ export function isOfficialUsername(username?: string | null): boolean {
   return username === OFFICIAL_USERNAME;
 }
 
-/** ¿La conversación es el DM con la cuenta oficial? (alguno de sus participantes es el bot). */
+/**
+ * ¿La conversación es el DM con la cuenta oficial?
+ *
+ * SOLO en DIRECT: en un grupo, cualquiera podría meter al bot y su chat se
+ * pintaría con el sello de verificado (suplantación por composición). El filtro
+ * anti-suplantación del título del grupo no cubre esto.
+ */
 export function isOfficialConversation(
-  c?: { participants?: { user: { username: string | null } }[] } | null,
+  c?: { kind?: string; participants?: { user: { username: string | null } }[] } | null,
 ): boolean {
-  return !!c?.participants?.some((p) => isOfficialUsername(p.user.username));
+  if (c?.kind !== "DIRECT") return false;
+  return !!c.participants?.some((p) => isOfficialUsername(p.user.username));
 }
 
 export function VerifiedBadge({ size = 15 }: { size?: number }) {

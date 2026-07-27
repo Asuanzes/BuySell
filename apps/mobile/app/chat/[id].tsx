@@ -968,6 +968,7 @@ export default function ChatScreen() {
                 quoteName={item.m.replyTo ? nameOf(item.m.replyTo.senderId) : null}
                 otherReadAt={otherReadAt}
                 otherDeliveredAt={otherDeliveredAt}
+                showTicks={!isGroup}
                 onLongPress={() => {
                   if (item.m.kind !== "SYSTEM" && !item.m.deleted) {
                     if (item.m.failed) setFailedActions(item.m);
@@ -1631,6 +1632,7 @@ const Bubble = memo(BubbleInner, (prev, next) => {
   if ((a.context?.meta ?? null) !== (b.context?.meta ?? null) || (a.context?.subtitle ?? null) !== (b.context?.subtitle ?? null))
     return false;
   if (prev.otherReadAt !== next.otherReadAt || prev.otherDeliveredAt !== next.otherDeliveredAt) return false;
+  if (prev.showTicks !== next.showTicks) return false;
   if (!reactionsEq(a.reactions, b.reactions)) return false;
   if (a.attachments.length !== b.attachments.length) return false;
   for (let i = 0; i < a.attachments.length; i++) {
@@ -1648,6 +1650,7 @@ function BubbleInner({
   quoteName,
   otherReadAt,
   otherDeliveredAt,
+  showTicks,
   onLongPress,
   onPressFailed,
   onPressQuote,
@@ -1664,6 +1667,9 @@ function BubbleInner({
   quoteName: string | null;
   otherReadAt: string | null;
   otherDeliveredAt: string | null;
+  /** false en GRUPOS: no hay recibos por miembro, y sin esto todo mi historial
+   *  se quedaba con un ✓ gris permanente (leído como "no entregado"). */
+  showTicks: boolean;
   onLongPress: () => void;
   onPressFailed: () => void;
   onPressQuote: () => void;
@@ -1685,7 +1691,7 @@ function BubbleInner({
   // Ticks de estado (solo mis mensajes, solo DIRECT): ✓ enviado, ✓✓ entregado,
   // ✓✓ azul leído. Derivado de lastReadAt/lastDeliveredAt del otro (sin filas).
   let tick: { icon: "checkmark" | "checkmark-done"; color: string } | null = null;
-  if (mine && !m.id.startsWith("tmp_")) {
+  if (mine && showTicks && !m.id.startsWith("tmp_")) {
     const read = otherReadAt && m.createdAt <= otherReadAt;
     const delivered = otherDeliveredAt && m.createdAt <= otherDeliveredAt;
     tick = read

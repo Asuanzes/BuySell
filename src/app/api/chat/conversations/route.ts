@@ -4,8 +4,10 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { CHAT_FLAGS, CHAT_LIMITS } from "@/lib/chat/config";
 import { anyBlockBetween } from "@/lib/chat/guard";
-import { directKey } from "@/lib/chat/util";
-import { conversationDto } from "@/lib/chat/serialize";
+import { directKey, truncateSafe } from "@/lib/chat/util";
+import { conversationDto, displayName } from "@/lib/chat/serialize";
+import { notifyConversation } from "@/lib/chat/gateway";
+import { sendChatPush } from "@/lib/chat/push";
 import { unreadByConversation } from "@/lib/chat/unread";
 import { ensureBotDm } from "@/lib/chat/bot";
 import { recordOwnerId } from "@/lib/chat/context";
@@ -217,5 +219,44 @@ export async function POST(req: NextRequest) {
     },
     include: PARTICIPANT_INCLUDE,
   });
+
+  // Un grupo recién creado no tiene mensajes: `lastMessageAt` null lo manda al
+  // FONDO de la lista de todos los invitados, sin preview y sin avisar a nadie
+  // (no hay push de "te han añadido"). El mensaje SYSTEM lo sube arriba, da
+  // preview y dispara el refresco en tiempo real. El renderer de SYSTEM ya
+  // existe en el cliente; aquí solo falta el productor.
+  after(async () => {
+    try {
+      const me = created.participants.find((p) => p.userId === userId)?.user;
+      const body = truncateSafe(
+        `👥 ${me ? displayName(me) : "Alguien"} creó el grupo «${created.title ?? "Grupo"}».`,
+        140
+      );
+      const now = new Date();
+      // senderId = EL CREADOR, no null. Con null el invitado no se enteraba de
+      // nada: `unreadByConversation` filtra `senderId <> userId` y en SQL
+      // `NULL <> 'x'` no es TRUE (el mensaje nunca contaba como no-leído), y
+      // `sendChatPush` hace early-return sin remitente. Con el creador como
+      // autor cuenta para los invitados, NO para él, y el push sale con el
+      // nombre del grupo. El renderer de SYSTEM ignora el remitente.
+      const [msg] = await prisma.$transaction([
+        prisma.chatMessage.create({
+          data: { conversationId: created.id, senderId: userId, kind: "SYSTEM", body },
+        }),
+        prisma.conversation.update({
+          where: { id: created.id },
+          data: { lastMessageAt: now, lastMessagePreview: body },
+        }),
+      ]);
+      await Promise.allSettled([
+        sendChatPush(msg),
+        // actorId "system" no coincide con ningún participante → refetch para todos.
+        notifyConversation(created.id, "system"),
+      ]);
+    } catch (e) {
+      console.error("[chat] mensaje de creación de grupo:", e);
+    }
+  });
+
   return NextResponse.json(conversationDto(created, userId), { status: 201 });
 }

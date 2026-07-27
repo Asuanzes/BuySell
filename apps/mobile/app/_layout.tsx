@@ -393,6 +393,17 @@ function AuthGate() {
             }}
           />
           <Stack.Screen
+            name="chat/new-group"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("chat.new_group"),
+            }}
+          />
+          <Stack.Screen
             name="chat/contacts"
             options={{
               headerShown: true,

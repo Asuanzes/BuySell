@@ -788,7 +788,17 @@
     "upload_error": "No se pudo enviar el adjunto",
     "blocked_title": "Usuarios bloqueados",
     "blocked_empty_title": "Nadie bloqueado",
-    "blocked_empty_desc": "Cuando bloquees a alguien desde un chat aparecerá aquí."
+    "blocked_empty_desc": "Cuando bloquees a alguien desde un chat aparecerá aquí.",
+    "new_group": "Nuevo grupo",
+    "group_name_placeholder": "Nombre del grupo",
+    "group_name_taken": "Ese nombre no está disponible",
+    "group_hint": "Busca por @usuario o email exacto para añadir a alguien.",
+    "group_create": "Crear grupo",
+    "group_create_error": "No se pudo crear el grupo",
+    "group_max_reached": "Máximo {{count}} participantes",
+    "group_leave": "Salir del grupo",
+    "group_leave_action": "Salir",
+    "group_leave_message": "Dejarás de recibir sus mensajes y no podrás volver a entrar por tu cuenta: alguien del grupo tendría que añadirte otra vez."
   },
   "food": {
     "home": "Comida",

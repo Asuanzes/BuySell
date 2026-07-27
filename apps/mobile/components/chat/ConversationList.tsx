@@ -135,7 +135,11 @@ export function ConversationList() {
         ...(rowActions.unreadCount > 0
           ? [{ id: "read", icon: "checkmark-done-outline" as const, label: t("chat.menu_mark_read") }]
           : []),
-        { id: "leave", icon: "trash-outline", label: t("chat.menu_leave"), danger: true },
+        // En grupo NO es "eliminar de mi lista": salir es definitivo (todavía
+        // no hay endpoint para re-invitar), así que el copy tiene que decirlo.
+        rowActions.kind === "GROUP"
+          ? { id: "leave", icon: "exit-outline", label: t("chat.group_leave"), danger: true }
+          : { id: "leave", icon: "trash-outline", label: t("chat.menu_leave"), danger: true },
       ]
     : [];
 
@@ -249,11 +253,17 @@ export function ConversationList() {
         <ResultModal
           visible={!!confirmLeave}
           tone="error"
-          icon="trash-outline"
-          title={t("chat.leave_confirm_title")}
-          message={t("chat.leave_confirm_message")}
+          icon={confirmLeave?.kind === "GROUP" ? "exit-outline" : "trash-outline"}
+          title={confirmLeave?.kind === "GROUP" ? t("chat.group_leave") : t("chat.leave_confirm_title")}
+          message={
+            confirmLeave?.kind === "GROUP" ? t("chat.group_leave_message") : t("chat.leave_confirm_message")
+          }
           actions={[
-            { label: t("common.delete"), variant: "danger", onPress: () => void onLeave() },
+            {
+              label: confirmLeave?.kind === "GROUP" ? t("chat.group_leave_action") : t("common.delete"),
+              variant: "danger",
+              onPress: () => void onLeave(),
+            },
             { label: t("common.cancel"), variant: "ghost", onPress: () => setConfirmLeave(null) },
           ]}
           onRequestClose={() => setConfirmLeave(null)}

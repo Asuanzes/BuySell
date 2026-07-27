@@ -8,6 +8,7 @@ import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { useQuery } from "@/lib/hooks/useQuery";
 import {
+  chatBootstrap,
   createConversation,
   listContacts,
   saveContact,
@@ -34,11 +35,13 @@ export default function NewChatScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: contacts, refetch: refetchContacts } = useQuery(listContacts, []);
+  const { data: boot } = useQuery(chatBootstrap, [], { revalidateOnFocus: false });
 
   useEffect(() => {
     const query = q.trim();
     if (query.length < 3) {
       setResults(null);
+      setSearching(false); // borrar hasta <3 caracteres dejaba el spinner girando
       return;
     }
     setSearching(true);
@@ -83,6 +86,25 @@ export default function NewChatScreen() {
   return (
     <View style={[styles.container, { backgroundColor: th.bg }]}>
       <Stack.Screen options={{ title: t("chat.new_chat") }} />
+
+      {/* Grupos: entrada arriba del buscador (patrón WhatsApp/Telegram). Oculta
+          si el servidor los tiene apagados — si no, el usuario acabaría en un
+          403 "Grupos desactivados" después de elegir a todo el mundo. */}
+      {boot?.flags.groups !== false && (
+        <Pressable
+          onPress={() => router.push("/chat/new-group" as never)}
+          accessibilityRole="button"
+          accessibilityLabel={t("chat.new_group")}
+          style={({ pressed }) => [styles.groupRow, pressed && { opacity: 0.7 }]}
+        >
+          <View style={[styles.groupIcon, { backgroundColor: th.primarySoft }]}>
+            <Ionicons name="people-outline" size={20} color={th.primary} />
+          </View>
+          <Text style={[styles.groupLabel, { color: th.text }]}>{t("chat.new_group")}</Text>
+          <Ionicons name="chevron-forward" size={16} color={th.textSubtle} />
+        </Pressable>
+      )}
+
       <View style={[styles.searchBox, { backgroundColor: th.surface, borderColor: th.border }]}>
         <Ionicons name="search" size={16} color={th.textSubtle} />
         <TextInput
@@ -194,6 +216,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   searchInput: { flex: 1, fontSize: 14, padding: 0 },
+  groupRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingTop: 14 },
+  groupIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  groupLabel: { flex: 1, fontSize: 15, fontFamily: fonts.bodySemibold },
   hint: { fontSize: 12, textAlign: "center", marginTop: 8, paddingHorizontal: 24 },
   list: { paddingHorizontal: 12, paddingBottom: 24 },
   row: {

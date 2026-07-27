@@ -788,7 +788,17 @@
     "upload_error": "The attachment could not be sent",
     "blocked_title": "Blocked users",
     "blocked_empty_title": "Nobody blocked",
-    "blocked_empty_desc": "When you block someone from a chat they will show up here."
+    "blocked_empty_desc": "When you block someone from a chat they will show up here.",
+    "new_group": "New group",
+    "group_name_placeholder": "Group name",
+    "group_name_taken": "That name isn't available",
+    "group_hint": "Search by exact @username or email to add someone.",
+    "group_create": "Create group",
+    "group_create_error": "Couldn't create the group",
+    "group_max_reached": "Maximum {{count}} participants",
+    "group_leave": "Leave group",
+    "group_leave_action": "Leave",
+    "group_leave_message": "You'll stop receiving its messages and you won't be able to rejoin on your own: someone in the group would have to add you again."
   },
   "food": {
     "home": "Food",

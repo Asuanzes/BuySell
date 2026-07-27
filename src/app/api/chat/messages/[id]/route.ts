@@ -33,6 +33,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   const { m } = found;
 
   if (m.senderId !== userId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Los eventos del sistema tienen autor (el que los provocó) para que cuenten
+  // como no-leídos y disparen push, pero NO son suyos para editarlos.
+  if (m.kind === "SYSTEM") return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (m.deletedAt) return NextResponse.json({ error: "Mensaje eliminado" }, { status: 409 });
   const ageMin = (Date.now() - m.createdAt.getTime()) / 60000;
   if (ageMin > CHAT_LIMITS.editWindowMin) {
