@@ -4,6 +4,7 @@ import type { RecordType } from "@nidokey/shared";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { propertyToBaseRecord, cryptoToBaseRecord, marketToBaseRecord, jobToBaseRecord, bookToBaseRecord, holidayToBaseRecord } from "@/lib/records/mapper";
+import { deleteRecordShares, sharedAccess } from "@/lib/records/access";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -20,11 +21,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const ownerId = await requireUserId();
   const type = (req.nextUrl.searchParams.get("type") ?? "property") as RecordType;
 
-  // ¿Me lo han compartido? Si sí, abro en SOLO LECTURA sin filtrar por ownerId,
-  // pero acotado a ESTE id concreto que el RecordShare me autoriza.
-  const share = await prisma.recordShare.findUnique({
-    where: { recordType_recordId_toUserId: { recordType: type, recordId: id, toUserId: ownerId } },
-  });
+  // ¿Me lo han compartido (y sigue vigente)? Si sí, abro en SOLO LECTURA sin
+  // filtrar por ownerId, pero acotado a ESTE id que el RecordShare autoriza.
+  const share = await sharedAccess(type, id, ownerId);
   const where = share ? { id } : { id, ownerId };
   const extra = share ? { shared: true, readOnly: true } : {};
 
@@ -102,38 +101,22 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   const ownerId = await requireUserId();
   const type = (req.nextUrl.searchParams.get("type") ?? "property") as RecordType;
 
-  if (type === "crypto") {
-    const res = await prisma.cryptoHolding.deleteMany({ where: { id, ownerId } });
-    if (res.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ ok: true });
-  }
+  const deleted =
+    type === "crypto"
+      ? await prisma.cryptoHolding.deleteMany({ where: { id, ownerId } })
+      : type === "market"
+        ? await prisma.marketInstrument.deleteMany({ where: { id, ownerId } })
+        : type === "job"
+          ? await prisma.jobListing.deleteMany({ where: { id, ownerId } })
+          : type === "book"
+            ? await prisma.bookRecord.deleteMany({ where: { id, ownerId } })
+            : type === "holiday"
+              ? await prisma.holiday.deleteMany({ where: { id, ownerId } })
+              : await prisma.property.deleteMany({ where: { id, ownerId } });
 
-  if (type === "market") {
-    const res = await prisma.marketInstrument.deleteMany({ where: { id, ownerId } });
-    if (res.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ ok: true });
-  }
-
-  if (type === "job") {
-    const res = await prisma.jobListing.deleteMany({ where: { id, ownerId } });
-    if (res.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ ok: true });
-  }
-
-  if (type === "book") {
-    const res = await prisma.bookRecord.deleteMany({ where: { id, ownerId } });
-    if (res.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ ok: true });
-  }
-
-  if (type === "holiday") {
-    const res = await prisma.holiday.deleteMany({ where: { id, ownerId } });
-    if (res.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ ok: true });
-  }
-
-  const res = await prisma.property.deleteMany({ where: { id, ownerId } });
-  if (res.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (deleted.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Los accesos compartidos NO caen en cascada (recordId es soft-ref).
+  await deleteRecordShares(type, id);
   return NextResponse.json({ ok: true });
 }
 

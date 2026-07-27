@@ -380,6 +380,17 @@ function AuthGate() {
               title: t("shared.title"),
             }}
           />
+          <Stack.Screen
+            name="my-shares"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("shares.title"),
+            }}
+          />
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
           <Stack.Screen
             name="chat/new"

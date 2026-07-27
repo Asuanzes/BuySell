@@ -87,13 +87,25 @@ de la auditoría (workflow `audit-mensajeria-nidokey`, dimensión
 ## 4. Diferenciales frente a un chat genérico
 
 0. **Compartir un registro a un GRUPO** (jul-2026): la tarjeta se publica en la
-   conversación elegida y `RecordShare` se reparte a todos sus miembros
-   activos. ⚠️ **Esos accesos son permanentes: no existe endpoint de
-   revocación** (solo los borra el borrado de cuenta), así que quien luego sea
-   expulsado del grupo conserva el registro en "Compartidos". Y quien entre
-   DESPUÉS ve la tarjeta (la regla es que el dueño siga en la conversación)
-   pero no puede guardarla: no tiene su fila. Cuota 20/h por usuario, porque
-   esta ruta escribe en el chat sin pasar por el límite de mensajes.
+   conversación elegida y `RecordShare` se reparte a sus miembros activos.
+   Cuota 20/h por usuario, porque esta ruta escribe en el chat sin pasar por el
+   límite de mensajes. Tope de grupo **25** (era 64) justamente para acotar el
+   alcance de un toque.
+   - **Compartir da acceso a la ficha VIVA**, no a una copia: fotos, estado e
+     histórico de precios siguen actualizándose para quien lo recibe.
+   - **Control del dueño**: `GET/DELETE /api/records/shares` + pantalla "Mis
+     compartidos" (Cuenta). Las concesiones se agrupan por ORIGEN gracias a
+     `RecordShare.conversationId`; retirar corta la ficha Y apaga la tarjeta
+     del chat (regla 3 de `contextCard`). ⚠️ Lo que NO deshace: una copia que
+     el destinatario ya se guardara con "Guardar" es suya (el copy lo dice).
+   - **Control del destinatario**: bloquear corta el acceso en los cuatro
+     caminos (lista, ficha, adopt y tarjeta) vía `sharedAccess()`, que es el
+     único sitio donde vive la regla. No borra la fila: desbloquear devuelve el
+     acceso que el dueño concedió.
+   - Quien entre al grupo DESPUÉS no recibe acceso (el reparto es en el momento
+     de compartir). Las filas anteriores a jul-2026 tienen `conversationId`
+     null y se muestran como concesiones individuales: su origen no es
+     recuperable.
 1. **Conversación vinculada a un registro** (patrón Wallapop/Vinted):
    `contextType/contextId` + banner con título/foto/precio vivo + chip en la
    lista. Se crea desde la ficha del inmueble ("Comentar en el chat").

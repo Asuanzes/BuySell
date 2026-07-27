@@ -1,14 +1,21 @@
+import type { RecordType } from "@nidokey/shared";
+
 import { prisma } from "@/lib/db";
+import { sharedAccess } from "@/lib/records/access";
 
 /**
- * Registro vinculado a una conversación (banner de contexto). Dos reglas de
- * seguridad, ambas obligatorias porque el contextId llega del cliente:
+ * Registro vinculado a una conversación (banner de contexto). Tres reglas de
+ * seguridad, todas obligatorias porque el contextId llega del cliente:
  *
  *  1. CREAR: solo puedes vincular un registro TUYO (recordOwnerId === creador).
  *  2. LEER: la tarjeta solo se sirve si el dueño del registro es participante
  *     de la conversación — sin esto, cualquiera con un contextId ajeno leería
  *     título/ciudad/precio/foto de registros de otros usuarios (IDOR, P1 de la
  *     auditoría 2026-07-26).
+ *  3. LEER una TARJETA de mensaje: quien mira debe seguir teniendo acceso al
+ *     registro (o ser su dueño). Sin esto, retirar el acceso desde "Mis
+ *     compartidos" cerraba la ficha pero la tarjeta seguía sirviendo el precio
+ *     actualizado para siempre.
  *
  * Si mañana se quiere "chatear sobre un registro que me compartieron", ampliar
  * la regla 1 a RecordShare — no relajarla sin más.
@@ -146,11 +153,18 @@ export async function recordOwnerId(contextType: string, contextId: string): Pro
  * Proyección PÚBLICA MÍNIMA del registro vinculado (banner del chat): título,
  * imagen y subtítulo — nunca el detalle completo. null si el registro no
  * existe ("registro eliminado") o si su dueño no está en la conversación.
+ *
+ * `viewerId` (regla 3, solo para tarjetas de mensaje): si se pasa, además hay
+ * que SEGUIR teniendo acceso al registro. Sin esto, retirar el acceso quitaba
+ * la ficha pero la tarjeta del chat seguía refrescando título, foto y PRECIO
+ * ACTUAL en cada poll — justo el dato que se creía cortado. El banner de
+ * conversación vinculada no lo pasa: ahí nunca hubo RecordShare.
  */
 export async function contextCard(
   contextType: string | null,
   contextId: string | null,
-  participantIds: string[]
+  participantIds: string[],
+  viewerId?: string
 ): Promise<ContextCard | null> {
   if (!contextType || !contextId) return null;
   try {
@@ -158,6 +172,10 @@ export async function contextCard(
     if (!card) return null;
     // Regla 2: el dueño debe seguir siendo participante.
     if (!card.ownerId || !participantIds.includes(card.ownerId)) return null;
+    // Regla 3: quien mira sigue teniendo acceso (o es el dueño).
+    if (viewerId && card.ownerId !== viewerId) {
+      if (!(await sharedAccess(contextType as RecordType, contextId, viewerId))) return null;
+    }
     return { title: card.title, imageUrl: card.imageUrl, subtitle: card.subtitle, meta: card.meta ?? null };
   } catch {
     // El banner es decorativo: nunca rompe el detalle del chat.

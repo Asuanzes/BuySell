@@ -4,6 +4,7 @@ import type { RecordType } from "@nidokey/shared";
 
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
+import { sharedAccess } from "@/lib/records/access";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -68,9 +69,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (!parsed.success) return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   const { type } = parsed.data;
 
-  const share = await prisma.recordShare.findUnique({
-    where: { recordType_recordId_toUserId: { recordType: type, recordId: id, toUserId: me } },
-  });
+  // Mismo criterio que abrir la ficha: la fila debe existir Y no haber bloqueo
+  // (si no, bloquear ocultaba el registro pero seguías pudiendo copiarlo).
+  const share = await sharedAccess(type, id, me);
   if (!share) return NextResponse.json({ error: "No tienes ese registro compartido" }, { status: 404 });
 
   try {

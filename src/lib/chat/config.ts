@@ -17,7 +17,13 @@ export const CHAT_LIMITS = {
   maxAttachmentMbImage: num(process.env.CHAT_MAX_ATTACHMENT_MB, 10),
   maxAttachmentMbFile: 25,
   maxAttachmentMbAudio: 10,
-  maxGroupParticipants: 64,
+  /**
+   * Tope de un grupo. Bajado de 64 a 25: compartir un registro reparte acceso
+   * a TODOS los miembros de golpe, y 25 acota el alcance de un toque. De paso
+   * calma los recibos de lectura, cuyo tráfico crece con el cuadrado del
+   * tamaño (cada "leído" avisa a los demás).
+   */
+  maxGroupParticipants: 25,
   editWindowMin: 15,
   deleteForAllWindowMin: 60,
   /** Mensajes por minuto y usuario (rate limit serverless-safe: count en BBDD). */

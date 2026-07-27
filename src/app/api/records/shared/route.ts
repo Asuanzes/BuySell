@@ -19,11 +19,21 @@ import {
  */
 export async function GET() {
   const me = await requireUserId();
-  const shares = await prisma.recordShare.findMany({
-    where: { toUserId: me },
-    orderBy: { createdAt: "desc" },
-    take: 100,
+  // Bloqueos: bloquear a alguien cortaba sus mensajes pero NO su ficha, que
+  // seguía actualizándose aquí. El bloqueo vale en ambos sentidos.
+  const blocks = await prisma.userBlock.findMany({
+    where: { OR: [{ blockerId: me }, { blockedId: me }] },
+    select: { blockerId: true, blockedId: true },
   });
+  const blocked = new Set(blocks.flatMap((b) => [b.blockerId, b.blockedId]).filter((u) => u !== me));
+
+  const shares = (
+    await prisma.recordShare.findMany({
+      where: { toUserId: me, ...(blocked.size ? { fromUserId: { notIn: [...blocked] } } : {}) },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    })
+  ).filter((s) => !blocked.has(s.fromUserId));
   if (shares.length === 0) return NextResponse.json([]);
 
   // Etiqueta de quien comparte (para "compartido por @x").

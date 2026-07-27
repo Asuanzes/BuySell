@@ -109,6 +109,11 @@ export default function AccountScreen() {
           <Text style={[styles.toggleLabel, { color: th.text }]}>{t("account.shared_with_me")}</Text>
           <Ionicons name="chevron-forward" size={18} color={th.textSubtle} />
         </Pressable>
+        <Pressable style={styles.toggleRow} onPress={() => router.push("/my-shares" as never)}>
+          <Ionicons name="paper-plane-outline" size={20} color={th.textMuted} />
+          <Text style={[styles.toggleLabel, { color: th.text }]}>{t("shares.title")}</Text>
+          <Ionicons name="chevron-forward" size={18} color={th.textSubtle} />
+        </Pressable>
       </Section>
 
       <Button

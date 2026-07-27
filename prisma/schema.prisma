@@ -661,11 +661,16 @@ model RecordShare {
   recordId   String
   fromUserId String   // propietario que comparte
   toUserId   String   // destinatario con acceso de lectura
+  // DÓNDE se concedió: id de la conversación de grupo, o null si fue una
+  // compartición individual. Sin esto, compartir en un grupo de 25 es
+  // indistinguible de 25 comparticiones sueltas y no se puede retirar en bloque.
+  conversationId String?
   createdAt  DateTime @default(now())
 
   @@unique([recordType, recordId, toUserId])
   @@index([toUserId, createdAt])
   @@index([recordId])
+  @@index([fromUserId, createdAt])
 }
 
 // Tendencias globales (sin ownerId): caché persistente refrescada por cron.

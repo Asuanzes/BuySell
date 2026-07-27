@@ -116,8 +116,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     // destinatario y es lo que habilita "Guardar" y la pantalla Compartidos.
     // ⚠️ Quien entre DESPUÉS verá la tarjeta (la regla es que el dueño siga en
     // la conversación) pero no podrá guardarla: no tendrá su fila.
+    // `conversationId` deja constancia de DÓNDE se concedió: es lo que permite
+    // luego retirar el grupo entero de una vez en "Mis compartidos".
+    // skipDuplicates no actualiza los que ya existían (p. ej. compartidos antes
+    // en 1:1): conservan su origen original, que es lo correcto.
     await prisma.recordShare.createMany({
-      data: targets.map((toUserId) => ({ recordType: type, recordId: id, fromUserId, toUserId })),
+      data: targets.map((toUserId) => ({ recordType: type, recordId: id, fromUserId, toUserId, conversationId })),
       skipDuplicates: true,
     });
 

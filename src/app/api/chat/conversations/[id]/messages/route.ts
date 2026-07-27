@@ -85,7 +85,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     await Promise.all(
       cardPairs.map(async (pair) => {
         const [type, rid] = pair.split("|");
-        cardMap.set(pair, await contextCard(type, rid, participantIds));
+        // `userId` (regla 3): si le retiraron el acceso, la tarjeta se apaga en
+        // vez de seguir refrescando precio y foto.
+        cardMap.set(pair, await contextCard(type, rid, participantIds, userId));
       })
     );
   }
