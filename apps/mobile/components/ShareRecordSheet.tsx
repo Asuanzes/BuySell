@@ -20,7 +20,13 @@ import type { RecordType } from "@nidokey/shared";
 import { useTheme } from "@/lib/theme";
 import { api, ApiError } from "@/lib/api";
 import { categoryColor, RECORD_TYPE_CONFIG } from "@/lib/records/config";
-import { listContacts, contactDisplayName, type ContactDto } from "@/lib/chat/api";
+import {
+  contactDisplayName,
+  listContacts,
+  listConversations,
+  type ContactDto,
+  type ConversationDto,
+} from "@/lib/chat/api";
 
 /**
  * Hoja "Enviar a un chat" en dos pasos, sin pantalla de confirmación:
@@ -49,10 +55,15 @@ export function ShareRecordSheet({
   const insets = useSafeAreaInsets();
   const [username, setUsername] = useState("");
   const [contacts, setContacts] = useState<ContactDto[]>([]);
+  const [groups, setGroups] = useState<ConversationDto[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Paso 2: destinatario elegido (handle sin @) + etiqueta visible. */
-  const [recipient, setRecipient] = useState<{ handle: string; label: string } | null>(null);
+  /** Paso 2: destino elegido — una persona (por @usuario) o un grupo. */
+  const [target, setTarget] = useState<
+    | { kind: "user"; handle: string; label: string }
+    | { kind: "group"; conversationId: string; label: string; members: number }
+    | null
+  >(null);
   const [message, setMessage] = useState("");
 
   const accent = categoryColor(type as RecordType, dark) ?? th.primary;
@@ -62,28 +73,37 @@ export function ShareRecordSheet({
     if (!visible) return;
     setUsername("");
     setError(null);
-    setRecipient(null);
+    setTarget(null);
     setMessage("");
     listContacts()
       .then((c) => setContacts(c.filter((x) => x.user.username)))
       .catch(() => setContacts([]));
+    listConversations()
+      // Grupos donde queda alguien más: si los demás se fueron, el envío
+      // siempre falla ("no hay nadie más") y el destino sería un callejón.
+      .then((c) => setGroups(c.filter((x) => x.kind === "GROUP" && x.participants.length > 1)))
+      .catch(() => setGroups([]));
   }, [visible]);
 
   function pick(handle: string, label?: string) {
     const u = handle.replace(/^@/, "").trim();
     if (!u) return;
     setError(null);
-    setRecipient({ handle: u, label: label ?? "@" + u });
+    setTarget({ kind: "user", handle: u, label: label ?? "@" + u });
   }
 
   async function send() {
-    if (!recipient || busy) return;
+    if (!target || busy) return;
     setBusy(true);
     setError(null);
     try {
       const res = await api<{ ok: boolean; conversationId?: string | null }>(`/api/records/${id}/share`, {
         method: "POST",
-        body: JSON.stringify({ type, username: recipient.handle, message: message.trim() || null }),
+        body: JSON.stringify({
+          type,
+          ...(target.kind === "user" ? { username: target.handle } : { conversationId: target.conversationId }),
+          message: message.trim() || null,
+        }),
       });
       onClose();
       // Directo al chat donde aterrizó la tarjeta (sin pantalla intermedia).
@@ -112,23 +132,30 @@ export function ShareRecordSheet({
         <View style={[styles.sheet, { backgroundColor: th.surface, paddingBottom: insets.bottom + 16 }]}>
           <View style={[styles.grabber, { backgroundColor: th.border }]} />
           <View style={styles.titleRow}>
-            {recipient && (
-              <Pressable onPress={() => setRecipient(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t("common.back")}>
+            {target && (
+              <Pressable onPress={() => setTarget(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t("common.back")}>
                 <Ionicons name="chevron-back" size={22} color={th.primary} />
               </Pressable>
             )}
             <Text style={[styles.title, { color: th.text }]}>{t("share.title")}</Text>
           </View>
 
-          {recipient ? (
+          {target ? (
             <>
-              {/* Paso 2: destinatario + previsualización + mensaje → Enviar */}
+              {/* Paso 2: destino + previsualización + mensaje → Enviar */}
               <View style={[styles.toRow, { borderColor: th.border }]}>
                 <Text style={[styles.toLabel, { color: th.textSubtle }]}>{t("share.to")}</Text>
                 <Text style={[styles.toValue, { color: th.text }]} numberOfLines={1}>
-                  {recipient.label}
+                  {target.label}
                 </Text>
               </View>
+              {/* A un grupo se le da acceso a TODOS de golpe: decir a cuántos
+                  antes de enviar, no solo en la lista anterior. */}
+              {target.kind === "group" && (
+                <Text style={[styles.groupWarn, { color: th.textMuted }]}>
+                  {t("share.group_hint", { count: target.members - 1 })}
+                </Text>
+              )}
 
               <View style={[styles.previewCard, { borderColor: th.border, backgroundColor: th.bg }]}>
                 <View style={[styles.previewBar, { backgroundColor: accent }]} />
@@ -212,25 +239,58 @@ export function ShareRecordSheet({
               </View>
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
-              {contacts.length > 0 && (
-                <>
-                  <Text style={[styles.contactsLabel, { color: th.textSubtle }]}>{t("share.contacts")}</Text>
-                  <ScrollView style={styles.contactsList} keyboardShouldPersistTaps="handled">
-                    {contacts.map((c) => (
-                      <Pressable
-                        key={c.userId}
-                        onPress={() => pick(c.user.username as string, contactDisplayName(c))}
-                        style={styles.contactRow}
-                      >
-                        <Ionicons name="person-circle-outline" size={30} color={th.textMuted} />
-                        <Text style={[styles.contactName, { color: th.text }]} numberOfLines={1}>
-                          {contactDisplayName(c)}
-                        </Text>
-                        <Text style={[styles.contactHandle, { color: th.textSubtle }]}>@{c.user.username}</Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </>
+              {(contacts.length > 0 || groups.length > 0) && (
+                <ScrollView style={styles.contactsList} keyboardShouldPersistTaps="handled">
+                  {/* Grupos primero: compartir una ficha con varios a la vez es
+                      justo lo que la gente quiere de un grupo. */}
+                  {groups.length > 0 && (
+                    <>
+                      <Text style={[styles.contactsLabel, { color: th.textSubtle }]}>{t("share.groups")}</Text>
+                      {groups.map((g) => (
+                        <Pressable
+                          key={g.id}
+                          onPress={() => {
+                            setError(null);
+                            setTarget({
+                              kind: "group",
+                              conversationId: g.id,
+                              label: g.title,
+                              members: g.participants.length,
+                            });
+                          }}
+                          style={styles.contactRow}
+                        >
+                          <Ionicons name="people-circle-outline" size={30} color={th.textMuted} />
+                          <Text style={[styles.contactName, { color: th.text }]} numberOfLines={1}>
+                            {g.title}
+                          </Text>
+                          <Text style={[styles.contactHandle, { color: th.textSubtle }]}>
+                            {t("chat.members", { count: g.participants.length })}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </>
+                  )}
+
+                  {contacts.length > 0 && (
+                    <>
+                      <Text style={[styles.contactsLabel, { color: th.textSubtle }]}>{t("share.contacts")}</Text>
+                      {contacts.map((c) => (
+                        <Pressable
+                          key={c.userId}
+                          onPress={() => pick(c.user.username as string, contactDisplayName(c))}
+                          style={styles.contactRow}
+                        >
+                          <Ionicons name="person-circle-outline" size={30} color={th.textMuted} />
+                          <Text style={[styles.contactName, { color: th.text }]} numberOfLines={1}>
+                            {contactDisplayName(c)}
+                          </Text>
+                          <Text style={[styles.contactHandle, { color: th.textSubtle }]}>@{c.user.username}</Text>
+                        </Pressable>
+                      ))}
+                    </>
+                  )}
+                </ScrollView>
               )}
             </>
           )}
@@ -250,6 +310,7 @@ const styles = StyleSheet.create({
   toRow: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 },
   toLabel: { fontSize: 13 },
   toValue: { fontSize: 14, fontWeight: "600", flexShrink: 1 },
+  groupWarn: { fontSize: 12, lineHeight: 16, marginTop: -2 },
   previewCard: {
     flexDirection: "row",
     alignItems: "center",

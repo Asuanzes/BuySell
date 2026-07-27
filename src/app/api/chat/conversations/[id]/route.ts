@@ -25,7 +25,10 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const context = await contextCard(
     c.contextType,
     c.contextId,
-    c.participants.map((p) => p.userId)
+    // En GRUPO solo cuentan los activos: la regla es que el dueño del registro
+    // SIGA en la conversación. En 1:1 no se filtra — ahí `leftAt` es "borré el
+    // chat de mi lista", local y reversible.
+    c.participants.filter((p) => c.kind !== "GROUP" || !p.leftAt).map((p) => p.userId)
   );
   return NextResponse.json(conversationDto(c, userId, { context }));
 }

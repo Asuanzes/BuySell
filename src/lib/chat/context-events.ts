@@ -60,6 +60,7 @@ export async function deliverRecordCard(
 ): Promise<string | null> {
   try {
     const key = directKey(fromUserId, toUserId, null);
+    // (el resto resuelve/crea el DIRECTO y delega en deliverToConversation)
     let conversation = await prisma.conversation.findUnique({ where: { directKey: key }, select: { id: true } });
     if (!conversation) {
       try {
@@ -88,11 +89,34 @@ export async function deliverRecordCard(
     // Si alguno había "eliminado" el chat de su lista, un mensaje nuevo lo
     // hace reaparecer (lo prometido en la confirmación de borrar; además
     // arregla el P2 de la auditoría "mensajes invisibles tras salir").
+    // Solo en DIRECT: en un grupo, readmitir a quien se fue es una decisión
+    // del admin, no un efecto colateral de compartir una ficha.
     await prisma.conversationParticipant.updateMany({
       where: { conversationId: cid, leftAt: { not: null } },
       data: { leftAt: null },
     });
 
+    return await deliverRecordCardToConversation(cid, fromUserId, contextType, contextId, title, userMessage);
+  } catch (err) {
+    console.error("[chat-context] tarjeta de registro fallida:", err);
+    return null;
+  }
+}
+
+/**
+ * Publica la tarjeta en una conversación CONCRETA (grupo o directo ya
+ * existente). Quien llama debe haber comprobado que el emisor participa en
+ * ella y que el registro es suyo.
+ */
+export async function deliverRecordCardToConversation(
+  cid: string,
+  fromUserId: string,
+  contextType: string,
+  contextId: string,
+  title: string,
+  userMessage?: string | null
+): Promise<string | null> {
+  try {
     const body = truncateSafe(`📌 ${title}`, 140);
     const text = sanitizeMessageBody(userMessage, 4000);
     const now = new Date();

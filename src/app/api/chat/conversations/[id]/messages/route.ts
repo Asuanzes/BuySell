@@ -70,11 +70,18 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const cardPairs = [...new Set(rows.filter((r) => r.contextType && r.contextId).map((r) => `${r.contextType}|${r.contextId}`))];
   const cardMap = new Map<string, MessageContextDto | null>();
   if (cardPairs.length > 0) {
-    const participants = await prisma.conversationParticipant.findMany({
-      where: { conversationId: id },
-      select: { userId: true },
+    // La regla de contextCard es que el DUEÑO del registro siga en la
+    // conversación. En GRUPO se aplica con `leftAt` (si se fue, su tarjeta deja
+    // de servirse a los que quedan); en 1:1 NO, porque ahí `leftAt` significa
+    // "quité el chat de mi lista" — es local y reversible, y filtrarlo apagaba
+    // la tarjeta del receptor sin quitarle ningún acceso real.
+    const conv = await prisma.conversation.findUnique({
+      where: { id },
+      select: { kind: true, participants: { select: { userId: true, leftAt: true } } },
     });
-    const participantIds = participants.map((p) => p.userId);
+    const participantIds = (conv?.participants ?? [])
+      .filter((p) => conv?.kind !== "GROUP" || !p.leftAt)
+      .map((p) => p.userId);
     await Promise.all(
       cardPairs.map(async (pair) => {
         const [type, rid] = pair.split("|");

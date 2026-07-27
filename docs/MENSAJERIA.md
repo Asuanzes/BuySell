@@ -86,6 +86,14 @@ de la auditoría (workflow `audit-mensajeria-nidokey`, dimensión
 
 ## 4. Diferenciales frente a un chat genérico
 
+0. **Compartir un registro a un GRUPO** (jul-2026): la tarjeta se publica en la
+   conversación elegida y `RecordShare` se reparte a todos sus miembros
+   activos. ⚠️ **Esos accesos son permanentes: no existe endpoint de
+   revocación** (solo los borra el borrado de cuenta), así que quien luego sea
+   expulsado del grupo conserva el registro en "Compartidos". Y quien entre
+   DESPUÉS ve la tarjeta (la regla es que el dueño siga en la conversación)
+   pero no puede guardarla: no tiene su fila. Cuota 20/h por usuario, porque
+   esta ruta escribe en el chat sin pasar por el límite de mensajes.
 1. **Conversación vinculada a un registro** (patrón Wallapop/Vinted):
    `contextType/contextId` + banner con título/foto/precio vivo + chip en la
    lista. Se crea desde la ficha del inmueble ("Comentar en el chat").
