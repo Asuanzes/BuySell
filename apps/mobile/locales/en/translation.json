@@ -812,7 +812,9 @@
     "group_remove_action": "Remove",
     "group_remove_confirm": "{{name}} will stop seeing the group. You can add them back later.",
     "report_group": "Report group",
-    "group_admins_only": "Only group admins can do this"
+    "group_admins_only": "Only group admins can do this",
+    "group_photo": "Group photo",
+    "group_photo_remove": "Remove photo"
   },
   "food": {
     "home": "Food",

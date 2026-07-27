@@ -31,6 +31,7 @@ const PUBLIC_PATHS = [
   /^\/food\/pay\/return$/,             // puente HTTPS -> deep link móvil
   /^\/food\/pay\/fake$/,               // checkout fake hospedado
   /^\/api\/avatar\/[^/]+$/,           // foto de perfil: 302 a URL firmada (expo-image no manda Bearer)
+  /^\/api\/avatar\/group\/[^/]+$/,    // foto de grupo: idem (la de arriba solo casa UN segmento)
   /^\/api\/analytics$/,               // embudo pre-login; rate limit por IP en el handler
   /^\/api\/health$/,                  // health check (sin datos sensibles)
   /^\/_next(\/.*)?$/,

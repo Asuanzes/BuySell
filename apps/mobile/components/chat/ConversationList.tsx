@@ -367,6 +367,11 @@ function RowInner({ c, dark, onLongPress }: { c: ConversationDto; dark: boolean;
 
 export function Avatar({ title, imageUrl, size = 46 }: { title: string; imageUrl: string | null; size?: number }) {
   const { th } = useTheme();
+  // Si la imagen no carga (objeto borrado en R2, red caída), degradar a las
+  // iniciales: sin esto expo-image deja un círculo transparente sin explicación.
+  // Se guarda la URL fallida, no un booleano: al cambiar la foto cambia el
+  // `?v=`, así que la nueva se intenta pintar en vez de quedarse en iniciales.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const initials = title
     .split(/\s+/)
     .map((w) => w[0])
@@ -374,8 +379,15 @@ export function Avatar({ title, imageUrl, size = 46 }: { title: string; imageUrl
     .slice(0, 2)
     .join("")
     .toUpperCase();
-  if (imageUrl) {
-    return <Image source={{ uri: imageUrl }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" />;
+  if (imageUrl && failedUrl !== imageUrl) {
+    return (
+      <Image
+        source={{ uri: imageUrl }}
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+        contentFit="cover"
+        onError={() => setFailedUrl(imageUrl)}
+      />
+    );
   }
   return (
     <View

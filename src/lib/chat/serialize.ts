@@ -38,6 +38,19 @@ export function avatarUrl(u: Pick<User, "id" | "image">): string | null {
   return `${base}/api/avatar/${u.id}?v=${encodeURIComponent(v)}`;
 }
 
+/**
+ * Igual que `avatarUrl` pero para la foto de un GRUPO: la conversación guarda
+ * una KEY de R2 (`avatars/group/<id>/…`) y hacia el cliente sale la URL del
+ * endpoint público GET /api/avatar/group/[id] (302 a la firmada).
+ */
+export function groupImageUrl(c: { id: string; imageUrl: string | null }): string | null {
+  if (!c.imageUrl) return null;
+  if (/^https?:\/\//i.test(c.imageUrl)) return c.imageUrl;
+  const base = (process.env.NEXTAUTH_URL ?? "").replace(/\/+$/, "");
+  const v = c.imageUrl.split("/").pop() ?? "";
+  return `${base}/api/avatar/group/${c.id}?v=${encodeURIComponent(v)}`;
+}
+
 export function userDto(
   u: Pick<User, "id" | "name" | "username" | "email" | "image">,
   opts: { withEmail?: boolean } = {}
@@ -70,7 +83,7 @@ export function conversationDto(
   const others = c.participants.filter((p) => p.userId !== meId && !p.leftAt);
   // DIRECT: el título es el otro participante.
   const title = c.kind === "DIRECT" ? (others[0] ? displayName(others[0].user) : "—") : c.title ?? "—";
-  const imageUrl = c.kind === "DIRECT" ? (others[0] ? avatarUrl(others[0].user) : null) : c.imageUrl;
+  const imageUrl = c.kind === "DIRECT" ? (others[0] ? avatarUrl(others[0].user) : null) : groupImageUrl(c);
   return {
     id: c.id,
     kind: c.kind,

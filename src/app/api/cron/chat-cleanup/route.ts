@@ -16,8 +16,9 @@ import { cleanupRateLimits } from "@/lib/rate-limit";
  *     borrando ANTES sus objetos de R2 (los ChatAttachment caen en cascada).
  *     Sin la env, no purga nada (default actual: conservar para siempre).
  *  2. HUÉRFANOS R2: objetos `chat/u/` sin ChatAttachment que los referencie
- *     (subidas presignadas cuyo mensaje nunca se envió) y `avatars/` que ningún
- *     User.image usa (fotos de perfil sustituidas antes del borrado en PATCH).
+ *     (subidas presignadas cuyo mensaje nunca se envió) y `avatars/` que no
+ *     referencia NI `User.image` (foto de perfil) NI `Conversation.imageUrl`
+ *     (foto de grupo) — ambas cuelgan del mismo prefijo.
  *     Solo borra objetos con más de 7 días (jamás una subida en curso).
  *  3. TOKENS: VerificationToken caducados (OTPs/magic-links nunca canjeados).
  */
@@ -85,20 +86,32 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // avatars/: fotos de perfil que ya nadie referencia.
+      // avatars/: fotos que ya nadie referencia. ⚠️ Bajo este prefijo viven
+      // DOS cosas: los avatares de persona (`avatars/<userId>/`, en
+      // `User.image`) y las fotos de grupo (`avatars/group/<convId>/`, en
+      // `Conversation.imageUrl`). El listado de R2 es recursivo, así que
+      // olvidar una de las dos tablas equivale a borrar esas fotos a los 7
+      // días dejando el puntero vivo en BBDD (avatar roto, sin log que lo
+      // relacione).
       const avatarObjects = await listObjects("avatars/");
       const oldAvatarKeys = avatarObjects
         .filter((o) => o.lastModified && o.lastModified.getTime() < cutoffTs)
         .map((o) => o.key);
       if (oldAvatarKeys.length) {
-        const used = new Set(
-          (
-            await prisma.user.findMany({
-              where: { image: { startsWith: "avatars/" } },
-              select: { image: true },
-            })
-          ).map((u) => u.image)
-        );
+        const [users, groups] = await Promise.all([
+          prisma.user.findMany({
+            where: { image: { startsWith: "avatars/" } },
+            select: { image: true },
+          }),
+          prisma.conversation.findMany({
+            where: { imageUrl: { startsWith: "avatars/" } },
+            select: { imageUrl: true },
+          }),
+        ]);
+        const used = new Set<string | null>([
+          ...users.map((u) => u.image),
+          ...groups.map((c) => c.imageUrl),
+        ]);
         for (const key of oldAvatarKeys) {
           if (used.has(key)) continue;
           if (await deleteObject(key)) summary.orphans.avatarsDeleted++;

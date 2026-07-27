@@ -812,7 +812,9 @@
     "group_remove_action": "Sacar",
     "group_remove_confirm": "{{name}} dejará de ver el grupo. Podrás volver a añadirle más tarde.",
     "report_group": "Denunciar grupo",
-    "group_admins_only": "Solo los administradores del grupo pueden hacer esto"
+    "group_admins_only": "Solo los administradores del grupo pueden hacer esto",
+    "group_photo": "Foto del grupo",
+    "group_photo_remove": "Quitar foto"
   },
   "food": {
     "home": "Comida",

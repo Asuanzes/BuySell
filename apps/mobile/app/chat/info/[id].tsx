@@ -11,12 +11,16 @@ import { fonts } from "@/lib/fonts";
 import { useQuery } from "@/lib/hooks/useQuery";
 import { useAuth } from "@/lib/auth-context";
 import {
+  chatBootstrap,
   getConversation,
   leaveConversation,
+  removeConversationImage,
   removeParticipant,
   renameConversation,
+  setConversationImage,
   type ChatParticipant,
 } from "@/lib/chat/api";
+import { pickAvatarImage, pickersAvailable, takeAvatarPhoto } from "@/lib/chat/media";
 import { Avatar } from "@/components/chat/ConversationList";
 import { ActionsSheet, type SheetOption } from "@/components/chat/ActionsSheet";
 import { EmptyState, ResultModal } from "@/components/ui";
@@ -34,9 +38,12 @@ export default function GroupInfoScreen() {
   const myId = state.kind === "authed" ? state.user.id : null;
 
   const { data: conversation, loading, error: loadError, refetch } = useQuery(() => getConversation(id), [id]);
+  const { data: boot } = useQuery(chatBootstrap, [], { revalidateOnFocus: false });
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photoMenu, setPhotoMenu] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [memberMenu, setMemberMenu] = useState<ChatParticipant | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<ChatParticipant | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -76,6 +83,34 @@ export default function GroupInfoScreen() {
       fail(e);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onPhoto(option: SheetOption) {
+    setPhotoMenu(false);
+    // Elegir ANTES de bloquear: el selector puede tardar minutos (permisos,
+    // cámara del sistema) y `busy` es el mismo flag del renombrado — se veía
+    // el ✓ de guardar nombre girando mientras hacías la foto. Y si se cancela,
+    // no debe pasar nada en absoluto.
+    let file: { uri: string; mime: string } | null = null;
+    if (option.id !== "remove") {
+      try {
+        file = option.id === "camera" ? await takeAvatarPhoto() : await pickAvatarImage();
+      } catch (e) {
+        fail(e);
+        return;
+      }
+      if (!file) return;
+    }
+    setPhotoBusy(true);
+    try {
+      if (file) await setConversationImage(id, file);
+      else await removeConversationImage(id);
+      await refetch();
+    } catch (e) {
+      fail(e);
+    } finally {
+      setPhotoBusy(false);
     }
   }
 
@@ -139,9 +174,31 @@ export default function GroupInfoScreen() {
     );
   }
 
+  // El lápiz solo aparece si se puede llegar al final: módulos nativos en el
+  // binario (blindaje OTA) Y R2 configurado en el servidor. Sin lo segundo, el
+  // usuario recorría cámara/recorte para acabar en un 503.
+  const canEditPhoto = isAdmin && pickersAvailable() && boot?.flags.attachments !== false;
+
   const header = (
     <View style={styles.header}>
-      <Avatar title={conversation?.title ?? "?"} imageUrl={conversation?.imageUrl ?? null} size={72} />
+      <Pressable
+        onPress={() => canEditPhoto && !photoBusy && setPhotoMenu(true)}
+        disabled={!canEditPhoto || photoBusy}
+        accessibilityRole={canEditPhoto ? "button" : undefined}
+        accessibilityLabel={canEditPhoto ? t("chat.group_photo") : undefined}
+      >
+        <Avatar title={conversation?.title ?? "?"} imageUrl={conversation?.imageUrl ?? null} size={72} />
+        {photoBusy && (
+          <View style={styles.busyOverlay}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        )}
+        {canEditPhoto && !photoBusy && (
+          <View style={[styles.photoBadge, { backgroundColor: th.primary, borderColor: th.bg }]}>
+            <Ionicons name="pencil" size={11} color="#fff" />
+          </View>
+        )}
+      </Pressable>
       {renaming ? (
         <View style={styles.renameRow}>
           <TextInput
@@ -270,6 +327,19 @@ export default function GroupInfoScreen() {
       </View>
 
       <ActionsSheet
+        visible={photoMenu}
+        title={t("chat.group_photo")}
+        options={[
+          { id: "camera", icon: "camera-outline", label: t("chat.attach_camera") },
+          { id: "gallery", icon: "images-outline", label: t("chat.attach_gallery") },
+          ...(conversation?.imageUrl
+            ? [{ id: "remove", icon: "trash-outline" as const, label: t("chat.group_photo_remove"), danger: true }]
+            : []),
+        ]}
+        onSelect={(o) => void onPhoto(o)}
+        onClose={() => setPhotoMenu(false)}
+      />
+      <ActionsSheet
         visible={!!memberMenu}
         title={memberMenu ? nameOf(memberMenu) : ""}
         options={memberOptions}
@@ -320,6 +390,24 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center" },
   header: { alignItems: "center", gap: 8, paddingVertical: 18 },
+  busyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 36,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 24 },
   title: { fontSize: 19, fontFamily: fonts.heading, textAlign: "center" },
   renameRow: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "stretch", paddingHorizontal: 12 },

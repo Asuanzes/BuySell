@@ -150,6 +150,20 @@ export async function listObjects(prefix: string): Promise<{ key: string; lastMo
   return out;
 }
 
+/** Extensiones que produce el presign de avatares (EXT_BY_MIME). */
+const AVATAR_EXT = "jpg|png|webp|heic|heif|avif|gif";
+
+/**
+ * Forma EXACTA de la key de la foto de un grupo, para validar lo que manda el
+ * cliente en el PATCH. Un `startsWith` del prefijo no basta: deja pasar
+ * `avatars/group/<id>/../../chat/u/<otro>/x.jpg`, que luego se firma en el
+ * endpoint público y se le pasa a deleteObject.
+ */
+export function groupImageKey(conversationId: string): RegExp {
+  const safeId = conversationId.replace(/[^a-zA-Z0-9_-]/g, "");
+  return new RegExp(`^avatars/group/${safeId}/[a-z0-9]{1,48}\\.(${AVATAR_EXT})$`);
+}
+
 /**
  * Convierte lo guardado en ChatAttachment.url a URL servible: las keys de R2
  * se firman; URLs http(s) completas (legacy/externas) pasan tal cual. Si R2 no

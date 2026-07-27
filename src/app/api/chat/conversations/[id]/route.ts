@@ -6,6 +6,7 @@ import { getParticipantOrNull } from "@/lib/chat/guard";
 import { conversationDto } from "@/lib/chat/serialize";
 import { actorName, systemEvent } from "@/lib/chat/system";
 import { contextCard } from "@/lib/chat/context";
+import { deleteObject, groupImageKey } from "@/lib/chat/r2";
 import { isProtectedName } from "@nidokey/shared";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -35,6 +36,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
 const PatchInput = z.object({
   title: z.string().min(1).max(80).optional(),
+  /** Key de R2 devuelta por POST .../avatar; null = quitar la foto del grupo. */
+  image: z.string().max(300).optional().nullable(),
   muteUntil: z.coerce.date().optional().nullable(),
   pinned: z.boolean().optional(),
   /** true = salir de la conversación (desaparece de mi lista). */
@@ -114,6 +117,61 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           await systemEvent(id, userId, `👥 ${who} cambió el nombre del grupo a «${title}».`);
         } catch (e) {
           console.error("[chat] evento de renombrado de grupo:", e);
+        }
+      });
+    }
+  }
+
+  // Foto del grupo: solo OWNER/ADMIN y solo keys de ESTE grupo (las presigna
+  // POST .../avatar). Sin la comprobación del prefijo, un admin podría apuntar
+  // la foto a la key de otro (avatares ajenos incluidos).
+  if (input.image !== undefined) {
+    if (me.role === "MEMBER") {
+      return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
+    }
+    const before = await prisma.conversation.findUnique({
+      where: { id },
+      select: { kind: true, imageUrl: true },
+    });
+    // Solo grupos (el presign ya lo exige; aquí es defensa en profundidad: hoy
+    // en un DIRECT nadie es OWNER/ADMIN, pero eso es un invariante ajeno).
+    if (!before || before.kind !== "GROUP") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    // Key COMPLETA, no `startsWith`: con un prefijo suelto,
+    // `avatars/group/<id>/../../chat/u/<otro>/x.jpg` pasaba el filtro y acababa
+    // en la firma pública y en deleteObject.
+    if (input.image !== null && !groupImageKey(id).test(input.image)) {
+      return NextResponse.json({ error: "Imagen inválida" }, { status: 400 });
+    }
+    const stale = before.imageUrl ?? null;
+    // Si no cambia, ni se escribe ni se anuncia: el evento SYSTEM sube el grupo
+    // en la lista de todos y cuenta como no leído (igual que en renombrar).
+    if (stale !== input.image) {
+      await prisma.conversation.update({ where: { id }, data: { imageUrl: input.image } });
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, username: true },
+      });
+      after(async () => {
+        // La foto anterior se borra de R2 fuera del camino crítico (mismo trato
+        // que el avatar de persona en PATCH /api/account).
+        if (stale && groupImageKey(id).test(stale)) {
+          try {
+            await deleteObject(stale);
+          } catch (e) {
+            console.error("[chat] no se pudo borrar la foto anterior del grupo:", e);
+          }
+        }
+        try {
+          const who = user ? actorName(user) : "Alguien";
+          await systemEvent(
+            id,
+            userId,
+            input.image ? `👥 ${who} cambió la foto del grupo.` : `👥 ${who} quitó la foto del grupo.`
+          );
+        } catch (e) {
+          console.error("[chat] evento de foto de grupo:", e);
         }
       });
     }

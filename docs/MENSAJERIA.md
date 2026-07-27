@@ -193,7 +193,15 @@ de autorización están cubiertos solo por revisión; ver §9.
   sin nadie que pudiera administrarlo: no hay forma de nombrar ADMIN).
 - `actorName` (no `displayName`) para lo que se persiste y se difunde: sin
   fallback al email, saneado y a 32 caracteres.
-- Pendiente: nombrar ADMIN, foto de grupo, "escribiendo…" con nombre,
+- **Foto de grupo** (OWNER/ADMIN): presign → PUT a R2 bajo
+  `avatars/group/<id>/` → PATCH con la key. Se sirve por `GET
+  /api/avatar/group/[id]` (302 a firmada), **público** por el mismo motivo que
+  el avatar de persona (expo-image no manda Bearer). Consecuencia asumida: un
+  ex-miembro que conserve el id sigue viendo la foto actual y las futuras.
+  ⚠️ Las keys cuelgan de `avatars/`, que barre el cron de huérfanos: si se
+  añade otra tabla que guarde ahí, hay que sumarla al conjunto "en uso" del
+  cron o sus fotos se borran a los 7 días.
+- Pendiente: nombrar ADMIN, "escribiendo…" con nombre,
   compartir registros a un grupo, y los textos SYSTEM guardados en castellano
   (un usuario en EN los ve en español; migrarlos exige guardarlos codificados).
 

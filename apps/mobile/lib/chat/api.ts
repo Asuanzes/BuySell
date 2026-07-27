@@ -239,6 +239,31 @@ export const renameConversation = (conversationId: string, title: string) =>
     body: JSON.stringify({ title }),
   });
 
+/**
+ * Foto del grupo: presign → PUT directo a R2 → PATCH con la key (mismo flujo
+ * que el avatar de persona). Solo OWNER/ADMIN.
+ */
+export async function setConversationImage(conversationId: string, file: { uri: string; mime: string }) {
+  const blob = await (await fetch(file.uri)).blob();
+  const mime = (file.mime || blob.type || "image/jpeg").toLowerCase();
+  const presign = await api<{ key: string; uploadUrl: string }>(
+    `/api/chat/conversations/${conversationId}/avatar`,
+    { method: "POST", body: JSON.stringify({ mime, sizeBytes: blob.size }) }
+  );
+  const put = await fetch(presign.uploadUrl, { method: "PUT", headers: { "Content-Type": mime }, body: blob });
+  if (!put.ok) throw new Error(`Subida fallida (${put.status})`);
+  return api<ConversationDto>(`/api/chat/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ image: presign.key }),
+  });
+}
+
+export const removeConversationImage = (conversationId: string) =>
+  api<ConversationDto>(`/api/chat/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ image: null }),
+  });
+
 /** Añadir miembros a un grupo (o readmitir a quien se fue). Solo OWNER/ADMIN. */
 export const addParticipants = (conversationId: string, userIds: string[]) =>
   api<ConversationDto>(`/api/chat/conversations/${conversationId}/participants`, {
