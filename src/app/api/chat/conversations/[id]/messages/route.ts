@@ -22,7 +22,8 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const userId = await requireUserId();
-  if (!(await getParticipantOrNull(id, userId))) {
+  const me = await getParticipantOrNull(id, userId);
+  if (!me) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -34,8 +35,13 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     Math.min(parseInt(req.nextUrl.searchParams.get("limit") ?? "", 10) || CHAT_LIMITS.messagesPageSize, 100)
   );
 
+  // Solo desde que entré: a un grupo se puede entrar HOY, y sin este corte se
+  // paginaba hasta el primer mensaje. Peor: expulsar no protegía nada, porque
+  // readmitir devolvía íntegro lo hablado durante la ausencia (el esquema ya
+  // prometía "conserva historial hasta ahí"). En 1:1 no cambia nada: ambos
+  // participantes nacen con la conversación.
   const rows = await prisma.chatMessage.findMany({
-    where: { conversationId: id },
+    where: { conversationId: id, createdAt: { gte: me.joinedAt } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     take: limit,

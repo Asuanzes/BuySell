@@ -19,7 +19,8 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const userId = await requireUserId();
-  if (!(await getParticipantOrNull(id, userId))) {
+  const me = await getParticipantOrNull(id, userId);
+  if (!me) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -36,6 +37,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     where: {
       conversationId: id,
       deletedAt: null,
+      // Mismo corte que el listado: no se busca en lo anterior a mi entrada.
+      createdAt: { gte: me.joinedAt },
       body: { contains: q, mode: "insensitive" },
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],

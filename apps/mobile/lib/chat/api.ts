@@ -232,6 +232,27 @@ export const listBlocks = () =>
 export const leaveConversation = (conversationId: string) =>
   api(`/api/chat/conversations/${conversationId}`, { method: "PATCH", body: JSON.stringify({ leave: true }) });
 
+/** Renombrar un grupo (solo OWNER/ADMIN; el título pasa el filtro anti-suplantación). */
+export const renameConversation = (conversationId: string, title: string) =>
+  api<ConversationDto>(`/api/chat/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+
+/** Añadir miembros a un grupo (o readmitir a quien se fue). Solo OWNER/ADMIN. */
+export const addParticipants = (conversationId: string, userIds: string[]) =>
+  api<ConversationDto>(`/api/chat/conversations/${conversationId}/participants`, {
+    method: "POST",
+    body: JSON.stringify({ userIds }),
+  });
+
+/** Expulsar a un miembro. Solo OWNER/ADMIN; para salirme yo, leaveConversation. */
+export const removeParticipant = (conversationId: string, userId: string) =>
+  api<ConversationDto>(`/api/chat/conversations/${conversationId}/participants`, {
+    method: "DELETE",
+    body: JSON.stringify({ userId }),
+  });
+
 /** Silenciar: fecha futura, `null` quita el silencio. "Siempre" = año 9999. */
 export const muteConversation = (conversationId: string, muteUntil: string | null) =>
   api<ConversationDto>(`/api/chat/conversations/${conversationId}`, {

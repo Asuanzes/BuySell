@@ -798,7 +798,18 @@
     "group_max_reached": "Maximum {{count}} participants",
     "group_leave": "Leave group",
     "group_leave_action": "Leave",
-    "group_leave_message": "You'll stop receiving its messages and you won't be able to rejoin on your own: someone in the group would have to add you again."
+    "group_leave_message": "You'll stop receiving its messages and you won't be able to rejoin on your own: someone in the group would have to add you again.",
+    "group_info": "Group info",
+    "group_info_only": "This screen is for groups only",
+    "group_role_owner": "Creator",
+    "group_role_admin": "Admin",
+    "group_add_members": "Add members",
+    "group_add_action": "Add",
+    "group_remove_member": "Remove from group",
+    "group_remove_action": "Remove",
+    "group_remove_confirm": "{{name}} will stop seeing the group. You can add them back later.",
+    "report_group": "Report group",
+    "group_admins_only": "Only group admins can do this"
   },
   "food": {
     "home": "Food",

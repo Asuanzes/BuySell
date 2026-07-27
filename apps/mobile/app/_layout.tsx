@@ -404,6 +404,28 @@ function AuthGate() {
             }}
           />
           <Stack.Screen
+            name="chat/info/[id]"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("chat.group_info"),
+            }}
+          />
+          <Stack.Screen
+            name="chat/add-members/[id]"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("chat.group_add_members"),
+            }}
+          />
+          <Stack.Screen
             name="chat/contacts"
             options={{
               headerShown: true,

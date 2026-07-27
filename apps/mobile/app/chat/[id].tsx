@@ -738,6 +738,9 @@ export default function ChatScreen() {
   }
 
   const menuOptions: SheetOption[] = [];
+  if (isGroup) {
+    menuOptions.push({ id: "group_info", icon: "people-outline", label: t("chat.group_info") });
+  }
   if (otherUserId) {
     menuOptions.push(
       isContact
@@ -760,6 +763,11 @@ export default function ChatScreen() {
         : { id: "block", icon: "ban-outline", label: t("chat.menu_block"), danger: true }
     );
   }
+  if (isGroup) {
+    // Denunciar la conversación ya lo aceptaba el backend, pero no había forma
+    // de llegar: el único camino exigía un `otherUserId`, que en grupo es null.
+    menuOptions.push({ id: "report_group", icon: "flag-outline", label: t("chat.report_group"), danger: true });
+  }
 
   async function onMenuSelect(option: SheetOption) {
     if (option.id === "mute") {
@@ -770,6 +778,16 @@ export default function ChatScreen() {
     if (option.id === "search") {
       setMenuOpen(false);
       setSearchOpen(true);
+      return;
+    }
+    if (option.id === "group_info") {
+      setMenuOpen(false);
+      router.push(`/chat/info/${id}` as never);
+      return;
+    }
+    if (option.id === "report_group") {
+      setMenuOpen(false);
+      setReportTarget({});
       return;
     }
     setMenuOpen(false);
@@ -861,7 +879,16 @@ export default function ChatScreen() {
           <Ionicons name="chevron-back" size={24} color={th.primary} />
         </Pressable>
         <Avatar title={conversation?.title ?? "…"} imageUrl={conversation?.imageUrl ?? null} size={34} />
-        <View style={styles.headerText}>
+        {/* En grupo, la cabecera lleva a la ficha del grupo (miembros, nombre,
+            salir): es el afordance que la gente busca ahí por costumbre. En
+            1:1 es un View a secas — con `disabled` en el Pressable, RN lo
+            anunciaba como "desactivado" a los lectores de pantalla. */}
+        <Pressable
+          onPress={isGroup ? () => router.push(`/chat/info/${id}` as never) : undefined}
+          accessibilityRole={isGroup ? "button" : undefined}
+          accessibilityLabel={isGroup ? t("chat.group_info") : undefined}
+          style={styles.headerText}
+        >
           <View style={styles.headerTitleRow}>
             <Text style={[styles.headerTitle, { color: th.text }]} numberOfLines={1}>
               {conversation?.title ?? t("common.loading")}
@@ -880,7 +907,7 @@ export default function ChatScreen() {
               }
             />
           )}
-        </View>
+        </Pressable>
         {conversation && (
           <Pressable
             onPress={() => void openMenu()}

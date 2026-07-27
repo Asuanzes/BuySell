@@ -71,7 +71,7 @@ demostrar. En grupos no hay ticks (no hay recibos por-miembro).
 | Typing / presencia | ✅ config. | ✅ granular | ✅ typing (filtrado por membresía); presencia ❌ |
 | Recibos configurables | toggle global | 1:1 config. | ❌ (siempre activos) |
 | Programar mensajes | ❌ | ✅ | ❌ |
-| Grupos | 1.024 | 200.000 | ⚠️ backend sí (64), UI de creación/gestión pendiente; identidad del remitente en burbuja ✅ |
+| Grupos | 1.024 | 200.000 | ✅ 64: crear, ficha con miembros y roles, renombrar, añadir/expulsar (OWNER/ADMIN), salir; sin foto de grupo ni nombrar admins |
 | Llamadas | ✅ | ✅ | ❌ (sin botones falsos) |
 | Multidispositivo | 4 | ilimitado | ✅ mismo JWT en N dispositivos (sin sync de borradores) |
 | Cifrado | E2E por defecto | E2E opcional | ❌ E2E (ver §6); TLS + R2 firmado |
@@ -174,9 +174,25 @@ de autorización están cubiertos solo por revisión; ver §9.
 
 ## 9. Limitaciones y trabajo pendiente
 
+**Grupos (entregado en 2 pasos, jul-2026)**
+- Crear, ficha con miembros y roles, renombrar, añadir/expulsar y salir. Todo
+  cambio deja un mensaje SYSTEM (`src/lib/chat/system.ts`) que además sube la
+  conversación en la lista; solo el alta hace sonar el push.
+- **Historial acotado a `joinedAt`**: quien entra hoy NO lee lo anterior, y
+  readmitir tras expulsar reinicia la marca (si no, expulsar no protegía nada).
+  En 1:1 no cambia nada: ambos participantes nacen con la conversación.
+- Si el OWNER se va, hereda el miembro más antiguo (sin esto el grupo quedaba
+  sin nadie que pudiera administrarlo: no hay forma de nombrar ADMIN).
+- `actorName` (no `displayName`) para lo que se persiste y se difunde: sin
+  fallback al email, saneado y a 32 caracteres.
+- Pendiente: nombrar ADMIN, foto de grupo, "escribiendo…" con nombre,
+  compartir registros a un grupo, y los textos SYSTEM guardados en castellano
+  (un usuario en EN los ve en español; migrarlos exige guardarlos codificados).
+
 **P1 restante**
-- UI de grupos (crear/gestionar miembros/roles); el backend está al ~80 %.
 - Tests de integración de las rutas (IDOR, bloqueo, idempotencia) con BBDD.
+- Los bloqueos solo se comprueban contra QUIEN añade: un admin puede meter en
+  el grupo a alguien a quien otro miembro tiene bloqueado (decisión abierta).
 
 **P2**
 - Reenviar (necesita `forwardedFromId` + re-namespacing de adjuntos), fijar

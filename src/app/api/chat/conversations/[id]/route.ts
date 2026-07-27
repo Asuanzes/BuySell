@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { getParticipantOrNull } from "@/lib/chat/guard";
 import { conversationDto } from "@/lib/chat/serialize";
+import { actorName, systemEvent } from "@/lib/chat/system";
 import { contextCard } from "@/lib/chat/context";
 import { isProtectedName } from "@nidokey/shared";
 
@@ -54,6 +55,35 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       where: { id: me.id },
       data: { leftAt: new Date() },
     });
+    // En un GRUPO, irse es información para los que se quedan (en un 1:1 sería
+    // delatar que has borrado el chat de tu lista, así que ahí no).
+    const conversation = await prisma.conversation.findUnique({ where: { id }, select: { kind: true } });
+    if (conversation?.kind === "GROUP") {
+      // Si se va el dueño, el grupo se quedaba SIN administrador para siempre
+      // (no hay forma de nombrar uno): nadie podría volver a añadir, expulsar
+      // ni renombrar. Hereda el miembro más antiguo.
+      if (me.role === "OWNER") {
+        const heir = await prisma.conversationParticipant.findFirst({
+          where: { conversationId: id, leftAt: null, userId: { not: userId } },
+          orderBy: { joinedAt: "asc" },
+          select: { id: true },
+        });
+        if (heir) {
+          await prisma.conversationParticipant.update({ where: { id: heir.id }, data: { role: "OWNER" } });
+        }
+      }
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, username: true },
+      });
+      after(async () => {
+        try {
+          await systemEvent(id, userId, `👥 ${user ? actorName(user) : "Alguien"} salió del grupo.`);
+        } catch (e) {
+          console.error("[chat] evento de salida de grupo:", e);
+        }
+      });
+    }
     return NextResponse.json({ ok: true, left: true });
   }
 
@@ -66,7 +96,24 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (isProtectedName(input.title)) {
       return NextResponse.json({ error: "Ese nombre no está disponible" }, { status: 400 });
     }
-    await prisma.conversation.update({ where: { id }, data: { title: input.title } });
+    const title = input.title;
+    const before = await prisma.conversation.findUnique({ where: { id }, select: { title: true } });
+    await prisma.conversation.update({ where: { id }, data: { title } });
+    // Solo si cambia de verdad: guardar el mismo nombre no merece una burbuja.
+    if (before?.title !== title) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, username: true },
+      });
+      after(async () => {
+        try {
+          const who = user ? actorName(user) : "Alguien";
+          await systemEvent(id, userId, `👥 ${who} cambió el nombre del grupo a «${title}».`);
+        } catch (e) {
+          console.error("[chat] evento de renombrado de grupo:", e);
+        }
+      });
+    }
   }
 
   // Preferencias propias (mute/pin) — siempre permitidas.

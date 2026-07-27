@@ -4,10 +4,9 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { CHAT_FLAGS, CHAT_LIMITS } from "@/lib/chat/config";
 import { anyBlockBetween } from "@/lib/chat/guard";
-import { directKey, truncateSafe } from "@/lib/chat/util";
-import { conversationDto, displayName } from "@/lib/chat/serialize";
-import { notifyConversation } from "@/lib/chat/gateway";
-import { sendChatPush } from "@/lib/chat/push";
+import { directKey } from "@/lib/chat/util";
+import { conversationDto } from "@/lib/chat/serialize";
+import { actorName, systemEvent } from "@/lib/chat/system";
 import { unreadByConversation } from "@/lib/chat/unread";
 import { ensureBotDm } from "@/lib/chat/bot";
 import { recordOwnerId } from "@/lib/chat/context";
@@ -228,31 +227,8 @@ export async function POST(req: NextRequest) {
   after(async () => {
     try {
       const me = created.participants.find((p) => p.userId === userId)?.user;
-      const body = truncateSafe(
-        `👥 ${me ? displayName(me) : "Alguien"} creó el grupo «${created.title ?? "Grupo"}».`,
-        140
-      );
-      const now = new Date();
-      // senderId = EL CREADOR, no null. Con null el invitado no se enteraba de
-      // nada: `unreadByConversation` filtra `senderId <> userId` y en SQL
-      // `NULL <> 'x'` no es TRUE (el mensaje nunca contaba como no-leído), y
-      // `sendChatPush` hace early-return sin remitente. Con el creador como
-      // autor cuenta para los invitados, NO para él, y el push sale con el
-      // nombre del grupo. El renderer de SYSTEM ignora el remitente.
-      const [msg] = await prisma.$transaction([
-        prisma.chatMessage.create({
-          data: { conversationId: created.id, senderId: userId, kind: "SYSTEM", body },
-        }),
-        prisma.conversation.update({
-          where: { id: created.id },
-          data: { lastMessageAt: now, lastMessagePreview: body },
-        }),
-      ]);
-      await Promise.allSettled([
-        sendChatPush(msg),
-        // actorId "system" no coincide con ningún participante → refetch para todos.
-        notifyConversation(created.id, "system"),
-      ]);
+      const who = me ? actorName(me) : "Alguien";
+      await systemEvent(created.id, userId, `👥 ${who} creó el grupo «${created.title ?? "Grupo"}».`, true);
     } catch (e) {
       console.error("[chat] mensaje de creación de grupo:", e);
     }

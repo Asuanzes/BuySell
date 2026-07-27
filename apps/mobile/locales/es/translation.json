@@ -798,7 +798,18 @@
     "group_max_reached": "Máximo {{count}} participantes",
     "group_leave": "Salir del grupo",
     "group_leave_action": "Salir",
-    "group_leave_message": "Dejarás de recibir sus mensajes y no podrás volver a entrar por tu cuenta: alguien del grupo tendría que añadirte otra vez."
+    "group_leave_message": "Dejarás de recibir sus mensajes y no podrás volver a entrar por tu cuenta: alguien del grupo tendría que añadirte otra vez.",
+    "group_info": "Información del grupo",
+    "group_info_only": "Esta pantalla es solo para grupos",
+    "group_role_owner": "Creador",
+    "group_role_admin": "Admin",
+    "group_add_members": "Añadir miembros",
+    "group_add_action": "Añadir",
+    "group_remove_member": "Sacar del grupo",
+    "group_remove_action": "Sacar",
+    "group_remove_confirm": "{{name}} dejará de ver el grupo. Podrás volver a añadirle más tarde.",
+    "report_group": "Denunciar grupo",
+    "group_admins_only": "Solo los administradores del grupo pueden hacer esto"
   },
   "food": {
     "home": "Comida",
