@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Auditoria tecnica: riesgos y mejoras priorizadas</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 14mm 12mm;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: #17202a;
+        background: #ffffff;
+        font-family:
+          Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+          Arial, sans-serif;
+        font-size: 10.2pt;
+        line-height: 1.45;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .cover {
+        border-bottom: 2px solid #1f4e79;
+        padding-bottom: 16px;
+        margin-bottom: 18px;
+      }
+
+      .kicker {
+        color: #5d6d7e;
+        font-size: 9pt;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        color: #12324d;
+        font-size: 24pt;
+        line-height: 1.08;
+        margin-top: 7px;
+      }
+
+      .subtitle {
+        color: #34495e;
+        font-size: 11pt;
+        margin-top: 8px;
+      }
+
+      .intro {
+        color: #2d3e50;
+        margin-top: 12px;
+        max-width: 178mm;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin: 14px 0 18px;
+      }
+
+      .summary-item {
+        border: 1px solid #d8dee6;
+        border-left: 5px solid #7f8c8d;
+        border-radius: 6px;
+        padding: 8px 9px;
+        break-inside: avoid;
+      }
+
+      .summary-item strong {
+        display: block;
+        color: #12324d;
+        font-size: 12pt;
+      }
+
+      .summary-item span {
+        color: #566573;
+        font-size: 8.6pt;
+      }
+
+      .summary-item.p0 {
+        border-left-color: #b03a2e;
+      }
+
+      .summary-item.p1 {
+        border-left-color: #ca6f1e;
+      }
+
+      .summary-item.p2 {
+        border-left-color: #b7950b;
+      }
+
+      .summary-item.p3 {
+        border-left-color: #2874a6;
+      }
+
+      .legend {
+        background: #f7f9fb;
+        border: 1px solid #dfe7ef;
+        border-radius: 6px;
+        color: #34495e;
+        margin-bottom: 18px;
+        padding: 10px 12px;
+      }
+
+      .legend strong {
+        color: #12324d;
+      }
+
+      .section {
+        margin-top: 18px;
+      }
+
+      h2 {
+        border-bottom: 1px solid #d8dee6;
+        color: #12324d;
+        font-size: 15pt;
+        margin-bottom: 9px;
+        padding-bottom: 5px;
+      }
+
+      .item {
+        border: 1px solid #d8dee6;
+        border-left: 5px solid #7f8c8d;
+        border-radius: 7px;
+        margin: 9px 0;
+        padding: 10px 12px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .item.p0 {
+        border-left-color: #b03a2e;
+      }
+
+      .item.p1 {
+        border-left-color: #ca6f1e;
+      }
+
+      .item.p2 {
+        border-left-color: #b7950b;
+      }
+
+      .item.p3 {
+        border-left-color: #2874a6;
+      }
+
+      .item-header {
+        align-items: baseline;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+        margin-bottom: 7px;
+      }
+
+      .item-title {
+        color: #17202a;
+        font-size: 12.2pt;
+        font-weight: 750;
+      }
+
+      .tags {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 5px;
+      }
+
+      .tag {
+        border-radius: 999px;
+        color: #ffffff;
+        display: inline-block;
+        font-size: 7.8pt;
+        font-weight: 700;
+        line-height: 1;
+        padding: 4px 7px;
+        white-space: nowrap;
+      }
+
+      .tag.priority {
+        background: #5d6d7e;
+      }
+
+      .tag.category {
+        background: #1f4e79;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
+      }
+
+      .field {
+        min-width: 0;
+      }
+
+      .field.full {
+        grid-column: 1 / -1;
+      }
+
+      .label {
+        color: #5d6d7e;
+        display: block;
+        font-size: 8pt;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        margin-bottom: 2px;
+        text-transform: uppercase;
+      }
+
+      .value {
+        color: #243342;
+      }
+
+      .footer-note {
+        border-top: 1px solid #d8dee6;
+        color: #5d6d7e;
+        font-size: 8.5pt;
+        margin-top: 18px;
+        padding-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="cover">
+      <p class="kicker">Auditoria tecnica</p>
+      <h1>Riesgos y mejoras priorizadas</h1>
+      <p class="subtitle">Nidokey / BuySell Asturias - 14 de junio de 2026</p>
+      <p class="intro">
+        Este documento resume cada punto detectado, que significa para la app,
+        que implicaciones tiene en funcionamiento, seguridad, rendimiento o
+        mantenimiento, y que parte requiere una decision humana frente a lo que
+        puedo ejecutar directamente por codigo.
+      </p>
+    </header>
+
+    <section class="summary" aria-label="Resumen por prioridad">
+      <div class="summary-item p0">
+        <strong>P0 - 3 puntos</strong>
+        <span>Corregir antes de despliegues o cambios sensibles.</span>
+      </div>
+      <div class="summary-item p1">
+        <strong>P1 - 5 puntos</strong>
+        <span>Planificar en el siguiente bloque de trabajo.</span>
+      </div>
+      <div class="summary-item p2">
+        <strong>P2 - 5 puntos</strong>
+        <span>Mejoras importantes, sin bloqueo inmediato.</span>
+      </div>
+      <div class="summary-item p3">
+        <strong>P3 - 4 puntos</strong>
+        <span>Limpieza, DX y reduccion de deuda tecnica.</span>
+      </div>
+    </section>
+
+    <section class="legend">
+      <p>
+        <strong>Parte humana</strong>: decisiones de producto, politicas,
+        secretos, infraestructura externa o validaciones que conviene aprobar.
+        <strong>Parte por codigo</strong>: cambios que puedo implementar
+        directamente en el repositorio, incluyendo tests, migraciones,
+        workflows, documentacion y refactors acotados.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>P0 - Riesgo critico</h2>
+
+      <article class="item p0">
+        <div class="item-header">
+          <h3 class="item-title">Bearer invalido termina en error 500</h3>
+          <div class="tags">
+            <span class="tag priority">P0</span>
+            <span class="tag category">Seguridad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >El middleware deja pasar peticiones con cabecera Bearer, pero si
+              el token no es valido algunos handlers acaban lanzando una
+              excepcion desde la resolucion de usuario.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >La API puede devolver 500 en vez de 401. Esto empeora la UX de
+              clientes externos, ensucia logs, dificulta depuracion y puede
+              ocultar fallos reales de permisos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Confirmar contrato de errores: 401 para no autenticado, 403 para
+              autenticado sin permiso y 404 cuando convenga no revelar
+              recursos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Crear helper/wrapper de auth para handlers, devolver JSON
+              consistente y añadir tests de tokens invalidos.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p0">
+        <div class="item-header">
+          <h3 class="item-title">Secreto de pagos reutiliza AUTH_SECRET</h3>
+          <div class="tags">
+            <span class="tag priority">P0</span>
+            <span class="tag category">Seguridad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >La configuracion de webhooks o pagos puede caer en
+              FOOD_PAYMENT_WEBHOOK_SECRET || AUTH_SECRET, compartiendo un
+              secreto de autenticacion general con una integracion de pagos.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Aumenta el radio de impacto si se filtra un secreto y complica
+              rotaciones: cambiar pagos podria afectar sesiones o autenticacion
+              principal.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Generar un secreto dedicado, cargarlo en entornos reales y
+              decidir si hace falta rotar secretos existentes.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Hacer obligatorio FOOD_PAYMENT_WEBHOOK_SECRET, eliminar fallback,
+              actualizar .env.example y cubrirlo con tests.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p0">
+        <div class="item-header">
+          <h3 class="item-title">No hay CI de PR para typecheck, tests y build</h3>
+          <div class="tags">
+            <span class="tag priority">P0</span>
+            <span class="tag category">DX / Operacion</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >El repositorio no tiene una validacion automatica completa en
+              pull requests o pushes principales.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Cambios con errores de tipos, tests rotos o fallos de build
+              pueden llegar a main y bloquear despliegues posteriores.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Activar secrets necesarios y, si se desea, reglas de proteccion
+              de rama en GitHub.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Crear workflow de GitHub Actions con install, Prisma generate,
+              typecheck, tests, lint y build segun scripts disponibles.</span
+            >
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2>P1 - Prioridad alta</h2>
+
+      <article class="item p1">
+        <div class="item-header">
+          <h3 class="item-title">ownerId nullable en entidades multi-tenant</h3>
+          <div class="tags">
+            <span class="tag priority">P1</span>
+            <span class="tag category">Arquitectura</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >Algunas entidades permiten ownerId nulo aunque el sistema se
+              basa en aislar datos por propietario.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Aumenta el riesgo de datos huerfanos, consultas dificiles de
+              auditar y errores de aislamiento entre usuarios si una ruta olvida
+              filtrar correctamente.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Decidir que usuario reclama datos huerfanos y si se permiten
+              flujos anonimos temporales.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Preparar migracion, script de reclamacion, restricciones Prisma y
+              tests de aislamiento por ownerId.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p1">
+        <div class="item-header">
+          <h3 class="item-title">Rate limiting OTP solo por email</h3>
+          <div class="tags">
+            <span class="tag priority">P1</span>
+            <span class="tag category">Seguridad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >El control de intentos de OTP se centra en el correo, pero no
+              limita suficientemente por IP, dispositivo o ventana global.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Puede permitir bombardeo de emails o fuerza bruta distribuida,
+              generando coste, ruido y friccion de seguridad.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Definir politica de limites, duracion de bloqueos y tolerancia
+              para usuarios legitimos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Añadir contador por IP/email con hash, ventanas temporales,
+              respuestas 429 y tests de abuso.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p1">
+        <div class="item-header">
+          <h3 class="item-title">Faltan tests de rutas criticas</h3>
+          <div class="tags">
+            <span class="tag priority">P1</span>
+            <span class="tag category">Calidad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >Hay cobertura insuficiente para handlers de auth, pagos, comida,
+              permisos y scraping.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Cambios pequeños pueden romper flujos de login, pedidos,
+              importacion o permisos sin detectarse hasta uso real.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Aprobar alcance de cobertura y si los tests usan mocks o base de
+              datos de test.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Crear tests de integracion enfocados, fixtures y comprobaciones
+              de respuestas HTTP esperadas.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p1">
+        <div class="item-header">
+          <h3 class="item-title">Busqueda global con contains insensitive</h3>
+          <div class="tags">
+            <span class="tag priority">P1</span>
+            <span class="tag category">Rendimiento</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >La busqueda depende de filtros tipo contains, que son simples
+              pero escalan mal en tablas grandes.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >A medida que crezca el catalogo, las busquedas pueden volverse
+              lentas y consumir demasiada CPU en Postgres.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Aceptar una migracion de indices y decidir campos relevantes
+              para ranking de busqueda.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Añadir busqueda full-text o indices GIN, adaptar consultas y
+              medir planes antes/despues.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p1">
+        <div class="item-header">
+          <h3 class="item-title">Recheck de anuncios secuencial y lento</h3>
+          <div class="tags">
+            <span class="tag priority">P1</span>
+            <span class="tag category">Rendimiento</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >El proceso checkAllActiveListings revisa anuncios uno a uno con
+              pausas fijas.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Puede tardar demasiado, chocar con timeouts y dejar estados o
+              precios obsoletos cuando el volumen suba.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Definir limites de concurrencia por portal y politica prudente
+              de scraping para evitar bloqueos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Implementar concurrencia controlada, backoff, metricas e
+              ImportLog mas util para seguimiento operacional.</span
+            >
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2>P2 - Prioridad media</h2>
+
+      <article class="item p2">
+        <div class="item-header">
+          <h3 class="item-title">Desfase entre documentacion BuySell y app Nidokey</h3>
+          <div class="tags">
+            <span class="tag priority">P2</span>
+            <span class="tag category">Arquitectura</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >La documentacion historica describe BuySell inmobiliario, pero
+              el codigo ya incluye verticales como comida, chat y servicios.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Provoca decisiones inconsistentes, onboarding confuso y mayor
+              riesgo de tocar piezas equivocadas.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Confirmar nombre, alcance actual y roadmap real del producto.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Actualizar README, AGENTS, roadmap y docs tecnicas para reflejar
+              el estado actual.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p2">
+        <div class="item-header">
+          <h3 class="item-title">Prefijo de tokens inconsistente: bs_ vs nk_</h3>
+          <div class="tags">
+            <span class="tag priority">P2</span>
+            <span class="tag category">Seguridad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >Algunos documentos o scripts hablan de tokens bs_, mientras el
+              codigo genera o espera nk_.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >No es una vulnerabilidad directa, pero dificulta soporte,
+              pruebas y depuracion de bookmarklets o clientes externos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Elegir prefijo oficial para la marca actual y si se mantiene
+              compatibilidad con tokens antiguos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Unificar documentacion, comentarios, validadores y mensajes de
+              error; añadir compatibilidad temporal si se decide.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p2">
+        <div class="item-header">
+          <h3 class="item-title">OTP y magic links pueden imprimirse en logs dev</h3>
+          <div class="tags">
+            <span class="tag priority">P2</span>
+            <span class="tag category">Seguridad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >Cuando falta Resend, el flujo de desarrollo puede mostrar codigos
+              OTP o enlaces magicos en consola.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Es util en local, pero peligroso si ocurre por error en staging o
+              produccion porque revela acceso en logs.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Decidir si staging permite modo debug o debe fallar si falta el
+              proveedor de email.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Restringir logs sensibles a NODE_ENV=development y fallar rapido
+              en produccion si falta configuracion.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p2">
+        <div class="item-header">
+          <h3 class="item-title">Listado de pedidos carga eventos completos</h3>
+          <div class="tags">
+            <span class="tag priority">P2</span>
+            <span class="tag category">Rendimiento</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >La lista puede incluir eventos completos de muchos pedidos en
+              vez de traer solo resumenes.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >El endpoint crece en peso y latencia, especialmente en mobile o
+              dashboards con muchos pedidos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Decidir que datos necesita realmente la lista frente al detalle
+              de pedido.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Crear DTO de resumen, endpoint de detalle y pruebas para tamaño
+              y forma de respuesta.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p2">
+        <div class="item-header">
+          <h3 class="item-title">Scraping de menus borra y recrea items</h3>
+          <div class="tags">
+            <span class="tag priority">P2</span>
+            <span class="tag category">Rendimiento</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >La actualizacion de menus puede sustituir el menu completo en vez
+              de aplicar diferencias sobre platos existentes.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Genera churn en base de datos, IDs inestables y mas riesgo para
+              carritos, favoritos o referencias futuras a platos.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Definir regla de identidad de plato: nombre normalizado,
+              categoria, variante, precio o combinacion.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Implementar upsert/diff estable, mantener IDs cuando sea posible
+              y cubrir cambios con tests.</span
+            >
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2>P3 - Mejora y deuda tecnica</h2>
+
+      <article class="item p3">
+        <div class="item-header">
+          <h3 class="item-title">IP LAN hardcodeada en la app mobile</h3>
+          <div class="tags">
+            <span class="tag priority">P3</span>
+            <span class="tag category">DX</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >El cliente mobile puede depender de una IP local concreta en vez
+              de configurarse siempre por variable de entorno.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >En otro equipo o red deja de funcionar sin tocar codigo, y es
+              facil commitear valores locales por accidente.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Definir URL local recomendada para desarrollo fisico, simulador y
+              entorno publicado.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Usar EXPO_PUBLIC_API_URL como fuente unica, actualizar ejemplos y
+              mensajes de setup.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p3">
+        <div class="item-header">
+          <h3 class="item-title">No hay script npm test estandar</h3>
+          <div class="tags">
+            <span class="tag priority">P3</span>
+            <span class="tag category">DX</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >Existen tests, pero falta un comando convencional npm test para
+              que personas, agentes y CI los ejecuten igual.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Aumenta la friccion y hace mas probable que se omitan pruebas
+              antes de subir cambios.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >Aprobar convencion de runner y si se separan tests unitarios,
+              integracion y smoke.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Añadir scripts npm coherentes y conectarlos con CI.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p3">
+        <div class="item-header">
+          <h3 class="item-title">menu-scrape.ts concentra demasiadas responsabilidades</h3>
+          <div class="tags">
+            <span class="tag priority">P3</span>
+            <span class="tag category">Calidad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >El modulo de scraping de menus mezcla resolucion de fuentes,
+              extraccion, normalizacion y persistencia.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >Los cambios son mas dificiles de razonar y testear, y se vuelve
+              mas facil romper Google, Firecrawl o persistencia al tocar otra
+              parte.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >No requiere decision funcional, solo elegir el momento para el
+              refactor.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Separar resolver, extractor, normalizador y persistencia,
+              manteniendo comportamiento y tests de regresion.</span
+            >
+          </p>
+        </div>
+      </article>
+
+      <article class="item p3">
+        <div class="item-header">
+          <h3 class="item-title">orderCode usa Math.random</h3>
+          <div class="tags">
+            <span class="tag priority">P3</span>
+            <span class="tag category">Seguridad</span>
+          </div>
+        </div>
+        <div class="grid">
+          <p class="field full">
+            <span class="label">Que es</span>
+            <span class="value"
+              >El codigo corto de pedido se genera con una fuente pseudoaleatoria
+              no criptografica.</span
+            >
+          </p>
+          <p class="field full">
+            <span class="label">Implicaciones</span>
+            <span class="value"
+              >El riesgo es bajo si solo se usa para soporte, pero conviene
+              evitar codigos predecibles en identificadores visibles.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte humana</span>
+            <span class="value"
+              >No requiere decision humana salvo cambiar formato visible del
+              codigo.</span
+            >
+          </p>
+          <p class="field">
+            <span class="label">Parte por codigo</span>
+            <span class="value"
+              >Sustituir por crypto.randomInt o randomBytes y añadir tests de
+              formato.</span
+            >
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <p class="footer-note">
+      Documento generado a partir de la auditoria tecnica local. La prioridad
+      marca urgencia relativa, no tamaño de implementacion.
+    </p>
+  </body>
+</html>

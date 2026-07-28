@@ -62,11 +62,11 @@ export default function ImportarScreen() {
   const [results, setResults] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  // Empleo: filtros extra de búsqueda (ciudad/zona + remoto + fuentes).
+  // Empleo: filtros extra de búsqueda (ciudad/zona + remoto). Ya no hay
+  // selector de portal: la única fuente es InfoJobs (LinkedIn e Indeed se
+  // retiraron al quedarnos solo con fuentes gratuitas — ver docs/jobs-ingestion.md).
   const [searchLocation, setSearchLocation] = useState("");
   const [searchRemote, setSearchRemote] = useState(false);
-  // Portales a consultar (elige 1–3). InfoJobs (España), LinkedIn, Indeed.
-  const [jobSources, setJobSources] = useState({ infojobs: true, linkedin: true, indeed: true });
   // Confirmación por fila al elegir un resultado (check verde estilo WhatsApp).
   const [addedKeys, setAddedKeys] = useState<Set<number>>(new Set());
   const [addingIndex, setAddingIndex] = useState<number | null>(null);
@@ -328,8 +328,6 @@ export default function ImportarScreen() {
         if (type === "job") {
           if (searchLocation.trim()) url += `&location=${encodeURIComponent(searchLocation.trim())}`;
           if (searchRemote) url += `&remote=1`;
-          const sel = (["infojobs", "linkedin", "indeed"] as const).filter((k) => jobSources[k]);
-          if (sel.length > 0) url += `&sources=${sel.join(",")}`;
         }
         const res = await api<{ results: SearchHit[] }>(url);
         if (myId === searchRunId.current) setResults(res.results ?? []);
@@ -342,7 +340,7 @@ export default function ImportarScreen() {
         }
       }
     },
-    [type, searchLocation, searchRemote, jobSources]
+    [type, searchLocation, searchRemote]
   );
 
   // Mercados (Yahoo, gratis): búsqueda EN VIVO con debounce. Empleo (Apify, de
@@ -497,7 +495,6 @@ export default function ImportarScreen() {
                 setHasSearched(false);
                 setSearchLocation("");
                 setSearchRemote(false);
-                setJobSources({ infojobs: true, linkedin: true, indeed: true });
                 setAddedKeys(new Set());
                 setAddingIndex(null);
                 setOpOverride("AUTO");
@@ -607,50 +604,6 @@ export default function ImportarScreen() {
 
           {type === "job" && (
             <>
-              <View style={styles.sourcesRow}>
-                {(
-                  [
-                    ["infojobs", "InfoJobs"],
-                    ["linkedin", "LinkedIn"],
-                    ["indeed", "Indeed"],
-                  ] as const
-                ).map(([k, label]) => {
-                  const on = jobSources[k];
-                  return (
-                    <Pressable
-                      key={k}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: on }}
-                      accessibilityLabel={label}
-                      onPress={() => {
-                        setJobSources((s) => {
-                          const n = { ...s, [k]: !s[k] };
-                          // Al menos una fuente activa.
-                          if (!n.infojobs && !n.linkedin && !n.indeed) return s;
-                          return n;
-                        });
-                        if (cfg.searchOnSubmit) setHasSearched(false);
-                      }}
-                      style={[
-                        styles.sourceChip,
-                        {
-                          borderColor: on ? th.accent : th.border,
-                          backgroundColor: on ? th.accentSoft : th.surface,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={on ? "checkmark-circle" : "ellipse-outline"}
-                        size={16}
-                        color={on ? th.accent : th.textSubtle}
-                      />
-                      <Text style={[styles.sourceChipText, { color: on ? th.accent : th.textMuted }]}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
               <TextInput
                 value={searchLocation}
                 onChangeText={(v) => {
@@ -1065,18 +1018,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   opChipText: { fontSize: 13, fontFamily: fonts.bodySemibold },
-  sourcesRow: { flexDirection: "row", gap: 8 },
-  sourceChip: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    height: 40,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  sourceChipText: { fontSize: 13, fontFamily: fonts.bodySemibold },
   results: { gap: 8 },
   resultRow: {
     flexDirection: "row",

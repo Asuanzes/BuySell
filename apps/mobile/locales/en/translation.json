@@ -631,7 +631,7 @@
     "how_property_steps": "1. Open a listing in Chrome\n2. Tap Share → Nidokey\n3. The URL will appear here automatically",
     "how_type_title": "How to add {{type}}",
     "how_symbol": "Type the symbol (e.g. BTC) and tap Add. Nidokey will fetch its price and track its evolution.",
-    "hint_job": "Pick the sources (InfoJobs, LinkedIn, Indeed) and type the role and/or the city or area. You can leave the role empty and search everything in that area. Tap Search and pick an offer to save it to your Jobs.",
+    "hint_job": "Type the role and, if you want, the city or province. You can leave the role empty and see everything in that area. Tap Search and pick an offer to save it to your Jobs. Offers come from InfoJobs.",
     "hint_book": "Search by title, author, ISBN or keyword (e.g. “sapiens”, “Yuval Harari”, “9780099590088”), tap Search and pick the book from the list to save it to your Books.\n\nNote: not all apps share well with Nidokey (the Amazon app, for example, opens a new window and doesn't add the book). If that happens, copy the link or title and search here.",
     "hint_market": "Type the name or ticker (e.g. “sxr8”, “apple”, “vaneck space”) and pick the right one from the list — with its exchange. No suffixes or collisions.",
     "scan_barcode": "Scan barcode",
