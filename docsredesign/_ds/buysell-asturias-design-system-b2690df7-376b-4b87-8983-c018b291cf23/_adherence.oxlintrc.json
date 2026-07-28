@@ -1,0 +1,171 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "artifacts/**",
+              "assets/**",
+              "screens/**",
+              "screens/tsx/**",
+              "ui_kits/web/**",
+              "uploads/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Inter))/i]",
+        "message": "Font not provided by the design system. Available: Inter."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {},
+    "tokens": [
+      "--bg",
+      "--border",
+      "--border-strong",
+      "--brand-accent",
+      "--danger",
+      "--danger-soft",
+      "--font-mono",
+      "--font-sans",
+      "--fs-2xl",
+      "--fs-3xl",
+      "--fs-base",
+      "--fs-lg",
+      "--fs-md",
+      "--fs-sm",
+      "--fs-xl",
+      "--fs-xs",
+      "--info",
+      "--info-soft",
+      "--lh-2xl",
+      "--lh-3xl",
+      "--lh-base",
+      "--lh-lg",
+      "--lh-md",
+      "--lh-sm",
+      "--lh-xl",
+      "--lh-xs",
+      "--price-down-bg",
+      "--price-down-fg",
+      "--price-up-bg",
+      "--price-up-fg",
+      "--primary",
+      "--primary-fg",
+      "--primary-hover",
+      "--primary-soft",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-sm",
+      "--radius-xl",
+      "--shadow-md",
+      "--shadow-sm",
+      "--shadow-xs",
+      "--success",
+      "--success-soft",
+      "--surface",
+      "--surface-muted",
+      "--surface-sunken",
+      "--text",
+      "--text-inverse",
+      "--text-muted",
+      "--text-subtle",
+      "--warning",
+      "--warning-soft"
+    ],
+    "tokenKinds": {
+      "--bg": "color",
+      "--surface": "color",
+      "--surface-muted": "color",
+      "--surface-sunken": "color",
+      "--border": "color",
+      "--border-strong": "color",
+      "--text": "font",
+      "--text-muted": "font",
+      "--text-subtle": "font",
+      "--text-inverse": "font",
+      "--primary": "color",
+      "--primary-hover": "color",
+      "--primary-soft": "color",
+      "--primary-fg": "color",
+      "--brand-accent": "color",
+      "--success": "color",
+      "--success-soft": "color",
+      "--warning": "color",
+      "--warning-soft": "color",
+      "--danger": "color",
+      "--danger-soft": "color",
+      "--info": "color",
+      "--info-soft": "color",
+      "--price-up-bg": "color",
+      "--price-up-fg": "color",
+      "--price-down-bg": "color",
+      "--price-down-fg": "color",
+      "--radius-sm": "radius",
+      "--radius-md": "radius",
+      "--radius-lg": "radius",
+      "--radius-xl": "radius",
+      "--shadow-xs": "shadow",
+      "--shadow-sm": "shadow",
+      "--shadow-md": "shadow",
+      "--font-sans": "font",
+      "--font-mono": "font",
+      "--fs-xs": "spacing",
+      "--lh-xs": "spacing",
+      "--fs-sm": "spacing",
+      "--lh-sm": "spacing",
+      "--fs-base": "spacing",
+      "--lh-base": "spacing",
+      "--fs-md": "spacing",
+      "--lh-md": "spacing",
+      "--fs-lg": "spacing",
+      "--lh-lg": "spacing",
+      "--fs-xl": "spacing",
+      "--lh-xl": "spacing",
+      "--fs-2xl": "spacing",
+      "--lh-2xl": "spacing",
+      "--fs-3xl": "spacing",
+      "--lh-3xl": "spacing"
+    },
+    "fontFamilies": [
+      "Inter"
+    ]
+  }
+}

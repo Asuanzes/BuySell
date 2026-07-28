@@ -12,7 +12,7 @@ import { Image } from "expo-image";
 import RNShare from "react-native-share";
 import { useTranslation } from "react-i18next";
 
-import { type BaseRecord, metaField } from "@nidokey/shared";
+import { type BaseRecord, metaField, jobPlatformLabel } from "@nidokey/shared";
 import { api } from "@/lib/api";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { useTheme } from "@/lib/theme";
@@ -67,16 +67,7 @@ export default function JobDetail() {
   const postedAt = metaField<string | null>(record, "postedAt", null);
   const province = metaField<string | null>(record, "province", null);
   const banner = provinceImage(province);
-  const platformLabel =
-    platform === "infojobs"
-      ? "InfoJobs"
-      : platform === "tecnoempleo"
-      ? "Tecnoempleo"
-      : platform === "linkedin"
-      ? "LinkedIn"
-      : platform === "indeed"
-      ? "Indeed"
-      : t("detail.source_web");
+  const platformLabel = jobPlatformLabel(platform) ?? t("detail.source_web");
 
   const rows: [string, string][] = (
     [

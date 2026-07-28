@@ -12,8 +12,21 @@ import { resolveInfoJobsProvince } from "@/features/sources/jobs/province";
  * Importes monetarios SIEMPRE en céntimos (como el resto del proyecto).
  */
 /** `linkedin`/`indeed` ya no se consultan (fuentes de pago retiradas), pero se
- *  conservan para que los registros guardados en su día sigan etiquetando bien. */
-export type JobPlatform = "infojobs" | "tecnoempleo" | "linkedin" | "indeed" | "other";
+ *  conservan para que los registros guardados en su día sigan etiquetando bien.
+ *  Las seis últimas son bolsas de remoto internacional con API JSON abierta
+ *  (`ingest-remote-apis.ts`), solo consultadas con el filtro "solo remoto". */
+export type JobPlatform =
+  | "infojobs"
+  | "tecnoempleo"
+  | "linkedin"
+  | "indeed"
+  | "remotive"
+  | "jobicy"
+  | "arbeitnow"
+  | "remoteok"
+  | "himalayas"
+  | "themuse"
+  | "other";
 
 export interface JobOffer {
   externalId?: string; // id en la plataforma

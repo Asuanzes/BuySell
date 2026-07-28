@@ -631,7 +631,7 @@
     "how_property_steps": "1. Abre un anuncio en Chrome\n2. Pulsa Compartir → Nidokey\n3. La URL aparecerá aquí automáticamente",
     "how_type_title": "Cómo añadir {{type}}",
     "how_symbol": "Escribe el símbolo (p. ej. BTC) y pulsa Añadir. Nidokey buscará su precio y seguirá su evolución.",
-    "hint_job": "Escribe el puesto y, si quieres, la ciudad o provincia. Puedes dejar el puesto vacío y ver todo lo que haya en esa zona. Pulsa Buscar y elige una oferta para guardarla en tus Empleos. Buscamos a la vez en InfoJobs y Tecnoempleo.",
+    "hint_job": "Escribe el puesto y, si quieres, la ciudad o provincia. Puedes dejar el puesto vacío y ver todo lo que haya en esa zona. Pulsa Buscar y elige una oferta para guardarla en tus Empleos. Buscamos a la vez en InfoJobs y Tecnoempleo; con «solo remoto» añadimos bolsas internacionales (en inglés).",
     "hint_book": "Busca por título, autor, ISBN o palabra clave (p. ej. “sapiens”, “Yuval Harari”, “9780099590088”), pulsa Buscar y elige el libro de la lista para guardarlo en tus Libros.\n\nOjo: no todas las apps comparten bien con Nidokey (la app de Amazon, por ejemplo, abre una ventana nueva y no añade el libro). Si te pasa, copia el enlace o el título y búscalo aquí.",
     "hint_market": "Escribe el nombre o el ticker (p. ej. “sxr8”, “apple”, “vaneck space”) y elige el correcto de la lista — con su bolsa. Sin sufijos ni colisiones.",
     "scan_barcode": "Escanear código de barras",

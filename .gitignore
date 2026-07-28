@@ -70,3 +70,6 @@ scripts/bot-eval/real/
 # Auditoría técnica: documento de trabajo, no se publica en el repo público.
 docs/auditoria-riesgos-mejoras.html
 docs/auditoria-riesgos-mejoras.pdf
+
+# Índice local compartido por Codex y Claude Code.
+.graphrag/

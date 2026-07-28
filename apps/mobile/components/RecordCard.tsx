@@ -7,7 +7,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 
-import { type BaseRecord, metaField, compactNumber } from "@nidokey/shared";
+import { type BaseRecord, metaField, compactNumber, jobPlatformLabel } from "@nidokey/shared";
 import { useTheme } from "@/lib/theme";
 import { useAppStyle } from "@/lib/app-style-context";
 
@@ -434,16 +434,7 @@ function JobCard({ record, editing, onLongPress, onDelete }: CardProps) {
   const sub = [company, location].filter(Boolean).join(" · ") || record.subtitle || null;
   // Pie compacto: contrato (· remoto) en gris, sueldo en BRONCE; fuente a la derecha.
   const contractRemote = [contract, remote ? t("card.remote") : null].filter(Boolean).join(" · ");
-  const platformLabel =
-    platform === "infojobs"
-      ? "InfoJobs"
-      : platform === "tecnoempleo"
-      ? "Tecnoempleo"
-      : platform === "linkedin"
-      ? "LinkedIn"
-      : platform === "indeed"
-      ? "Indeed"
-      : null;
+  const platformLabel = jobPlatformLabel(platform);
 
   return (
     <Pressable

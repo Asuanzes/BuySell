@@ -35,7 +35,13 @@
     "postinstall": "patch-package",
     "typecheck": "tsc --noEmit",
     "typecheck:mobile": "npm --workspace @nidokey/mobile exec -- tsc --noEmit",
-    "test": "node --import tsx --test \"src/**/*.test.ts\" \"packages/shared/src/*.test.ts\""
+    "test": "node --import tsx --test \"src/**/*.test.ts\" \"packages/shared/src/*.test.ts\"",
+    "graphrag:index": "node --no-warnings tools/graphrag/cli.mjs index",
+    "graphrag:status": "node --no-warnings tools/graphrag/cli.mjs status",
+    "graphrag:query": "node --no-warnings tools/graphrag/cli.mjs query",
+    "graphrag:tasks": "node --no-warnings tools/graphrag/cli.mjs tasks",
+    "graphrag:orchestrator": "node --no-warnings tools/graphrag/cli.mjs orchestrator",
+    "graphrag:test": "node --no-warnings --test tools/graphrag/test.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

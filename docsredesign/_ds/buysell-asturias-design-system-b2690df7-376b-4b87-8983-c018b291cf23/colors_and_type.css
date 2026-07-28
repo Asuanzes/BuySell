@@ -1,0 +1,221 @@
+/* ============================================================
+   BuySell Asturias — Colors & Type
+   Source of truth: src/app/globals.css + tailwind.config.ts
+   ============================================================ */
+
+/* ---------- Webfont ---------- */
+/* Inter — self-hosted from project /fonts/.
+   The `next/font/google` setup in the real app pulls the same files. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/inter-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/inter-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/inter-700.woff2") format("woff2");
+}
+
+:root {
+  /* ---------- Surfaces ---------- */
+  --bg: #FAFAF7;              /* whole page — warm off-white (not pure white) */
+  --surface: #FFFFFF;         /* cards, sidebar, header */
+  --surface-muted: #F4F3EE;   /* table-header row, hover, disabled */
+  --surface-sunken: #EFEEE8;  /* darker fill behind content */
+
+  /* ---------- Borders ---------- */
+  --border: #E8E6E1;          /* default 1px hairline */
+  --border-strong: #D4D1CA;   /* input hover, scrollbar thumb */
+
+  /* ---------- Text ---------- */
+  --text: #1A1A18;            /* primary body + headings */
+  --text-muted: #6B6862;      /* secondary copy, table cells */
+  --text-subtle: #9A9690;     /* tertiary, captions, eyebrows */
+  --text-inverse: #FAFAF7;    /* on dark / on primary */
+
+  /* ---------- Brand ---------- */
+  --primary: #3A5F8A;         /* steel blue — links, primary buttons, active nav */
+  --primary-hover: #2E4D70;
+  --primary-soft: #EAEFF6;    /* soft tinted background (sidebar icon, badges) */
+  --primary-fg: #FAFAF7;      /* text on primary */
+
+  /* Brand accent — aged brass on a forged steel key.
+     Used SPARINGLY: cobre/latón in the IconKey + favicon highlight. */
+  --brand-accent: #C49A4D;
+
+  /* ---------- Semantic ---------- */
+  --success: #2D6A4F;
+  --success-soft: #E8F1EC;
+  --warning: #A86A17;
+  --warning-soft: #F7EFDE;
+  --danger: #A23E3E;
+  --danger-soft: #F6E5E5;
+  --info: #2C7A8A;
+  --info-soft: #E1EEF1;
+
+  /* ---------- Price deltas (very subtle reds/greens for tables) ---------- */
+  --price-up-bg: #FDF2F2;
+  --price-up-fg: #A23E3E;
+  --price-down-bg: #F0F7F2;
+  --price-down-fg: #2D6A4F;
+
+  /* ---------- Radii ---------- */
+  --radius-sm: 4px;   /* checkbox, focus-ring rounding */
+  --radius-md: 6px;   /* buttons, inputs, badges */
+  --radius-lg: 8px;   /* cards, tables, sidebars */
+  --radius-xl: 12px;  /* rare — large hero containers */
+
+  /* ---------- Shadows (very subtle, warm-black) ---------- */
+  --shadow-xs: 0 1px 2px rgba(20, 20, 18, 0.04);
+  --shadow-sm: 0 1px 3px rgba(20, 20, 18, 0.06), 0 1px 2px rgba(20, 20, 18, 0.04);
+  --shadow-md: 0 4px 12px rgba(20, 20, 18, 0.06), 0 1px 3px rgba(20, 20, 18, 0.04);
+
+  /* ---------- Type ---------- */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Type scale (from tailwind.config.ts) — small, dense, table-friendly */
+  --fs-xs: 12px;   --lh-xs: 16px;
+  --fs-sm: 13px;   --lh-sm: 18px;   /* body default */
+  --fs-base: 14px; --lh-base: 20px;
+  --fs-md: 15px;   --lh-md: 22px;
+  --fs-lg: 16px;   --lh-lg: 24px;
+  --fs-xl: 20px;   --lh-xl: 28px;
+  --fs-2xl: 24px;  --lh-2xl: 32px;
+  --fs-3xl: 32px;  --lh-3xl: 40px;
+}
+
+/* ============================================================
+   Semantic type styles
+   ============================================================ */
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  /* Inter OpenType features used in app: alt 1/4/7, ss01, ss03 */
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-size: var(--fs-sm);   /* 13px — yes, that small. dense product UI. */
+  line-height: 1.5;
+}
+
+/* Page title — PageHeader. e.g. "Dashboard", "Inmuebles" */
+h1, .h1 {
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-2xl);
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+/* Card titles, form-section headers — kept SMALL on purpose */
+h2, .h2 {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+h3, .h3 {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+/* Eyebrow / section label — uppercase, very subtle. e.g. "Hoy", "21 enero 2026" */
+.eyebrow {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+/* Body copy */
+p, .body {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* Secondary / muted copy */
+.muted {
+  color: var(--text-muted);
+}
+.subtle {
+  color: var(--text-subtle);
+}
+
+/* Big number — Stat value, hero price */
+.stat-value {
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-2xl);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+.price-hero {
+  font-size: var(--fs-3xl);
+  line-height: var(--lh-3xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabular numerics — ALL prices, deltas, table cells */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Code */
+code, .code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* Links — primary blue, underline on hover */
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Focus ring — consistent across the app */
+:where(button, a, input, select, textarea, [role="button"]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}

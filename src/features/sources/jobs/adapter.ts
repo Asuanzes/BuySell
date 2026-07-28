@@ -6,7 +6,9 @@ import type {
   SourceAdapter,
   SourceInput,
 } from "@/features/sources/types";
+import { jobPlatformLabel } from "@nidokey/shared";
 import { ingestInfoJobsOffersJina } from "@/features/sources/jobs/ingest-infojobs-jina";
+import { ingestRemoteApisOffers } from "@/features/sources/jobs/ingest-remote-apis";
 import { ingestTecnoempleoOffers } from "@/features/sources/jobs/ingest-tecnoempleo-jina";
 import { normLocation } from "@/features/sources/jobs/province";
 import { jobOfferToNormalized, type JobOffer } from "@/features/sources/jobs/types";
@@ -18,12 +20,15 @@ import { jobOfferToNormalized, type JobOffer } from "@/features/sources/jobs/typ
  *  - al elegir uno, el móvil importa con `kind:"record"` → se guarda tal cual
  *    SIN volver a consultar la fuente.
  *
- * FUENTES, todas **gratis y sin clave** vía Jina Reader:
- *  - **InfoJobs** (`ingest-infojobs-jina.ts`) — generalista, ~20 por búsqueda.
- *  - **Tecnoempleo** (`ingest-tecnoempleo-jina.ts`) — informática y telecos,
- *    30 por página.
- * Se consultan EN PARALELO y se intercalan: el valor del producto es ver los
- * dos portales de una vez, no repetir uno.
+ * FUENTES, todas **gratis y sin clave**:
+ *  - **InfoJobs** (`ingest-infojobs-jina.ts`, vía Jina) — generalista, ~20.
+ *  - **Tecnoempleo** (`ingest-tecnoempleo-jina.ts`, vía Jina) — informática y
+ *    telecos, 30 por página.
+ *  - **Bolsas de remoto internacional** (`ingest-remote-apis.ts`, seis APIs
+ *    JSON abiertas) — SOLO cuando el usuario marca "solo remoto": están en
+ *    inglés y sin filtro de provincia; en una búsqueda local serían ruido.
+ * Se consultan EN PARALELO y se intercalan: el valor del producto es ver
+ * todos los portales de una vez, no repetir uno.
  *
  * Retiradas el 2026-07-28 al dar de baja Apify, y sin alternativa gratuita:
  *  - **LinkedIn**: Jina bloquea el acceso anónimo al dominio por abuso
@@ -38,20 +43,12 @@ import { jobOfferToNormalized, type JobOffer } from "@/features/sources/jobs/typ
  */
 const SOURCE = "jobs";
 
-function platformLabel(p: JobOffer["platform"]): string {
-  if (p === "infojobs") return "InfoJobs";
-  if (p === "tecnoempleo") return "Tecnoempleo";
-  if (p === "linkedin") return "LinkedIn";
-  if (p === "indeed") return "Indeed";
-  return "";
-}
-
 /** Candidato para el buscador: muestra título/empresa/plataforma/ubicación y lleva el record. */
 function hitFor(o: JobOffer): SearchHit {
   return {
     symbol: "", // empleo no se re-fetchea por símbolo; los datos van en `record`
     name: o.title,
-    exchange: [o.companyName, platformLabel(o.platform)].filter(Boolean).join(" · ") || null,
+    exchange: [o.companyName, jobPlatformLabel(o.platform)].filter(Boolean).join(" · ") || null,
     type: o.location ?? null,
     record: jobOfferToNormalized(o),
   };
@@ -87,17 +84,21 @@ export const apifyJobsAdapter: SourceAdapter = {
       console.error(`[jobs] ${src} falló:`, e instanceof Error ? e.message : e);
       return [] as JobOffer[];
     };
-    const [infojobs, tecnoempleo] = await Promise.all([
+    const sources = [
       ingestInfoJobsOffersJina(base).catch(fail("infojobs")),
       ingestTecnoempleoOffers(base).catch(fail("tecnoempleo")),
-    ]);
+      // Bolsas internacionales solo si el usuario pidió "solo remoto".
+      ...(opts?.remote ? [ingestRemoteApisOffers(base).catch(fail("remote-apis"))] : []),
+    ];
+    const perSource = await Promise.all(sources);
 
-    // Intercalado 1:1 para que ambos portales se vean arriba, no uno detrás del
-    // otro (con 20+30 ofertas, concatenar escondería Tecnoempleo entero).
+    // Intercalado 1:1 para que todos los portales se vean arriba, no uno detrás
+    // del otro (con 20+30 ofertas, concatenar escondería Tecnoempleo entero).
     const offers: JobOffer[] = [];
-    for (let i = 0; i < Math.max(infojobs.length, tecnoempleo.length); i++) {
-      if (infojobs[i]) offers.push(infojobs[i]);
-      if (tecnoempleo[i]) offers.push(tecnoempleo[i]);
+    for (let i = 0; i < Math.max(...perSource.map((l) => l.length)); i++) {
+      for (const list of perSource) {
+        if (list[i]) offers.push(list[i]);
+      }
     }
 
     const seen = new Set<string>();

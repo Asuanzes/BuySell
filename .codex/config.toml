@@ -1,0 +1,16 @@
+[mcp_servers.nidokey-graph]
+command = "node"
+args = [
+  "--no-warnings",
+  "C:\\Users\\suanz\\.nidokey-graph\\runtime\\server.mjs",
+  "--root",
+  "C:\\Users\\suanz\\Desktop\\Nidokey",
+]
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+required = false
+enabled = true
+
+[mcp_servers.nidokey-graph.env]
+NIDOKEY_GRAPH_AGENT = "codex"
+NIDOKEY_GRAPH_ROOT = "C:\\Users\\suanz\\Desktop\\Nidokey"

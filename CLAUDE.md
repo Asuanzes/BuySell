@@ -4,6 +4,11 @@
 > producto original "BuySell Asturias" (inteligencia inmobiliaria web) vive en
 > `docs/blitzy-tech-spec.md` y `docs/ROADMAP.md`; describe una app que ya no es
 > esta. Ante conflicto, manda este documento y el código.
+>
+> **Modelo estratégico central:** `docs/MODELO-NEGOCIO.md` es la fuente
+> normativa para producto, priorización y monetización. Toda feature, vertical o
+> integración nueva debe superar su filtro de decisiones. En estrategia manda
+> ese documento sobre roadmaps y specs históricas.
 
 ## 1. Qué es
 
@@ -30,6 +35,11 @@ Multi-usuario real (compartir registros, chat entre usuarios). Idiomas: ES
 **Desde 2026-06-01 se trabaja SOLO en `apps/mobile/`.** La web (`src/`) queda
 como landing de descarga + API backend; no se añaden features de UI web y no se
 traduce.
+
+El producto se orienta a **seguir decisiones, detectar cambios, comparar
+alternativas y coordinar el siguiente paso**. Comida y Entrenos quedan fuera del
+caso económico y del roadmap de producción salvo revisión explícita de
+`docs/MODELO-NEGOCIO.md`.
 
 ## 3. Monorepo
 
@@ -140,6 +150,8 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
 
 ## 10. Docs normativos
 
+- `docs/MODELO-NEGOCIO.md` — **modelo central de producto, priorización,
+  diferenciación y monetización**
 - `docs/OPERACIONES.md` — deploy, pagos test→live, backups, rollback, checklist de lanzamiento
 - `docs/ANALITICA.md` — catálogo de eventos, embudo, métricas
 - `docs/ALERTAS.md` — alertas de precio (cripto/mercados/inmuebles): tipos, rearme, cuotas
@@ -159,3 +171,49 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
    IAP/RevenueCat para vender Premium in-app.
 3. Menores: chat F5 (grupos UI), picker emoji, responder-cita; subida del
    toolchain Expo (resuelve las vulns altas restantes del audit).
+
+## 12. Coordinación Codex + Claude Code
+
+El MCP local `nidokey-graph` mantiene un grafo compartido del código,
+documentación, decisiones y trabajo en curso. El índice se actualiza
+incrementalmente al abrir y cerrar cada sesión. Protocolo obligatorio:
+
+1. Como primera acción de cada tarea, ejecutar `session_context` pasando el
+   objetivo concreto del usuario. No releer todo el repo si el grafo ya entrega
+   contexto suficiente.
+2. Revisar `taskInbox`, trabajo activo, decisiones y handoffs. Si hay una tarea
+   en cola asignada a `claude-code`, aceptarla con `claim_delegated_task`.
+3. Ampliar solo lo necesario con `graph_search` y verificar sus citas en código.
+4. Reclamar el ámbito mínimo mediante `claim_scope` antes de editar.
+5. No editar ámbitos solapados reclamados por la otra sesión.
+6. Tras los cambios, ejecutar `refresh_index`.
+7. Registrar decisiones no evidentes y publicar un `publish_handoff`. Si es una
+   tarea delegada, cerrarla además con `complete_delegated_task`.
+8. Liberar el claim.
+
+### Delegación y ejecución en segundo plano
+
+- `delegate_task` crea una tarea persistente para el otro agente. El ámbito
+  debe ser concreto y no puede solaparse con el trabajo del padre.
+- Las tareas raíz siempre quedan en cola. Usa `dispatch_tasks` solo cuando el
+  usuario haya pedido ejecución paralela/en segundo plano y se haya confirmado
+  el consumo de cuota de Codex o Claude. Las subtareas heredan esa autorización
+  y no pueden crear raíces nuevas.
+- `list_delegated_tasks`, `get_delegated_task` y `orchestration_status`
+  permiten seguir cola, dependencias, procesos, eventos y resultados sin
+  bloquear la sesión.
+- Las dependencias, leases, reintentos, idempotencia, profundidad y concurrencia
+  los controla `nidokey-graph`. Una tarea puede delegar de vuelta al otro
+  agente, pero no superar el presupuesto de su raíz.
+- Los procesos de fondo no reciben permiso implícito para commit, push, PR,
+  deploy, EAS Update, migraciones, producción, pagos, secretos o borrados.
+  Si algo de eso resulta necesario, la tarea debe terminar como bloqueada y
+  pedir intervención humana.
+- La identidad del agente se fija en la configuración MCP, no se acepta desde
+  el nombre declarado por el cliente. Completar o cancelar exige poseer la
+  sesión o ejecución exacta.
+
+La base vive en `.graphrag/`, no se commitea y no contiene `.env`, secretos ni
+binarios. Los claims caducan para que una sesión caída no bloquee el proyecto.
+Los ejecutores reutilizan la autenticación local ya existente de cada CLI; el
+grafo nunca copia ni persiste sus credenciales.

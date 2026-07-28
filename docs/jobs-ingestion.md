@@ -6,12 +6,13 @@
 ## Búsqueda MULTIPORTAL, todo gratis y sin clave
 
 El diferencial del producto es buscar en varios portales de una vez. Fuentes
-activas, ambas vía Jina Reader y consultadas en paralelo con intercalado 1:1:
+activas, consultadas en paralelo con intercalado 1:1:
 
 | Portal | Perfil | Ofertas/página | Provincia | Remoto |
 | --- | --- | --- | --- | --- |
-| **InfoJobs** | generalista | ~20 (JSON embebido) | `provinceIds=<id>` (tabla sondeada) | filtro propio en cliente |
-| **Tecnoempleo** | informática y telecos | 30 (HTML renderizado) | `pr=,<id>,` (tabla publicada en su `<select>`) | `en_remoto=1` |
+| **InfoJobs** (Jina) | generalista | ~20 (JSON embebido) | `provinceIds=<id>` (tabla sondeada) | filtro propio en cliente |
+| **Tecnoempleo** (Jina) | informática y telecos | 30 (HTML renderizado) | `pr=,<id>,` (tabla publicada en su `<select>`) | `en_remoto=1` |
+| **6 APIs de remoto** (JSON directo) | remoto internacional, en inglés | 8 por API | — | solo entran con "solo remoto" |
 
 Portales evaluados y descartados (2026-07-28, medido, no supuesto):
 - **Trabajos.com**: responde, pero **ignora la palabra clave** — devuelve
@@ -21,9 +22,6 @@ Portales evaluados y descartados (2026-07-28, medido, no supuesto):
 - **Talent.com / Manfred**: renderizan en cliente; el HTML servido apenas trae
   5 enlaces.
 - **Infoempleo**: solo 19 enlaces y sin estructura clara de tarjeta.
-- APIs abiertas (Arbeitnow, Remotive, RemoteOK, Jobicy, Himalayas, The Muse):
-  funcionan pero son **empleo remoto internacional**, casi sin oferta española;
-  quedan como candidatas si algún día hay una pestaña "remoto internacional".
 
 ## InfoJobs vía Jina Reader
 
@@ -92,6 +90,24 @@ Particularidades:
   hueco de la ciudad**, sin paréntesis de modalidad.
 - El `<title>` de la página confirma el filtro ("181 Ofertas … en Álava"), útil
   para verificar a mano si algo huele raro.
+
+## Bolsas de remoto internacional (seis APIs abiertas)
+
+`src/features/sources/jobs/ingest-remote-apis.ts`. Remotive, Jobicy, Arbeitnow,
+RemoteOK, Himalayas y The Muse: APIs JSON **gratis, sin clave y sin scraping**.
+Se enrutan SOLO cuando el usuario marca "solo remoto" — son bolsas
+internacionales casi todas en inglés y sin filtro de provincia; en una búsqueda
+"programador en Vitoria" serían ruido.
+
+- Casi ninguna busca bien en servidor (tabla en la cabecera del fichero): el
+  filtro por palabra se hace aquí sobre título + etiquetas + descripción.
+  **Limitación honesta de idioma**: "programador" casa poco; "react", "python"
+  o "designer" casan bien.
+- Cada API aporta hasta 8 ofertas; se intercalan 1:1 entre las seis y se
+  deduplican por `externalId`/URL. Una API caída solo se pierde a sí misma.
+- Los normalizadores son puros y están cubiertos por
+  `ingest-remote-apis.test.ts` con payloads fieles (APIs sondeadas el
+  2026-07-28).
 
 ## Cuota de Jina (sin clave: 20 peticiones/minuto)
 

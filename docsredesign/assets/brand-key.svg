@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <circle cx="6.5" cy="12" r="3.3"></circle>
+  <circle cx="6.5" cy="8" r="0.85" fill="var(--brand-accent, #C49A4D)" stroke="none"></circle>
+  <path d="M9.8 12 H17"></path>
+  <path d="M17 12 H21 V17 H20 V15.5 H18.5 V17 H17 Z" fill="var(--brand-accent, #C49A4D)"></path>
+</svg>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { jobPlatformLabel } from "@nidokey/shared";
 import { fonts } from "@/lib/fonts";
 import {
   ActivityIndicator,
@@ -949,16 +950,7 @@ function jobMetaOf(
     line2: [s("company"), s("location")].filter(Boolean).join(" · ") || undefined,
     contract: s("contractType"),
     salary: s("salaryLabel"),
-    platform:
-      platform === "infojobs"
-        ? "InfoJobs"
-        : platform === "tecnoempleo"
-        ? "Tecnoempleo"
-        : platform === "linkedin"
-        ? "LinkedIn"
-        : platform === "indeed"
-        ? "Indeed"
-        : undefined,
+    platform: jobPlatformLabel(platform) ?? undefined,
   };
 }
 
