@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { extractOffersJson, infoJobsSearchUrl, parseInfoJobsHtml } from "./ingest-infojobs-jina";
+import { resolveInfoJobsProvinceId } from "./province";
 
 /**
  * Recorte FIEL de la página real (2026-07-28). Lleva las dos copias que trae
@@ -119,13 +120,28 @@ test("parseInfoJobsHtml: descarta ofertas sin título o sin enlace", () => {
   assert.equal(parseInfoJobsHtml(sinTitulo, NOW).length, 1);
 });
 
-test("infoJobsSearchUrl: usa la búsqueda por palabra clave, con paginación", () => {
-  const u = infoJobsSearchUrl("programador senior", 3);
+test("infoJobsSearchUrl: palabra clave, provincia y paginación", () => {
+  const u = infoJobsSearchUrl("programador senior", 33, 3);
   assert.ok(u.includes("/jobsearch/search-results/list.xhtml"));
   assert.ok(u.includes("keyword=programador+senior"));
+  assert.ok(u.includes("provinceIds=33"));
   assert.ok(u.includes("page=3"));
-  // Página 1 no lleva el parámetro.
-  assert.ok(!infoJobsSearchUrl("programador").includes("page="));
+  // Página 1 y sin provincia: ninguno de los dos parámetros.
+  const simple = infoJobsSearchUrl("programador");
+  assert.ok(!simple.includes("page="));
+  assert.ok(!simple.includes("provinceIds="));
   // NUNCA la forma segmentada: ignora la palabra clave.
   assert.ok(!u.includes("/ofertas-trabajo/"));
+});
+
+test("resolveInfoJobsProvinceId: ciudad → provincia → id de InfoJobs", () => {
+  // La tabla se sondeó contra la web: Álava=2, Madrid=33, A Coruña=28.
+  assert.equal(resolveInfoJobsProvinceId("Vitoria-Gasteiz"), 2);
+  assert.equal(resolveInfoJobsProvinceId("Álava"), 2);
+  assert.equal(resolveInfoJobsProvinceId("Madrid"), 33);
+  assert.equal(resolveInfoJobsProvinceId("Bilbao"), 51);
+  assert.equal(resolveInfoJobsProvinceId("A Coruña"), 28);
+  // Desconocida → sin id (y la ingesta devuelve vacío en vez de ruido nacional).
+  assert.equal(resolveInfoJobsProvinceId("Lisboa"), undefined);
+  assert.equal(resolveInfoJobsProvinceId(undefined), undefined);
 });

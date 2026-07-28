@@ -85,6 +85,36 @@ export function resolveInfoJobsProvince(input?: string): string | undefined {
   return undefined;
 }
 
+/**
+ * `provinceIds` de InfoJobs para su buscador (`list.xhtml?keyword=…&provinceIds=N`).
+ *
+ * NO se puede derivar del orden alfabético de la lista de arriba (ahí A Coruña
+ * va primera y en InfoJobs es la 28). La tabla se obtuvo **sondeando la web**:
+ * una búsqueda por cada id y anotando la ciudad dominante de los resultados
+ * (2026-07-28). Sin esto, una búsqueda "en Vitoria" devolvía ofertas de Madrid
+ * y Palma, porque la única URL que respeta la palabra clave ignora la provincia
+ * salvo por este parámetro.
+ */
+const PROVINCE_ID: Record<string, number> = {
+  "Álava": 2, "Albacete": 3, "Alicante": 4, "Almería": 5, "Asturias": 6,
+  "Ávila": 7, "Badajoz": 8, "Barcelona": 9, "Burgos": 10, "Cáceres": 11,
+  "Cádiz": 12, "Cantabria": 13, "Castellón": 14, "Ceuta": 15, "Ciudad Real": 16,
+  "Córdoba": 17, "Cuenca": 18, "Gerona": 19, "Las Palmas": 20, "Granada": 21,
+  "Guadalajara": 22, "Guipúzcoa": 23, "Huelva": 24, "Huesca": 25,
+  "Islas Baleares": 26, "Jaén": 27, "A Coruña": 28, "La Rioja": 29, "León": 30,
+  "Lérida": 31, "Lugo": 32, "Madrid": 33, "Málaga": 34, "Melilla": 35,
+  "Murcia": 36, "Navarra": 37, "Orense": 38, "Palencia": 39, "Pontevedra": 40,
+  "Salamanca": 41, "Segovia": 42, "Sevilla": 43, "Soria": 44, "Tarragona": 45,
+  "Tenerife": 46, "Teruel": 47, "Toledo": 48, "Valencia": 49, "Valladolid": 50,
+  "Vizcaya": 51, "Zamora": 52, "Zaragoza": 53,
+};
+
+/** Id de provincia de InfoJobs para lo que escriba el usuario, o undefined. */
+export function resolveInfoJobsProvinceId(input?: string): number | undefined {
+  const province = resolveInfoJobsProvince(input);
+  return province ? PROVINCE_ID[province] : undefined;
+}
+
 /** Normaliza una ubicación (sin acentos/guiones, minúsculas) para comparar. */
 export function normLocation(s: string): string {
   return norm(s);

@@ -1,3 +1,4 @@
+import { resolveInfoJobsProvinceId } from "@/features/sources/jobs/province";
 import { parseSalaryToCents, type InfoJobsSearchParams, type JobOffer } from "@/features/sources/jobs/types";
 
 /**
@@ -56,16 +57,17 @@ function strip(html: string): string {
 }
 
 /**
- * URL de resultados. SIEMPRE la de búsqueda con `keyword`, que es la única que
- * respeta la palabra clave y admite `page`.
+ * URL de resultados: la de búsqueda, que respeta la palabra clave, admite
+ * `page` y —con `provinceIds`— filtra por provincia de verdad.
  *
- * ⚠️ NO usar `/ofertas-trabajo/<kw>/en-<provincia>`: filtra por provincia pero
- * IGNORA la palabra clave (comprobado — devuelve repartidores y vigilantes para
- * "programador"). La zona se prioriza después, ordenando por ciudad en el
- * adaptador, con el campo `city` que viene en cada oferta.
+ * ⚠️ NO usar `/ofertas-trabajo/<kw>/en-<provincia>`: filtra la zona pero IGNORA
+ * la palabra clave (comprobado — devuelve repartidores y vigilantes para
+ * "programador"). Y `province=Madrid` en esta URL se ignora: el filtro solo
+ * entiende el id numérico interno (ver `resolveInfoJobsProvinceId`).
  */
-export function infoJobsSearchUrl(keywords: string, page = 1): string {
+export function infoJobsSearchUrl(keywords: string, provinceId?: number, page = 1): string {
   const qs = new URLSearchParams({ keyword: keywords });
+  if (provinceId) qs.set("provinceIds", String(provinceId));
   if (page > 1) qs.set("page", String(page));
   return `https://www.infojobs.net/jobsearch/search-results/list.xhtml?${qs}`;
 }
@@ -193,10 +195,14 @@ async function fetchPage(url: string, timeoutMs: number): Promise<string> {
 export async function ingestInfoJobsOffersJina(params: InfoJobsSearchParams): Promise<JobOffer[]> {
   const want = params.maxItems ?? 20;
   const pages = Math.min(3, Math.max(1, Math.ceil(want / PER_PAGE)));
+  // La provincia se filtra EN LA URL: si se pide zona y no se resuelve, mejor
+  // no devolver nada que devolver ofertas de la otra punta del país.
+  const provinceId = resolveInfoJobsProvinceId(params.location);
+  if (params.location?.trim() && !provinceId) return [];
 
   const htmls = await Promise.all(
     Array.from({ length: pages }, (_, i) =>
-      fetchPage(infoJobsSearchUrl(params.keywords, i + 1), 25_000).catch((e) => {
+      fetchPage(infoJobsSearchUrl(params.keywords, provinceId, i + 1), 25_000).catch((e) => {
         console.error(`[jobs-jina] página ${i + 1} falló:`, e instanceof Error ? e.message : e);
         return "";
       })
