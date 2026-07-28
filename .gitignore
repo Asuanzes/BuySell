@@ -66,3 +66,7 @@ scripts/bot-eval/real/
 **/*-firebase-adminsdk-*.json
 **/service-account*.json
 **/firebase-service-account*.json
+
+# Auditoría técnica: documento de trabajo, no se publica en el repo público.
+docs/auditoria-riesgos-mejoras.html
+docs/auditoria-riesgos-mejoras.pdf
