@@ -16,6 +16,8 @@ export type JobPlatform = "infojobs" | "linkedin" | "indeed" | "other";
 export interface JobOffer {
   externalId?: string; // id en la plataforma
   platform: JobPlatform;
+  /** De dónde salió el dato: "jina" (gratis) o "apify" (actor de pago). */
+  source?: string;
   title: string;
   companyName: string;
   location?: string;
@@ -113,7 +115,7 @@ export function jobOfferToNormalized(o: JobOffer): NormalizedRecord {
     currentValue: o.salaryMin ?? o.salaryMax ?? null, // céntimos
     currency: o.currency ?? "EUR",
     imageUrl: o.companyLogoUrl ?? null,
-    source: "apify",
+    source: o.source ?? "apify",
     externalId: o.externalId ?? o.url,
     observedAt: o.scrapedAt,
     meta: {

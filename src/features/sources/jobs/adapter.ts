@@ -6,25 +6,42 @@ import type {
   SourceAdapter,
   SourceInput,
 } from "@/features/sources/types";
+import { hasApifyToken } from "@/features/sources/providers/apify";
 import { ingestInfoJobsOffers } from "@/features/sources/jobs/ingest-infojobs";
+import { ingestInfoJobsOffersJina } from "@/features/sources/jobs/ingest-infojobs-jina";
 import { ingestLinkedInOffers } from "@/features/sources/jobs/ingest-linkedin";
 import { ingestIndeedOffers } from "@/features/sources/jobs/ingest-indeed";
 import { isProvinceName, normLocation } from "@/features/sources/jobs/province";
 import { jobOfferToNormalized, type JobOffer } from "@/features/sources/jobs/types";
 
 /**
- * Adaptador de EMPLEO vía Apify (por defecto InfoJobs — España). Encaja en el
- * framework como cripto/mercado, pero con un matiz de coste: cada búsqueda
- * cuesta dinero (actor de pago). Por eso:
- *  - `search(query)` corre el actor UNA vez y devuelve candidatos con su
+ * Adaptador de EMPLEO. Encaja en el framework como cripto/mercado, con un matiz
+ * de coste: parte de las fuentes cuestan dinero. Por eso:
+ *  - `search(query)` consulta las fuentes UNA vez y devuelve candidatos con su
  *    `record` ya normalizado embebido,
  *  - al elegir uno, el móvil importa con `kind:"record"` → se guarda tal cual
- *    SIN volver a llamar a Apify (coste 0 al elegir).
+ *    SIN volver a consultar la fuente (coste 0 al elegir).
+ *
+ * FUENTES (2026-07-28, tras dar de baja el plan de Apify):
+ *  - **InfoJobs → Jina Reader, GRATIS y sin clave** (`ingest-infojobs-jina.ts`).
+ *    Es la fuente por defecto y la única que funciona siempre. Trae 5 ofertas
+ *    por página (InfoJobs solo renderiza eso en servidor); sin provincia se
+ *    paginan hasta 20.
+ *  - **LinkedIn e Indeed → actores de Apify, DE PAGO**: solo se consultan si hay
+ *    `APIFY_TOKEN`. Sin token se omiten en silencio, que es correcto porque
+ *    InfoJobs sigue devolviendo resultados.
  *
  * `fetch({kind:"query"})` existe por si se importa la primera coincidencia sin
  * elegir (no lo usa el flujo del móvil).
  */
-const SOURCE = "apify";
+const SOURCE = "jobs";
+
+/** InfoJobs sin coste; Apify solo si hay token (LinkedIn/Indeed no tienen alternativa). */
+function infoJobs(params: Parameters<typeof ingestInfoJobsOffersJina>[0]) {
+  return process.env.JOBS_INFOJOBS_APIFY === "1" && hasApifyToken()
+    ? ingestInfoJobsOffers(params)
+    : ingestInfoJobsOffersJina(params);
+}
 
 function platformLabel(p: JobOffer["platform"]): string {
   if (p === "linkedin") return "LinkedIn";
@@ -69,7 +86,7 @@ export const apifyJobsAdapter: SourceAdapter = {
       return { kind: "error", error: "Empleo requiere una búsqueda (palabras clave)" };
     }
     try {
-      const offers = await ingestInfoJobsOffers({ keywords: input.query, maxItems: 5 });
+      const offers = await infoJobs({ keywords: input.query, maxItems: 5 });
       const first = offers[0];
       if (!first) return { kind: "gone", reason: `Sin ofertas para "${input.query}"` };
       return { kind: "ok", record: jobOfferToNormalized(first) as NormalizedRecord };
@@ -86,15 +103,21 @@ export const apifyJobsAdapter: SourceAdapter = {
     // por las no seleccionadas.
     const hasKeyword = query.trim().length >= 2;
     const none = Promise.resolve([] as JobOffer[]);
+    // LinkedIn e Indeed son actores de Apify (de pago): sin token ni se intentan.
+    const paid = hasApifyToken();
+    const fail = (src: string) => (e: unknown) => {
+      console.error(`[jobs] ${src} falló:`, e instanceof Error ? e.message : e);
+      return [] as JobOffer[];
+    };
     const [infojobs, linkedin, indeed] = await Promise.all([
       want.has("infojobs") && hasKeyword
-        ? ingestInfoJobsOffers({ ...base, maxItems: 20 }).catch(() => [] as JobOffer[])
+        ? infoJobs({ ...base, maxItems: 20 }).catch(fail("infojobs"))
         : none,
-      want.has("linkedin")
-        ? ingestLinkedInOffers({ ...base, maxItems: 15 }).catch(() => [] as JobOffer[])
+      want.has("linkedin") && paid
+        ? ingestLinkedInOffers({ ...base, maxItems: 15 }).catch(fail("linkedin"))
         : none,
-      want.has("indeed")
-        ? ingestIndeedOffers({ ...base, maxItems: 15 }).catch(() => [] as JobOffer[])
+      want.has("indeed") && paid
+        ? ingestIndeedOffers({ ...base, maxItems: 15 }).catch(fail("indeed"))
         : none,
     ]);
     // Intercala (InfoJobs, LinkedIn, Indeed) para que se vean todas arriba; dedup.
@@ -113,17 +136,19 @@ export const apifyJobsAdapter: SourceAdapter = {
       return true;
     });
 
-    // Búsqueda EXPLÍCITA por ciudad: si la zona es una ciudad concreta (no una
-    // provincia entera), mostrar solo ofertas de ESA ciudad (InfoJobs busca por
-    // provincia y LinkedIn por geo amplia, así que filtramos aquí). Si no queda
-    // ninguna, se cae a la provincia para no dejar la pantalla vacía.
+    // Búsqueda por ciudad concreta: InfoJobs busca por PROVINCIA y LinkedIn por
+    // geo amplia, así que aquí se prioriza la ciudad — ordenando, no filtrando.
+    // Antes se descartaba todo lo que no fuera de la ciudad, y con InfoJobs vía
+    // Jina (5 ofertas por página, no 20 como el actor de pago) eso dejaba la
+    // pantalla en una sola oferta. Ahora la ciudad va primero y el resto de la
+    // provincia detrás: nada se pierde y lo relevante manda.
     const loc = opts?.location?.trim();
     let result = deduped;
     if (loc && !isProvinceName(loc)) {
       const term = normLocation(loc.split(",")[0]);
       if (term) {
-        const city = deduped.filter((o) => normLocation(o.location ?? "").includes(term));
-        if (city.length > 0) result = city;
+        const inCity = (o: JobOffer) => normLocation(o.location ?? "").includes(term);
+        result = [...deduped.filter(inCity), ...deduped.filter((o) => !inCity(o))];
       }
     }
     return result.slice(0, 30).map(hitFor);
