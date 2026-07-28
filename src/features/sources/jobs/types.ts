@@ -11,7 +11,9 @@ import { resolveInfoJobsProvince } from "@/features/sources/jobs/province";
  *
  * Importes monetarios SIEMPRE en céntimos (como el resto del proyecto).
  */
-export type JobPlatform = "infojobs" | "linkedin" | "indeed" | "other";
+/** `linkedin`/`indeed` ya no se consultan (fuentes de pago retiradas), pero se
+ *  conservan para que los registros guardados en su día sigan etiquetando bien. */
+export type JobPlatform = "infojobs" | "tecnoempleo" | "linkedin" | "indeed" | "other";
 
 export interface JobOffer {
   externalId?: string; // id en la plataforma

@@ -3,15 +3,37 @@
 > Estado a 2026-07-28. Sustituye a `jobs-ingestion-apify.md`, que describía la
 > ingesta por actores de pago, ya retirada.
 
-## Fuente única: InfoJobs vía Jina Reader (gratis, sin clave)
+## Búsqueda MULTIPORTAL, todo gratis y sin clave
+
+El diferencial del producto es buscar en varios portales de una vez. Fuentes
+activas, ambas vía Jina Reader y consultadas en paralelo con intercalado 1:1:
+
+| Portal | Perfil | Ofertas/página | Provincia | Remoto |
+| --- | --- | --- | --- | --- |
+| **InfoJobs** | generalista | ~20 (JSON embebido) | `provinceIds=<id>` (tabla sondeada) | filtro propio en cliente |
+| **Tecnoempleo** | informática y telecos | 30 (HTML renderizado) | `pr=,<id>,` (tabla publicada en su `<select>`) | `en_remoto=1` |
+
+Portales evaluados y descartados (2026-07-28, medido, no supuesto):
+- **Trabajos.com**: responde, pero **ignora la palabra clave** — devuelve
+  limpieza y carretilleros para "programador". Misma trampa que la URL
+  segmentada de InfoJobs.
+- **Jobatus**: HTTP 422 vía Jina.
+- **Talent.com / Manfred**: renderizan en cliente; el HTML servido apenas trae
+  5 enlaces.
+- **Infoempleo**: solo 19 enlaces y sin estructura clara de tarjeta.
+- APIs abiertas (Arbeitnow, Remotive, RemoteOK, Jobicy, Himalayas, The Muse):
+  funcionan pero son **empleo remoto internacional**, casi sin oferta española;
+  quedan como candidatas si algún día hay una pestaña "remoto internacional".
+
+## InfoJobs vía Jina Reader
 
 `src/features/sources/jobs/ingest-infojobs-jina.ts`. Se lee la página pública de
 resultados a través de `https://r.jina.ai/<url>` — un `GET` sin cuenta ni token.
 
 Flujo: el móvil llama a `/api/records/search?type=job` → `apifyJobsAdapter.search()`
-→ una o tres peticiones a Jina → candidatos con su `record` ya normalizado
-embebido. Al elegir uno, el móvil importa con `kind:"record"`: **no se vuelve a
-consultar la fuente**.
+→ InfoJobs y Tecnoempleo en paralelo → candidatos intercalados con su `record`
+ya normalizado embebido. Al elegir uno, el móvil importa con `kind:"record"`:
+**no se vuelve a consultar la fuente**.
 
 ### Lo que hay que saber para tocarlo
 
@@ -51,6 +73,32 @@ plan. Sus alternativas gratuitas no existen:
 
 `JobPlatform` conserva los valores `linkedin` / `indeed` para que los registros
 guardados en su día se sigan mostrando con su etiqueta correcta.
+
+## Tecnoempleo vía Jina Reader
+
+`src/features/sources/jobs/ingest-tecnoempleo-jina.ts`. Más simple que InfoJobs:
+las 30 ofertas por página vienen renderizadas en servidor, cada tarjeta empieza
+con `<a name="rf-<id>">` y lleva título, empresa, `<b>Ciudad</b> (Modalidad) -
+fecha`, recorte de descripción, etiquetas de tecnología y a veces salario.
+
+Particularidades:
+
+- La provincia va como lista entre comas: `?pr=,232,`. La tabla de ids está en
+  `province.ts` (`TECNOEMPLEO_PROVINCE_ID`) — esta NO hubo que sondearla: su
+  buscador la publica en el `<select>` del HTML. Ojo a los nombres: el portal
+  usa Bizkaia/Gipuzkoa/Girona/Lleida/Ourense y nuestro canónico es
+  Vizcaya/Guipúzcoa/Gerona/Lérida/Orense.
+- Cuando una oferta es 100 % remota, el portal escribe "100% remoto" **en el
+  hueco de la ciudad**, sin paréntesis de modalidad.
+- El `<title>` de la página confirma el filtro ("181 Ofertas … en Álava"), útil
+  para verificar a mano si algo huele raro.
+
+## Cuota de Jina (sin clave: 20 peticiones/minuto)
+
+Una búsqueda multiportal consume 2-4 peticiones (1-3 de InfoJobs + 1 de
+Tecnoempleo). Sin clave, Jina permite ~20/min por IP — con una clave gratuita
+sube a 500/min, opción a considerar si las búsquedas crecen. El bloqueo por
+dominio (caso LinkedIn) es independiente de la clave.
 
 ## Fragilidad asumida
 

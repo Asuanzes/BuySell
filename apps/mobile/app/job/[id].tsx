@@ -68,10 +68,12 @@ export default function JobDetail() {
   const province = metaField<string | null>(record, "province", null);
   const banner = provinceImage(province);
   const platformLabel =
-    platform === "linkedin"
-      ? "LinkedIn"
-      : platform === "infojobs"
+    platform === "infojobs"
       ? "InfoJobs"
+      : platform === "tecnoempleo"
+      ? "Tecnoempleo"
+      : platform === "linkedin"
+      ? "LinkedIn"
       : platform === "indeed"
       ? "Indeed"
       : t("detail.source_web");

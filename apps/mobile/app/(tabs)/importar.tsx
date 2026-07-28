@@ -62,9 +62,9 @@ export default function ImportarScreen() {
   const [results, setResults] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  // Empleo: filtros extra de búsqueda (ciudad/zona + remoto). Ya no hay
-  // selector de portal: la única fuente es InfoJobs (LinkedIn e Indeed se
-  // retiraron al quedarnos solo con fuentes gratuitas — ver docs/jobs-ingestion.md).
+  // Empleo: filtros extra de búsqueda (ciudad/zona + remoto). Sin selector de
+  // portal: el servidor consulta SIEMPRE todas las fuentes gratuitas a la vez
+  // (InfoJobs + Tecnoempleo) y las intercala — ver docs/jobs-ingestion.md.
   const [searchLocation, setSearchLocation] = useState("");
   const [searchRemote, setSearchRemote] = useState(false);
   // Confirmación por fila al elegir un resultado (check verde estilo WhatsApp).
@@ -950,10 +950,12 @@ function jobMetaOf(
     contract: s("contractType"),
     salary: s("salaryLabel"),
     platform:
-      platform === "linkedin"
-        ? "LinkedIn"
-        : platform === "infojobs"
+      platform === "infojobs"
         ? "InfoJobs"
+        : platform === "tecnoempleo"
+        ? "Tecnoempleo"
+        : platform === "linkedin"
+        ? "LinkedIn"
         : platform === "indeed"
         ? "Indeed"
         : undefined,

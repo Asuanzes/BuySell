@@ -435,10 +435,12 @@ function JobCard({ record, editing, onLongPress, onDelete }: CardProps) {
   // Pie compacto: contrato (· remoto) en gris, sueldo en BRONCE; fuente a la derecha.
   const contractRemote = [contract, remote ? t("card.remote") : null].filter(Boolean).join(" · ");
   const platformLabel =
-    platform === "linkedin"
-      ? "LinkedIn"
-      : platform === "infojobs"
+    platform === "infojobs"
       ? "InfoJobs"
+      : platform === "tecnoempleo"
+      ? "Tecnoempleo"
+      : platform === "linkedin"
+      ? "LinkedIn"
       : platform === "indeed"
       ? "Indeed"
       : null;

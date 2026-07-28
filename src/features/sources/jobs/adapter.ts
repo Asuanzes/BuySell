@@ -7,6 +7,7 @@ import type {
   SourceInput,
 } from "@/features/sources/types";
 import { ingestInfoJobsOffersJina } from "@/features/sources/jobs/ingest-infojobs-jina";
+import { ingestTecnoempleoOffers } from "@/features/sources/jobs/ingest-tecnoempleo-jina";
 import { normLocation } from "@/features/sources/jobs/province";
 import { jobOfferToNormalized, type JobOffer } from "@/features/sources/jobs/types";
 
@@ -17,16 +18,20 @@ import { jobOfferToNormalized, type JobOffer } from "@/features/sources/jobs/typ
  *  - al elegir uno, el móvil importa con `kind:"record"` → se guarda tal cual
  *    SIN volver a consultar la fuente.
  *
- * FUENTE ÚNICA: **InfoJobs vía Jina Reader**, gratis y sin clave
- * (`ingest-infojobs-jina.ts`). El 2026-07-28 se quitaron las de pago:
- *  - **LinkedIn**: su actor de Apify costaba dinero, y la alternativa gratuita
- *    NO es viable — Jina bloquea el acceso anónimo a linkedin.com por abuso
+ * FUENTES, todas **gratis y sin clave** vía Jina Reader:
+ *  - **InfoJobs** (`ingest-infojobs-jina.ts`) — generalista, ~20 por búsqueda.
+ *  - **Tecnoempleo** (`ingest-tecnoempleo-jina.ts`) — informática y telecos,
+ *    30 por página.
+ * Se consultan EN PARALELO y se intercalan: el valor del producto es ver los
+ * dos portales de una vez, no repetir uno.
+ *
+ * Retiradas el 2026-07-28 al dar de baja Apify, y sin alternativa gratuita:
+ *  - **LinkedIn**: Jina bloquea el acceso anónimo al dominio por abuso
  *    (`AbuseAlleviationError` 403, con caducidad y reaparición). Funciona a
  *    ratos, que para una búsqueda de usuario es lo mismo que no funcionar.
- *  - **Indeed**: su actor era el único sin tope de gasto por ejecución, y por
- *    Jina devuelve una cáscara sin ofertas (protección anti-bot).
- * Los registros ya guardados de esas plataformas se siguen mostrando bien: el
- * tipo `JobPlatform` conserva sus valores.
+ *  - **Indeed**: por Jina devuelve una cáscara sin ofertas (anti-bot), y su
+ *    actor era el único que corría sin tope de gasto.
+ * `JobPlatform` conserva sus valores para los registros ya guardados.
  *
  * `fetch({kind:"query"})` existe por si se importa la primera coincidencia sin
  * elegir (no lo usa el flujo del móvil).
@@ -34,8 +39,9 @@ import { jobOfferToNormalized, type JobOffer } from "@/features/sources/jobs/typ
 const SOURCE = "jobs";
 
 function platformLabel(p: JobOffer["platform"]): string {
-  if (p === "linkedin") return "LinkedIn";
   if (p === "infojobs") return "InfoJobs";
+  if (p === "tecnoempleo") return "Tecnoempleo";
+  if (p === "linkedin") return "LinkedIn";
   if (p === "indeed") return "Indeed";
   return "";
 }
@@ -74,15 +80,25 @@ export const apifyJobsAdapter: SourceAdapter = {
   },
 
   async search(query: string, opts?: SearchOpts): Promise<SearchHit[]> {
-    const offers = await ingestInfoJobsOffersJina({
-      keywords: query,
-      location: opts?.location,
-      remote: opts?.remote,
-      maxItems: 20,
-    }).catch((e) => {
-      console.error("[jobs] infojobs falló:", e instanceof Error ? e.message : e);
+    const base = { keywords: query, location: opts?.location, remote: opts?.remote, maxItems: 20 };
+    // Que una fuente caiga no debe dejar la búsqueda vacía: cada una se rescata
+    // por separado y la otra sigue dando resultados.
+    const fail = (src: string) => (e: unknown) => {
+      console.error(`[jobs] ${src} falló:`, e instanceof Error ? e.message : e);
       return [] as JobOffer[];
-    });
+    };
+    const [infojobs, tecnoempleo] = await Promise.all([
+      ingestInfoJobsOffersJina(base).catch(fail("infojobs")),
+      ingestTecnoempleoOffers(base).catch(fail("tecnoempleo")),
+    ]);
+
+    // Intercalado 1:1 para que ambos portales se vean arriba, no uno detrás del
+    // otro (con 20+30 ofertas, concatenar escondería Tecnoempleo entero).
+    const offers: JobOffer[] = [];
+    for (let i = 0; i < Math.max(infojobs.length, tecnoempleo.length); i++) {
+      if (infojobs[i]) offers.push(infojobs[i]);
+      if (tecnoempleo[i]) offers.push(tecnoempleo[i]);
+    }
 
     const seen = new Set<string>();
     const deduped = offers.filter((o) => {
@@ -92,7 +108,7 @@ export const apifyJobsAdapter: SourceAdapter = {
       return true;
     });
 
-    // La PROVINCIA ya viene filtrada por la URL de InfoJobs. Aquí solo se sube
+    // La PROVINCIA ya viene filtrada en la URL de cada portal. Aquí solo se sube
     // la ciudad pedida al principio (ordenar, no descartar): dentro de Álava,
     // primero Vitoria y luego el resto de la provincia.
     const loc = opts?.location?.trim();

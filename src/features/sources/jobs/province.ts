@@ -115,6 +115,33 @@ export function resolveInfoJobsProvinceId(input?: string): number | undefined {
   return province ? PROVINCE_ID[province] : undefined;
 }
 
+/**
+ * Ids de provincia de TECNOEMPLEO (`?pr=,<id>,`). A diferencia de los de
+ * InfoJobs, estos NO hubo que sondearlos: su buscador publica el `<select>` de
+ * provincias en el propio HTML. Se indexan por el nombre canónico de arriba,
+ * que en varios casos difiere del suyo (Vizcaya/Bizkaia, Gerona/Girona,
+ * Lérida/Lleida, Orense/Ourense, Guipúzcoa/Gipuzkoa, Tenerife/Sta. Cruz…).
+ */
+const TECNOEMPLEO_PROVINCE_ID: Record<string, number> = {
+  "A Coruña": 231, "Álava": 232, "Albacete": 233, "Alicante": 234, "Almería": 235,
+  "Asturias": 236, "Ávila": 237, "Badajoz": 238, "Islas Baleares": 239,
+  "Barcelona": 240, "Vizcaya": 241, "Burgos": 242, "Cáceres": 243, "Cádiz": 244,
+  "Cantabria": 245, "Castellón": 246, "Ceuta": 247, "Ciudad Real": 248,
+  "Córdoba": 249, "Cuenca": 250, "Guipúzcoa": 251, "Gerona": 252, "Granada": 253,
+  "Guadalajara": 254, "Huelva": 255, "Huesca": 256, "Jaén": 257, "La Rioja": 258,
+  "Las Palmas": 259, "León": 260, "Lugo": 261, "Lérida": 262, "Madrid": 263,
+  "Málaga": 264, "Melilla": 265, "Murcia": 266, "Navarra": 267, "Orense": 268,
+  "Palencia": 269, "Pontevedra": 270, "Salamanca": 271, "Tenerife": 272,
+  "Segovia": 273, "Sevilla": 274, "Soria": 275, "Tarragona": 276, "Teruel": 277,
+  "Toledo": 278, "Valencia": 279, "Valladolid": 280, "Zamora": 281, "Zaragoza": 282,
+};
+
+/** Id de provincia de Tecnoempleo para lo que escriba el usuario, o undefined. */
+export function resolveTecnoempleoProvinceId(input?: string): number | undefined {
+  const province = resolveInfoJobsProvince(input);
+  return province ? TECNOEMPLEO_PROVINCE_ID[province] : undefined;
+}
+
 /** Normaliza una ubicación (sin acentos/guiones, minúsculas) para comparar. */
 export function normLocation(s: string): string {
   return norm(s);
