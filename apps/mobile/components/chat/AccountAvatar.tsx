@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 
@@ -40,6 +40,15 @@ export function AccountAvatar({ email, name }: { email: string; name: string | n
 
   async function onSelect(option: SheetOption) {
     setMenuOpen(false);
+
+    // iOS no puede presentar ImagePicker mientras el Modal de ActionsSheet
+    // todavía está terminando su animación de cierre. Si se lanza en el mismo
+    // tick, la promesa nativa puede quedar pendiente y el avatar carga para
+    // siempre. Es el mismo guard que usa el flujo de adjuntos del chat.
+    if (Platform.OS === "ios" && option.id !== "remove") {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
     setBusy(true);
     try {
       if (option.id === "remove") {
