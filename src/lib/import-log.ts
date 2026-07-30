@@ -2,7 +2,7 @@ import type { ImportLogKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 /**
- * Log de eventos de background (catastro, geocode, matching, merge…).
+ * Log de eventos de background (geocode, matching, merge…).
  * Pensado para visibilidad en UI (/activity) y debug operativo.
  *
  * Nunca lanza: si falla la escritura del log, dejamos rastro en consola

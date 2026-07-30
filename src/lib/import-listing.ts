@@ -693,7 +693,7 @@ export async function importListing(
     });
   }
 
-  // Lanzar tareas de background: hash de fotos, enriquecer catastro,
+  // Lanzar tareas de background: hash de fotos, geocode,
   // buscar duplicados y posible auto-merge.
   void postImportTasks(property.id);
 
@@ -740,11 +740,7 @@ async function postImportTasks(propertyId: string, opts: { skipAutoMerge?: boole
     await logImportEvent("HASH", { propertyId, ok: false, message: (e as Error).message });
   }
 
-  // 2. Catastro: YA NO se asocia en segundo plano. Regla del embudo (2026-07-30):
-  // ninguna capa persiste una RC sin confirmación explícita del usuario — la
-  // resolución vive en POST /api/properties/[id]/cadastre (resolver + confirmación).
-
-  // 3. Geocode si seguimos sin coords pero tenemos dirección/ciudad.
+  // 2. Geocode si seguimos sin coords pero tenemos dirección/ciudad.
   try {
     const p = await prisma.property.findUnique({ where: { id: propertyId } });
     if (p && p.latitude == null && p.longitude == null && (p.address || p.city)) {

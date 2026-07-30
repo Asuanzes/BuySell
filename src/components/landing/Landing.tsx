@@ -32,7 +32,7 @@ const VERTICALS: { icon: IconType; title: string; body: string }[] = [
     icon: Building2,
     title: "Inmuebles",
     body:
-      "Guarda anuncios de varios portales como una sola ficha: histórico de precios, deduplicación automática y datos del Catastro.",
+      "Guarda anuncios de varios portales como una sola ficha: histórico de precios y deduplicación automática.",
   },
   {
     icon: KeyRound,

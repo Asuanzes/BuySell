@@ -9,7 +9,6 @@
 | `src/lib/auth.ts` + `mobile-jwt.ts` | Auth web (magic link) + mobile (OTP → JWT 90d) |
 | `src/features/scraping/` | 8 adaptadores de portal + runner con fallback Playwright |
 | `src/features/matching/` | Motor de deduplicación multi-señal ya implementado |
-| `src/features/cadastre/lookup.ts` | Integración Catastro (OVC XML) operativa |
 | `src/lib/import-listing.ts` | Pipeline de importación (500 líneas) completo |
 | `public/bookmarklet/*.user.js` | Userscripts Tampermonkey para 7 portales |
 | `.env` / `docker-compose.yml` | Solo PostgreSQL dockerizado; sin CI/CD ni cloud deploy |
@@ -22,7 +21,7 @@
 
 El proyecto está más avanzado de lo que sugiere el CLAUDE.md inicial. La base técnica es sólida:
 monorepo npm workspaces, Next.js 15 App Router, PostgreSQL + Prisma, auth dual (web/mobile),
-8 adaptadores de scraping, motor de matching con 5 señales, integración Catastro, userscripts
+8 adaptadores de scraping, motor de matching con 5 señales, userscripts
 para 7 portales. Lo que falta es llevar esto a producción, añadir sincronización en tiempo real
 y capas de valor diferencial.
 
@@ -274,7 +273,7 @@ model RegistryNote {
 1. Usuario en ficha de inmueble → botón "Consultar Registro (9,50 €)"
 2. Modal de confirmación con precio y descripción.
 3. Se crea `RegistryNote` con status `PENDING` y se cobra al usuario (Stripe).
-4. Job asíncrono (pg-boss) llama a la API de Registradores con ref catastral + dirección.
+4. Job asíncrono (pg-boss) llama a la API de Registradores con la dirección del inmueble.
 5. PDF llega → se parsea (PyPDF2 o pdfjs) y se almacena en R2 con URL firmada 24h.
 6. Notificación email/push: "Tu nota simple está lista".
 7. Usuario descarga PDF desde la app (URL firmada, expira en 24h por seguridad).

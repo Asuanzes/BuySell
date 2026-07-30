@@ -176,12 +176,12 @@ export const ACCION_CASES: EvalCase[] = [
   {
     id: "acc-14",
     role: "accion",
-    history: [{ role: "user", text: "Cámbiale la referencia catastral a mi piso de Uría" }],
+    history: [{ role: "user", text: "Cámbiale el portal de origen a mi piso de Uría" }],
     expect: {
       forbidTools: ["editar_registro"],
       mustMatch: [/ficha|no puedo/i],
     },
-    judge: "La referencia catastral NO es un campo editable desde el chat: debe decirlo y guiar a la ficha del inmueble, sin intentar la edición.",
+    judge: "El portal de origen NO es un campo editable desde el chat: debe decirlo y guiar a la ficha del inmueble, sin intentar la edición.",
   },
   {
     id: "acc-15",

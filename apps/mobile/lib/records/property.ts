@@ -43,9 +43,6 @@ export type PropertyDetail = {
   hasGarden: boolean | null;
   hasPool: boolean | null;
   energyRating: string;
-  cadastralRef: string | null;
-  /** Datos catastrales persistidos (legado o schema 1); parsear con parseCadastralData. */
-  cadastralData: unknown;
   tags: string[];
   media: { id: string; kind: string; url: string }[];
   listings: {

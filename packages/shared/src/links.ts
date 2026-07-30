@@ -29,7 +29,7 @@ export const NAV_ALLOW: ReadonlySet<string> = new Set([
   "/food/address", "/food/cart", "/food/checkout", "/food/orders",
   "/chat/contacts", "/chat/new", "/chat/blocked",
   "/viajes/nuevo",
-  "/tools/mortgage", "/tools/catastro", "/tools/registro", "/tools/ine",
+  "/tools/mortgage", "/tools/registro", "/tools/ine",
 ]);
 
 /** Ruta destino de un token [[kind:target|label]], o null si no es válido. */

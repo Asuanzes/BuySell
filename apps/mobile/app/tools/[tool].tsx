@@ -11,7 +11,6 @@ import { Card } from "@/components/ui";
  * Pantallas de herramienta del panel contextual de Inmuebles: Registro de la
  * Propiedad y Estadísticas de zona (INE). De momento **solo diseño/UI**; la
  * integración real con Registro / INE queda como TODO (banners "pendiente").
- * El Catastro ya tiene pantalla real en app/property/cadastre.tsx.
  */
 export default function ToolScreen() {
   const { th } = useTheme();
@@ -37,9 +36,6 @@ export default function ToolScreen() {
     </ScrollView>
   );
 }
-
-// Catastro ya NO vive aquí: tiene pantalla real con datos del OVC en
-// app/property/cadastre.tsx (la ficha navega directamente a ella).
 
 // ── Registro de la Propiedad ─────────────────────────────────────────────────
 function Registro() {

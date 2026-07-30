@@ -18,7 +18,7 @@ refresh (`refreshType` + `/api/cron/refresh` por cron-job.org / GitHub Actions).
 (CoinGecko, auto-refresh). **Implementado esta sesión y desplegado** (móvil):
 borrar (✕) + reordenar (arrastre) por tipo con persistencia local; **panel
 contextual por categoría** (`CategoryContextSheet`) con el submenú de Inmuebles
-(Re-check, Catastro, Registro, INE, **simulador de hipoteca** con cálculo francés
+(Re-check, Registro, INE, **simulador de hipoteca** con cálculo francés
 real); gráfico cripto rediseñado. **`RecordType`** =
 `property | renting | holiday | crypto | market | job | workout | chat`.
 
@@ -41,11 +41,12 @@ lastCheckedAt?, meta Json, createdAt, updatedAt` + tabla hija `*Snapshot`.
 ### 1.1 Inmuebles — `property` / `renting`
 - **Mín.:** título, precio (venta o renta/mes), operación, tipo, ubicación
   (ciudad/barrio/dirección/lat-lng), m² constr./útiles, hab, baños, planta, año,
-  eficiencia, fotos[], URL, portal, `externalId`, ref. catastral.
+  eficiencia, fotos[], URL, portal, `externalId`.
 - **Fuentes:** portales automatizables (Fotocasa, Pisos.com, Habitaclia,
   ThinkSpain, Indomio) → adapters propios (vivo) u **actor de Apify** del portal.
   Idealista/Milanuncios/Yaencontre (DataDome) → **manual-only WebView** (vivo).
-  Enriquecimiento: **Catastro OVC** + **Nominatim** (vivos); **INE** zona (TODO).
+  Enriquecimiento: **Nominatim** (vivo); **INE** zona (TODO). (Catastro OVC
+  retirado el 2026-07-30: la resolución de RC con datos de portal no era fiable.)
 - **API oficial vs scraping:** Idealista tiene API pero partner + cuota baja → no
   general. → adapters/Apify + WebView.
 
@@ -146,7 +147,7 @@ lastCheckedAt?, meta Json, createdAt, updatedAt` + tabla hija `*Snapshot`.
 ### 2.5 Recomendación priorizada
 | Necesidad | Usar primero | Por qué |
 |---|---|---|
-| API oficial disponible | **La API** (CoinGecko, Finnhub, Amadeus, Open Food Facts, Catastro, INE) | Legal, estable, gratis/barato |
+| API oficial disponible | **La API** (CoinGecko, Finnhub, Amadeus, Open Food Facts, INE) | Legal, estable, gratis/barato |
 | Fuente con actor maduro / push | **Apify** | Time-to-market + webhooks (trabajos, viajes) |
 | Scraper propio (protección media) | **ScrapingBee** | Barato, control (workout, portales) |
 | Anti-bot duro a escala | **Bright Data** (diferido) | Proxies residenciales |
@@ -227,7 +228,7 @@ Worker desacoplado (Railway/Fly) + cola `pg-boss` **diferido**.
 
 ## 5. Seguridad y legalidad
 - **Preferir APIs oficiales** (CoinGecko, Finnhub, Amadeus, Open Food Facts,
-  Catastro, INE).
+  INE).
 - **ToS / robots.txt:** respetar; no scrapear donde el ToS lo prohíba (LinkedIn,
   Booking, Airbnb) salvo **importación iniciada por el usuario** (WebView).
 - **Anti-bot:** DataDome/PerimeterX → manual-only/WebView o proxies de proveedor;
@@ -269,9 +270,9 @@ Worker desacoplado (Railway/Fly) + cola `pg-boss` **diferido**.
   la esquina inferior derecha de la tarjeta de precio** → abre el sheet
   "Herramientas del inmueble" con:
   - **Actualizar precio** (`action`): re-check real de los anuncios.
-  - **Catastro / Registro / Estadísticas de zona (INE)** (`route`): pantallas
+  - **Registro / Estadísticas de zona (INE)** (`route`): pantallas
     **diseñadas** con su estructura y banner "pendiente de integración"
-    (`app/tools/[tool].tsx`) — hooks/TODOs para OVC ampliado, Registro, INE.
+    (`app/tools/[tool].tsx`) — hooks/TODOs para Registro, INE.
   - **Simulador de hipoteca** (`route` → `app/tools/mortgage.tsx`): form (precio,
     entrada %, plazo, interés) + **cálculo francés real** (cuota, intereses,
     total) + nota "proceso completo con partner: próximamente".
@@ -288,7 +289,7 @@ herramienta). Cuando `crypto`/`job`/etc. tengan pantalla de detalle, **el mismo
 ### 7.3 Submenús sugeridos por categoría (información / acción / compartir)
 | Categoría | Herramientas |
 |---|---|
-| **property** | Re-check, Catastro, Registro, INE zona, Simulador hipoteca, Comparar, Abrir portal, Compartir |
+| **property** | Re-check, Registro, INE zona, Simulador hipoteca, Comparar, Abrir portal, Compartir |
 | **renting** | Re-check, INE alquiler, Calc. rentabilidad/yield, Checklist contrato, Abrir portal, Compartir |
 | **holiday** | Re-check precio, Alertas de precio, Comparar fechas, Mapa/zona, Abrir reserva, Compartir |
 | **crypto** | Gráfico avanzado, Alertas de precio, Conversor, Noticias (X trend), Añadir/editar cantidad, Compartir |

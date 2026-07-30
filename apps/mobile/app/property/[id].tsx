@@ -23,7 +23,6 @@ import { useTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { fetchPropertyDetail, type PropertyDetail } from "@/lib/records/property";
-import { parseCadastralData } from "@/lib/records/cadastre";
 import { toolsForType, type ToolDef } from "@/lib/records/tools";
 import { CategoryContextSheet } from "@/components/CategoryContextSheet";
 import { ResultModal } from "@/components/ui";
@@ -140,10 +139,6 @@ export default function PropertyDetailScreen() {
         setSheetOpen(false);
         router.push(`/tools/mortgage?amount=${p.currentPrice ? Math.round(p.currentPrice / 100) : ""}` as never);
         return;
-      case "catastro":
-        setSheetOpen(false);
-        router.push(`/property/cadastre?id=${p.id}` as never);
-        return;
       case "registro":
         setSheetOpen(false);
         router.push("/tools/registro" as never);
@@ -182,7 +177,6 @@ export default function PropertyDetailScreen() {
   }
 
   const photos = p.media.filter((m) => m.kind === "PHOTO");
-  const cadInfo = parseCadastralData(p.cadastralData)?.info ?? null;
   const isRent = p.operationType === "RENT";
   // Ficha mixta: el mismo inmueble se vende Y se alquila → enseñamos ambos y la
   // rentabilidad bruta (renta anual / precio de compra).
@@ -327,39 +321,6 @@ export default function PropertyDetailScreen() {
             </View>
           </View>
         )}
-
-        {/* Tarjeta resumen del Catastro (encima de la descripción): ref +
-            uso/superficie/año y acceso al detalle. Sin ref → CTA consultar. */}
-        <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
-          <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_cadastre")}</Text>
-          {p.cadastralRef ? (
-            <>
-              <Text style={[styles.cadastral, { color: th.text }]} selectable>{p.cadastralRef}</Text>
-              {cadInfo && (
-                <View style={[styles.grid, { marginTop: 10 }]}>
-                  <Spec label={t("detail.cadastre.use")} value={cadInfo.use ?? "—"} />
-                  <Spec label={t("detail.cadastre.built_area")} value={cadInfo.builtArea != null ? `${cadInfo.builtArea} m²` : "—"} />
-                  <Spec label={t("detail.cadastre.year")} value={cadInfo.yearBuilt ?? "—"} />
-                  <Spec
-                    label={t("detail.cadastre.land_label")}
-                    value={cadInfo.landType === "UR" ? t("detail.cadastre.land_urban") : cadInfo.landType === "RU" ? t("detail.cadastre.land_rustic") : "—"}
-                  />
-                </View>
-              )}
-            </>
-          ) : (
-            <Text style={[styles.listingMeta, { color: th.textMuted }]}>{t("detail.cadastre.status_missing")}</Text>
-          )}
-          <TouchableOpacity
-            style={[styles.listingRow, { borderBottomColor: "transparent" }]}
-            onPress={() => router.push(`/property/cadastre?id=${p.id}` as never)}
-          >
-            <Text style={[styles.listingPortal, { color: th.primary }]}>
-              {p.cadastralRef ? t("detail.cadastre.view_detail") : t("detail.cadastre.consult")}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={th.primary} />
-          </TouchableOpacity>
-        </View>
 
         {p.description && (
           <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
@@ -577,5 +538,4 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: "hidden",
   },
-  cadastral: { fontSize: 12, fontFamily: "monospace" },
 });

@@ -23,7 +23,7 @@ existencia de registros ajenos).
 |---|---|
 | `GET/POST /api/properties` | `requireUserId` + `ownerId` |
 | `GET/PATCH/DELETE /api/properties/:id` | `requireUserId` + `ensureOwner` |
-| `POST /api/properties/:id/cadastre`, `/dismiss-match` | `requireUserId` + ownership |
+| `POST /api/properties/:id/dismiss-match` | `requireUserId` + ownership |
 | `GET /api/matches`, `/api/search` | filtrado por `ownerId` |
 | `POST /api/listings/import` | token (`bs_` o JWT) → `ownerId` |
 | `GET /api/records`, `/api/records/:id` | `requireUserId` + `ownerId` (nuevo, sin desplegar) |

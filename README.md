@@ -1,6 +1,6 @@
 # BuySell Asturias
 
-Webapp para registrar inmuebles en venta con seguimiento histórico de precios y, en fase 2, scrapers a portales (Idealista, Fotocasa, Pisos.com, Milanuncios) e integración con Catastro.
+Webapp para registrar inmuebles en venta con seguimiento histórico de precios y, en fase 2, scrapers a portales (Idealista, Fotocasa, Pisos.com, Milanuncios).
 
 ## Stack
 
@@ -22,7 +22,6 @@ src/
 ├── features/
 │   ├── properties/       componentes de dominio (formulario, gráfica)
 │   ├── scraping/         adapters por portal + runner (stubs)
-│   ├── cadastre/         integración Catastro (stub)
 │   └── floorplan-ai/     boceto 2D desde fotos (stub)
 prisma/
 ├── schema.prisma         modelo de datos
@@ -67,8 +66,8 @@ Abre [http://localhost:4200](http://localhost:4200).
 
 ## Modelo de datos (resumen)
 
-- **Property**: el inmueble físico (datos básicos, ubicación, características, ref. catastral).
-- **Media**: fotos, planos, vídeos. Campo `source` distingue origen (`USER_UPLOAD`, `CADASTRE`, `AI_SKETCH`, etc.).
+- **Property**: el inmueble físico (datos básicos, ubicación, características).
+- **Media**: fotos, planos, vídeos. Campo `source` distingue origen (`USER_UPLOAD`, `AI_SKETCH`, etc.).
 - **Listing**: publicación de un Property en un portal (URL + estado + último precio).
 - **PriceSnapshot**: histórico de precios. Cada chequeo del scraper inserta una fila.
 - **SavedSearch**: búsquedas guardadas en portales (preparado, sin lógica aún).
@@ -79,13 +78,11 @@ Abre [http://localhost:4200](http://localhost:4200).
 1. ✅ Esqueleto y CRUD manual de inmuebles.
 2. ⏳ Subida de fotos a almacenamiento (S3/R2 o local en dev).
 3. ⏳ Implementar adapters de scraping con Playwright. Empezar por Fotocasa o Pisos.com (más fáciles); Idealista al final por anti-bot.
-4. ⏳ Integración con Catastro: `lookupByAddress` + descarga de plano oficial.
-5. ⏳ Generación de boceto 2D con LLM multimodal a partir de fotos.
-6. ⏳ Cron periódico para `checkAllActiveListings`.
-7. ⏳ Auth (multi-usuario) y `SavedSearch` con descubrimiento de anuncios.
+4. ⏳ Generación de boceto 2D con LLM multimodal a partir de fotos.
+5. ⏳ Cron periódico para `checkAllActiveListings`.
+6. ⏳ Auth (multi-usuario) y `SavedSearch` con descubrimiento de anuncios.
 
 ## Notas sobre planos
 
-- **Catastro** (gratis, oficial): da plano básico de la finca/planta. Es la fuente preferente cuando hay referencia catastral.
 - **Boceto IA desde fotos**: aproximación de cajas etiquetadas; útil como ayuda visual, **no como plano fiable**. Siempre marcar `source = AI_SKETCH` para que el usuario sepa que es estimación.
 - **Registro de la Propiedad**: descartado (no público gratis, no aporta plano).
