@@ -7,6 +7,7 @@ import type {
   SourceInput,
 } from "@/features/sources/types";
 import { jobPlatformLabel } from "@nidokey/shared";
+import { logImportEvent } from "@/lib/import-log";
 import { ingestInfoJobsOffersJina } from "@/features/sources/jobs/ingest-infojobs-jina";
 import { ingestRemoteApisOffers } from "@/features/sources/jobs/ingest-remote-apis";
 import { ingestTecnoempleoOffers } from "@/features/sources/jobs/ingest-tecnoempleo-jina";
@@ -81,7 +82,10 @@ export const apifyJobsAdapter: SourceAdapter = {
     // Que una fuente caiga no debe dejar la búsqueda vacía: cada una se rescata
     // por separado y la otra sigue dando resultados.
     const fail = (src: string) => (e: unknown) => {
-      console.error(`[jobs] ${src} falló:`, e instanceof Error ? e.message : e);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[jobs] ${src} falló:`, msg);
+      // Rastro en BBDD (visible sin logs de Vercel): qué fuente cae y por qué.
+      void logImportEvent("RECHECK", { ok: false, message: `[jobs] ${src}: ${msg}`.slice(0, 300) });
       return [] as JobOffer[];
     };
     const sources = [

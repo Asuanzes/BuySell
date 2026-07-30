@@ -23,7 +23,15 @@ export async function fetchPortalHtml(url: string, timeoutMs: number): Promise<s
   // 1. Directo con pinta de navegador.
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": UA, "Accept-Language": "es-ES,es;q=0.9", Accept: "text/html,application/xhtml+xml" },
+      headers: {
+        "User-Agent": UA,
+        "Accept-Language": "es-ES,es;q=0.9",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Upgrade-Insecure-Requests": "1",
+      },
       cache: "no-store",
       signal: AbortSignal.timeout(timeoutMs),
     });
