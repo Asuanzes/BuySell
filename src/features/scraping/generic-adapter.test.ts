@@ -45,6 +45,32 @@ describe("extractPriceEur — alquiler (banda de renta)", () => {
   });
 });
 
+describe("extractPriceEur — fotocasa jul-2026 (clases ofuscadas, aria-label)", () => {
+  // HTML real: sin __NEXT_DATA__, sin clases con "price"; el contenedor lleva
+  // aria-label="Precio del inmueble" y el texto arrastra " /mes".
+  const FOTOCASA_SELECTORS = ["[aria-label*='precio' i]", "[class*='Price']", "[itemprop='price']"];
+
+  it("alquiler: 2.900 €/mes desde el aria-label", () => {
+    const $ = cheerio.load(
+      `<html><body><div aria-label="Precio del inmueble" role="region"><span class="text-on-surface text-display-3">2.900 €<span class="text-headline-2"> /mes</span></span></div></body></html>`
+    );
+    assert.equal(
+      extractPriceEur($, { priceSelectors: FOTOCASA_SELECTORS, previousPriceCents: null, operationType: "RENT" }),
+      2_900
+    );
+  });
+
+  it("venta: 219.800 € desde el aria-label", () => {
+    const $ = cheerio.load(
+      `<html><body><div aria-label="Precio del inmueble"><span>219.800 €</span></div></body></html>`
+    );
+    assert.equal(
+      extractPriceEur($, { priceSelectors: FOTOCASA_SELECTORS, previousPriceCents: null, operationType: "SALE" }),
+      219_800
+    );
+  });
+});
+
 describe("extractPriceEur — venta", () => {
   it("detecta 210.000 € por selector", () => {
     const $ = cheerio.load(`<html><body><span class="re-DetailHeader-Price">210.000 €</span></body></html>`);

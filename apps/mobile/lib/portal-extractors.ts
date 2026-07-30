@@ -183,7 +183,9 @@ var __cleanImgs = function(arr, max) {
 // 100 €, una renta puede ser de pocos cientos).
 var __priceDom = function() {
   var op = __operation();
-  var sels = ['[itemprop="price"]','[class*="price" i]','[class*="Price"]','[data-testid*="price" i]'];
+  // aria-label primero: Fotocasa (jul-2026) pasó a clases ofuscadas sin "price";
+  // el contenedor del precio conserva aria-label="Precio del inmueble".
+  var sels = ['[aria-label*="precio" i]','[itemprop="price"]','[class*="price" i]','[class*="Price"]','[data-testid*="price" i]'];
   for (var s = 0; s < sels.length; s++) {
     var els; try { els = document.querySelectorAll(sels[s]); } catch(e) { continue; }
     for (var i = 0; i < els.length; i++) {
@@ -191,10 +193,25 @@ var __priceDom = function() {
       if (txt.indexOf('€') === -1 && !/eur/i.test(txt)) continue;
       if (/€\\s*\\/\\s*m²|€\\/m2|\\/\\s*m²|\\/m2\\b/i.test(txt)) continue; // €/m² nunca
       if (op !== 'RENT' && /\\/\\s*mes|\\/mes|mensual|al mes/i.test(txt)) continue; // €/mes solo en alquiler
-      var p = __price(txt);
+      var p = __price(txt.split('€')[0]); // solo la cifra ANTES del primer € (el nodo puede arrastrar más texto)
       if (p && p >= (op === 'RENT' ? 100 : 1000)) return p;
     }
   }
+  // Último recurso: PRIMER precio válido del texto visible (los anuncios
+  // relacionados van después en el DOM, el primero es el del anuncio). Bandas
+  // por operación como en el server: venta >= 10.000, renta 100–50.000.
+  try {
+    var body = (document.body && document.body.innerText || '').slice(0, 20000);
+    var re = /(\\d{1,3}(?:\\.\\d{3})+|\\d{3,7})\\s*€(\\s*\\/?\\s*m(es|²|2)\\b)?/g;
+    var m;
+    while ((m = re.exec(body)) !== null) {
+      var unit = m[2] || '';
+      if (/m²|m2/.test(unit)) continue;
+      var v = parseInt(m[1].replace(/\\./g, ''), 10);
+      if (op === 'RENT') { if (v >= 100 && v <= 50000) return v; }
+      else { if (!unit && v >= 10000) return v; }
+    }
+  } catch(e) {}
   return null;
 };
 

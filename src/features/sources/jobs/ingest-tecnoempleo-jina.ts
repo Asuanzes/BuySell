@@ -1,3 +1,4 @@
+import { fetchPortalHtml } from "@/features/sources/jobs/fetch-portal-html";
 import { resolveTecnoempleoProvinceId } from "@/features/sources/jobs/province";
 import { parseSalaryToCents, type JobSearchParams, type JobOffer } from "@/features/sources/jobs/types";
 
@@ -18,11 +19,6 @@ import { parseSalaryToCents, type JobSearchParams, type JobOffer } from "@/featu
  * Parámetros de su buscador: `te` (texto), `pr` (provincia, entre comas:
  * `,232,`), `en_remoto`, `pagina`.
  */
-
-const JINA = "https://r.jina.ai/";
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 
 /** Ofertas renderizadas por página. */
 const PER_PAGE = 30;
@@ -121,13 +117,8 @@ export function parseTecnoempleoHtml(html: string, now = new Date()): JobOffer[]
 }
 
 async function fetchPage(url: string, timeoutMs: number): Promise<string> {
-  const res = await fetch(`${JINA}${url}`, {
-    headers: { "User-Agent": UA, "x-return-format": "html" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!res.ok) throw new Error(`Jina HTTP ${res.status}`);
-  return res.text();
+  // 2026-07-30: directo primero, Jina de respaldo (Cloudflare reta a Jina → 403).
+  return fetchPortalHtml(url, timeoutMs);
 }
 
 /** Ofertas de Tecnoempleo vía Jina. Misma firma que las demás ingestas. */

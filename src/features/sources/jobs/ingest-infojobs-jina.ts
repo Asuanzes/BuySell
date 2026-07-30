@@ -1,3 +1,4 @@
+import { fetchPortalHtml } from "@/features/sources/jobs/fetch-portal-html";
 import { resolveInfoJobsProvinceId } from "@/features/sources/jobs/province";
 import { parseSalaryToCents, type InfoJobsSearchParams, type JobOffer } from "@/features/sources/jobs/types";
 
@@ -21,11 +22,6 @@ import { parseSalaryToCents, type InfoJobsSearchParams, type JobOffer } from "@/
  * término es `list.xhtml?keyword=…&page=…`, que a su vez ignora la provincia.
  * Por eso la zona se prioriza en el adaptador, ordenando por `city`.
  */
-
-const JINA = "https://r.jina.ai/";
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 
 /** Ofertas por página en el estado embebido (las tarjetas visibles son solo 5). */
 const PER_PAGE = 20;
@@ -176,17 +172,8 @@ export function parseInfoJobsHtml(html: string, now = new Date()): JobOffer[] {
   return out;
 }
 
-async function fetchPage(url: string, timeoutMs: number): Promise<string> {
-  // HTML, no markdown: el markdown de Jina se come el título y el enlace de la
-  // oferta. Mismo patrón de GET plano que el helper de tendencias (_jina.ts).
-  const res = await fetch(`${JINA}${url}`, {
-    headers: { "User-Agent": UA, "x-return-format": "html" },
-    cache: "no-store",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!res.ok) throw new Error(`Jina HTTP ${res.status}`);
-  return res.text();
-}
+// 2026-07-30: directo primero, Jina de respaldo (Cloudflare reta a Jina → 403).
+const fetchPage = fetchPortalHtml;
 
 /**
  * Ofertas de InfoJobs vía Jina. Firma compatible con la variante de Apify para

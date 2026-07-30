@@ -4,6 +4,8 @@ export const fotocasaAdapter = makeGenericAdapter({
   portal: "FOTOCASA",
   matches: (url) => /fotocasa\.es\//i.test(url),
   priceSelectors: [
+    // jul-2026: clases ofuscadas, el precio vive en aria-label="Precio del inmueble"
+    "[aria-label*='precio' i]",
     "[class*='Price']",
     ".re-DetailHeader-price",
     "[data-test='price']",
