@@ -263,7 +263,12 @@ export async function resolveCadastre(
     note("description", "empty", "no validada por DNPRC");
   }
 
-  // ── 2. Coordenadas de la ficha (aproximadas: vienen del portal) ───────────
+  // ── 2. Coordenadas de la ficha, SOLO acierto exacto (RCCOOR) ──────────────
+  // Las coords de portal/geocodificador son aproximadas (y a veces centroides
+  // basura de municipio/región): un acierto de RCCOOR es fiable, pero las
+  // parcelas-por-distancia NO — esas van DESPUÉS de la dirección (incidente
+  // 2026-07-30: 14 fichas con el mismo centroide devolvían todas la misma
+  // lista de Mejorada (Toledo) y cortaban la etapa de dirección).
   if (input.latitude != null && input.longitude != null) {
     try {
       const parcel = await deps.lookupByCoordinates(input.latitude, input.longitude);
@@ -275,20 +280,6 @@ export async function resolveCadastre(
       }
     } catch (e) {
       wrap(e, "coordinates");
-    }
-    try {
-      const nearby = await deps.listNearbyParcels(input.latitude, input.longitude);
-      if (nearby.length > 0) {
-        const ranked = rankCandidates(
-          nearby.map((p) => ({ ref: p.ref, address: p.address, distanceMeters: p.distanceMeters })),
-          signals
-        );
-        note("nearby_coordinates", "hit", `${ranked.length} parcelas`);
-        return { status: "ambiguous", method: "nearby_coordinates", candidates: ranked, attempts, confirmed: false };
-      }
-      note("nearby_coordinates", "empty");
-    } catch (e) {
-      wrap(e, "nearby_coordinates");
     }
   } else {
     note("coordinates", "skipped", "sin coordenadas");
@@ -375,6 +366,24 @@ export async function resolveCadastre(
     }
   } else {
     note("cartociudad", "skipped");
+  }
+
+  // ── 5. Parcelas cercanas del punto ALMACENADO (último recurso pre-pin) ────
+  if (input.latitude != null && input.longitude != null) {
+    try {
+      const nearby = await deps.listNearbyParcels(input.latitude, input.longitude);
+      if (nearby.length > 0) {
+        const ranked = rankCandidates(
+          nearby.map((p) => ({ ref: p.ref, address: p.address, distanceMeters: p.distanceMeters })),
+          signals
+        );
+        note("nearby_coordinates", "hit", `${ranked.length} parcelas`);
+        return { status: "ambiguous", method: "nearby_coordinates", candidates: ranked, attempts, confirmed: false };
+      }
+      note("nearby_coordinates", "empty");
+    } catch (e) {
+      wrap(e, "nearby_coordinates");
+    }
   }
 
   // ── Terminal: sin coincidencia clara → pin en mapa (capa 4) ───────────────

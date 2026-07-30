@@ -137,6 +137,34 @@ describe("resolveCadastre", () => {
     assert.equal(r.confirmed, false);
   });
 
+  it("REGRESIÓN coords basura: la dirección va ANTES que las parcelas por distancia", async () => {
+    // Incidente 2026-07-30: 14 fichas con el centroide de Castilla-La Mancha
+    // devolvían todas la misma lista de Mejorada (Toledo). Con coords que no
+    // aciertan RCCOOR pero una dirección resoluble, gana la dirección y
+    // listNearbyParcels ni se llama.
+    let nearbyCalled = false;
+    const r = await resolveCadastre(
+      {
+        latitude: 40.0094603,
+        longitude: -4.8816368,
+        address: "Calle Gloria 51",
+        city: "Santa Cruz de Mudela",
+        province: "Ciudad Real",
+      },
+      deps({
+        lookupByCoordinates: async () => null,
+        listNearbyParcels: async () => {
+          nearbyCalled = true;
+          return [{ ref: "0000000XX0000X", address: "CL SUIZA 2 MEJORADA", distanceMeters: 3 }];
+        },
+        queryByAddress: async () => ({ kind: "one", ref: RC }),
+        fetchByRefDetailed: async () => ({ kind: "one", info: INFO }),
+      })
+    );
+    assert.equal(r.method, "address");
+    assert.equal(nearbyCalled, false);
+  });
+
   it("dirección con número inexistente: numerero → needs_address_confirmation", async () => {
     const r = await resolveCadastre(
       { address: "Calle Gloria 71", city: "Santa Cruz de Mudela", province: "Ciudad Real" },

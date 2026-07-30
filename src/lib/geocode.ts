@@ -76,9 +76,22 @@ async function geocodeOne(query: string): Promise<GeocodeResult | null> {
       headers: { "User-Agent": UA, "Accept-Language": "es" },
     });
     if (!res.ok) return null;
-    const arr = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
+    const arr = (await res.json()) as Array<{
+      lat: string;
+      lon: string;
+      display_name: string;
+      class?: string;
+      place_rank?: number;
+    }>;
     if (!arr.length) return null;
     const r = arr[0];
+    // Solo nivel de CALLE o más fino (place_rank ≥ 26). Un centroide
+    // administrativo (municipio/región/país) como "coordenadas" del inmueble
+    // es basura activa: el 2026-07-30 14 fichas acabaron con el centroide de
+    // Castilla-La Mancha y el embudo catastral devolvía la misma lista de
+    // Mejorada (Toledo) para todas. Mejor sin coords que con coords falsas.
+    if (r.class === "boundary") return null;
+    if (r.place_rank != null && r.place_rank < 26) return null;
     const lat = parseFloat(r.lat);
     const lon = parseFloat(r.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
