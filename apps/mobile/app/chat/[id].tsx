@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -12,10 +11,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import { RECORD_LINK_RE, linkDest } from "@nidokey/shared";
@@ -858,14 +858,24 @@ export default function ChatScreen() {
 
   const composerDisabled = !text.trim();
 
+  // Teclado vía Reanimated en vez de KeyboardAvoidingView: KAV solo reacciona
+  // a show/hide, y en Android el cambio a la vista de EMOJIS del teclado
+  // (más alta) no re-emite el evento → la caja de escribir quedaba tapada.
+  // useAnimatedKeyboard sigue los insets del IME en continuo (resize incluido).
+  const kbInsets = useSafeAreaInsets();
+  const keyboard = useAnimatedKeyboard();
+  const kbStyle = useAnimatedStyle(() => ({
+    // El SafeAreaView ya pone el inset inferior; solo compensamos el solape real.
+    paddingBottom: Math.max(0, keyboard.height.value - kbInsets.bottom),
+  }));
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: th.bg }]} edges={["top", "bottom"]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Un único KAV a pantalla completa: con edge-to-edge Android ignora
-          adjustResize, así que el "padding" del KAV es lo que sube el composer
+      {/* Pantalla completa con padding animado por la altura REAL del teclado
           (y encoge la FlatList invertida → el último mensaje sigue visible). */}
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <Animated.View style={[styles.flex, kbStyle]}>
 
       {/* Header propio: volver + avatar + título */}
       <View style={[styles.header, { backgroundColor: th.surface, borderBottomColor: th.border }]}>
@@ -1130,7 +1140,7 @@ export default function ChatScreen() {
         </View>
       )}
 
-      </KeyboardAvoidingView>
+      </Animated.View>
 
       <ResultModal
         visible={!!confirmDelete}

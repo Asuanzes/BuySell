@@ -91,7 +91,12 @@ export function ConversationList() {
           (c.context?.title ?? "").toLowerCase().includes(q)
       );
     }
-    return list;
+    // El DM oficial de @Nidokey SIEMPRE arriba (por delante incluso de los
+    // fijados): es el buzón de alertas y del asistente. sort es estable en
+    // Hermes → el resto conserva el orden del servidor.
+    return [...list].sort(
+      (a, b) => Number(isOfficialConversation(b)) - Number(isOfficialConversation(a))
+    );
   }, [data, query, onlyUnread]);
 
   async function onRowAction(o: SheetOption) {

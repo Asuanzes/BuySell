@@ -328,6 +328,39 @@ export default function PropertyDetailScreen() {
           </View>
         )}
 
+        {/* Tarjeta resumen del Catastro (encima de la descripción): ref +
+            uso/superficie/año y acceso al detalle. Sin ref → CTA consultar. */}
+        <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
+          <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_cadastre")}</Text>
+          {p.cadastralRef ? (
+            <>
+              <Text style={[styles.cadastral, { color: th.text }]} selectable>{p.cadastralRef}</Text>
+              {cadInfo && (
+                <View style={[styles.grid, { marginTop: 10 }]}>
+                  <Spec label={t("detail.cadastre.use")} value={cadInfo.use ?? "—"} />
+                  <Spec label={t("detail.cadastre.built_area")} value={cadInfo.builtArea != null ? `${cadInfo.builtArea} m²` : "—"} />
+                  <Spec label={t("detail.cadastre.year")} value={cadInfo.yearBuilt ?? "—"} />
+                  <Spec
+                    label={t("detail.cadastre.land_label")}
+                    value={cadInfo.landType === "UR" ? t("detail.cadastre.land_urban") : cadInfo.landType === "RU" ? t("detail.cadastre.land_rustic") : "—"}
+                  />
+                </View>
+              )}
+            </>
+          ) : (
+            <Text style={[styles.listingMeta, { color: th.textMuted }]}>{t("detail.cadastre.status_missing")}</Text>
+          )}
+          <TouchableOpacity
+            style={[styles.listingRow, { borderBottomColor: "transparent" }]}
+            onPress={() => router.push(`/property/cadastre?id=${p.id}` as never)}
+          >
+            <Text style={[styles.listingPortal, { color: th.primary }]}>
+              {p.cadastralRef ? t("detail.cadastre.view_detail") : t("detail.cadastre.consult")}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={th.primary} />
+          </TouchableOpacity>
+        </View>
+
         {p.description && (
           <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
             <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.description")}</Text>
@@ -386,38 +419,6 @@ export default function PropertyDetailScreen() {
           </View>
         )}
 
-        {/* Tarjeta resumen del Catastro: ref + uso/superficie/año y acceso al
-            detalle. Sin ref todavía → CTA para consultar (misma pantalla). */}
-        <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
-          <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_cadastre")}</Text>
-          {p.cadastralRef ? (
-            <>
-              <Text style={[styles.cadastral, { color: th.text }]} selectable>{p.cadastralRef}</Text>
-              {cadInfo && (
-                <View style={[styles.grid, { marginTop: 10 }]}>
-                  <Spec label={t("detail.cadastre.use")} value={cadInfo.use ?? "—"} />
-                  <Spec label={t("detail.cadastre.built_area")} value={cadInfo.builtArea != null ? `${cadInfo.builtArea} m²` : "—"} />
-                  <Spec label={t("detail.cadastre.year")} value={cadInfo.yearBuilt ?? "—"} />
-                  <Spec
-                    label={t("detail.cadastre.land_label")}
-                    value={cadInfo.landType === "UR" ? t("detail.cadastre.land_urban") : cadInfo.landType === "RU" ? t("detail.cadastre.land_rustic") : "—"}
-                  />
-                </View>
-              )}
-            </>
-          ) : (
-            <Text style={[styles.listingMeta, { color: th.textMuted }]}>{t("detail.cadastre.status_missing")}</Text>
-          )}
-          <TouchableOpacity
-            style={[styles.listingRow, { borderBottomColor: "transparent" }]}
-            onPress={() => router.push(`/property/cadastre?id=${p.id}` as never)}
-          >
-            <Text style={[styles.listingPortal, { color: th.primary }]}>
-              {p.cadastralRef ? t("detail.cadastre.view_detail") : t("detail.cadastre.consult")}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={th.primary} />
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
       <View style={[styles.floatBar, { top: insets.top + 8 }]} pointerEvents="box-none">
