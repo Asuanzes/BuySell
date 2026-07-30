@@ -25,6 +25,8 @@ export type PropertyDetail = {
   address: string | null;
   city: string;
   province: string;
+  latitude: number | null;
+  longitude: number | null;
   neighborhood: string | null;
   rooms: number | null;
   bathrooms: number | null;

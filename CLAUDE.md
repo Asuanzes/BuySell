@@ -20,7 +20,7 @@ con chat integrado. Un "registro" es cualquier cosa que el usuario sigue:
 | `property` | Inmuebles: venta + alquiler (OperationType SALE/RENT/RENT_TO_OWN); import desde portales |
 | `crypto` / `market` | Cripto y mercado (precios vía cron GitHub Actions + `CRON_SECRET`) |
 | `book` | Libros (ISBN: Open Library primero, Google respaldo; nunca scraping Amazon) |
-| `job` | Empleos (Apify InfoJobs/LinkedIn, requiere `APIFY_TOKEN`) |
+| `job` | Empleos multiportal gratis y sin clave: InfoJobs + Tecnoempleo vía Jina + 6 APIs de remoto con «solo remoto» (`docs/jobs-ingestion.md`) |
 | `holiday` | Viajes (Travelpayouts: vuelos OK, hoteles pendientes; marker 536869) |
 | `food` | Comida a domicilio (diseño cerrado en `docs/diseno-vertical-comida.md`; menús vía Crawl4AI+Groq) |
 | `trends` | Tendencias RSS (keyless: trends24+Jina, Google News, HN, Twitch; ver `docs/TRENDS.md`) |
@@ -64,8 +64,14 @@ caso económico y del roadmap de producción salvo revisión explícita de
   `runtimeVersion: appVersion` (fingerprint NO es determinista en monorepo).
   Cambios nativos (plugins/módulos) requieren `expo run:android` / build en Mac
   para iOS (Claude en Windows no compila iOS).
-- **Identidad**: name `Nidokey`, scheme `nidokey`, iOS `es.nidokey.app`,
-  Android `com.anonymous.nidokey` (**rename pendiente antes de tiendas**).
+- **Identidad**: name `Nidokey`, scheme `nidokey`, iOS y Android
+  `es.nidokey.app` (rename Android hecho el 2026-07-25; invalidó los builds
+  dev previos).
+- **Distribución** (jul-2026): iOS **ya está en TestFlight** (0.1.1 build 7,
+  cuenta Apple dev activa; el submit lo hace el usuario). ⚠️ **Hay DOS
+  audiencias OTA**: móvil propio = canal `preview` (APK/IPA ad-hoc); testers
+  TestFlight = canal `production`. Un update solo llega a su canal+runtime y
+  publicar en el equivocado NO da error — tabla en `docs/OPERACIONES.md` §1.
 - **Chat tiempo real**: gateway WS en `ws.nidokey.es` (VPS Hetzner
   167.233.16.6, **nginx+certbot** — el `Caddyfile` del repo es residuo, no se
   usa). Webhook HMAC `CHAT_GATEWAY_SECRET` + ticket JWT `CHAT_WS_SECRET`.
@@ -128,7 +134,7 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
 | `npm test` / `npm run typecheck` / `npm run typecheck:mobile` | lo mismo que corre el CI de PR |
 | `cd apps/mobile && npx expo start` | Metro |
 | `/ship <mensaje>` | tsc de lo cambiado → commit → push (Vercel) → `eas update` si tocó móvil |
-| `eas update --branch preview` | OTA manual ⚠️ **`preview`, no `production`**: todos los builds existentes usan el perfil `preview` (APK interno → API de producción). `production` solo servirá cuando se suba el app-bundle a Play Store. Publicar en la rama equivocada NO llega a ningún dispositivo (pasó el 2026-07-25) |
+| `eas update --branch <canal>` | OTA manual ⚠️ **DOS audiencias vivas**: `preview` = móvil propio (APK/IPA ad-hoc); `production` = testers de TestFlight. Publicar solo en `preview` deja a TestFlight sin el cambio (y viceversa); el canal equivocado NO da error ni llega a nadie (pasó el 2026-07-25). El `version` de app.json debe coincidir con el del build instalado (runtime `appVersion`). Tabla: `docs/OPERACIONES.md` §1 |
 | `npx prisma db push` | Sincronizar esquema con Neon (nunca migrate) |
 
 ## 9. Monetización y analítica (jul-2026)
@@ -140,8 +146,9 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
   de Stripe: `docs/OPERACIONES.md`. ⚠️ Para vender in-app en tiendas hará falta
   IAP (RevenueCat) — el checkout web vale para distribución web/APK.
 - **Cuotas de coste** (tabla `RateLimit` + `src/lib/rate-limit.ts`,
-  serverless-safe): bot 40 msgs/día (Premium 400), empleos Apify 10/día
-  (Premium 40), refresh-menu, Places, vuelos Duffel, OTP por IP.
+  serverless-safe): bot 40 msgs/día (Premium 400), empleos 10/día (Premium 40;
+  ya sin Apify — hoy amortigua la cuota de Jina), refresh-menu, Places, vuelos,
+  OTP por IP.
 - **Analítica propia** (tabla `AnalyticsEvent`, sin SDK de terceros): móvil
   `lib/analytics.ts` → `POST /api/analytics`; conversión/uso server-side desde
   webhooks. Catálogo y SQL del embudo: `docs/ANALITICA.md`.
@@ -164,13 +171,15 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
 ## 11. Pendientes estratégicos (jul-2026, tras el sprint de lanzamiento)
 
 1. **Lanzar**: acciones manuales del checklist de `docs/OPERACIONES.md` §8
-   (secreto de pagos en Vercel, Stripe test end-to-end, rebuild Android con el
-   package nuevo `es.nidokey.app`, ficha de Play, textos legales con revisión
-   profesional, flip de la landing).
-2. **Tiendas**: EAS build Android; iOS bloqueado por cuenta Apple de pago;
-   IAP/RevenueCat para vender Premium in-app.
-3. Menores: chat F5 (grupos UI), picker emoji, responder-cita; subida del
-   toolchain Expo (resuelve las vulns altas restantes del audit).
+   (secreto de pagos en Vercel, Stripe test end-to-end, ficha de Play, textos
+   legales con revisión profesional, flip de la landing — sigue `<ComingSoon/>`).
+   El rebuild Android con `es.nidokey.app` ya se hizo (2026-07-25).
+2. **Tiendas**: iOS **ya en TestFlight** (0.1.1 b7; el submit lo hace el
+   usuario); falta app-bundle Android a Play y IAP/RevenueCat para vender
+   Premium in-app.
+3. Menores: picker emoji y responder-cita del chat (los grupos F5 ya están:
+   crear, miembros/roles, compartir al grupo, foto — commits `1730e36…9a278c9`);
+   subida del toolchain Expo (resuelve las vulns altas restantes del audit).
 
 ## 12. Coordinación Codex + Claude Code
 

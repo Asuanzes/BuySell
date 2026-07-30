@@ -27,15 +27,22 @@ try {
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
+import { track } from "@/lib/analytics";
+import type { I18nKey } from "@/lib/i18n/keys";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { fetchPropertyDetail, type PropertyDetail } from "@/lib/records/property";
 import {
   lookupCadastre,
   parseCadastralData,
   sedeCatastroUrl,
-  type CadastreCandidate,
   type CadastreLookupResult,
+  type CandidateReason,
+  type LookupBody,
+  type NumberSuggestion,
+  type RankedCandidate,
+  type ResolutionMeta,
 } from "@/lib/records/cadastre";
+import { MapPinSheet } from "@/components/MapPinSheet";
 import { Button, Card, ResultModal } from "@/components/ui";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
@@ -59,7 +66,10 @@ export default function CadastreDetailScreen() {
 
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [candidates, setCandidates] = useState<CadastreCandidate[] | null>(null);
+  const [candidates, setCandidates] = useState<RankedCandidate[] | null>(null);
+  const [resolution, setResolution] = useState<ResolutionMeta | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [mapPinVisible, setMapPinVisible] = useState(false);
   const [addressFix, setAddressFix] = useState("");
   const [manualRef, setManualRef] = useState("");
 
@@ -85,13 +95,15 @@ export default function CadastreDetailScreen() {
     }
   }
 
-  async function consult(body: Parameters<typeof lookupCadastre>[1] = {}) {
+  async function consult(body: LookupBody = {}) {
     if (!id || busy) return;
     setBusy(true);
     try {
       const r = await lookupCadastre(id, body);
       if (r.kind === "ok") {
         setCandidates(null);
+        setResolution(null);
+        setShowAll(false);
         await refetch();
         setNotice({
           tone: "success",
@@ -102,12 +114,36 @@ export default function CadastreDetailScreen() {
       }
       if (r.kind === "ambiguous") {
         setCandidates(r.candidates);
+        setResolution(r.resolution ?? null);
+        setShowAll(false);
         return;
+      }
+      if (r.kind === "not_found") {
+        setCandidates(null);
+        setResolution(r.resolution ?? null);
+        // Sin coincidencia clara → el pin en mapa es la salida diseñada.
+        if (r.resolution?.status === "needs_map_pin") return;
       }
       setNotice(errorNotice(r));
     } finally {
       setBusy(false);
     }
+  }
+
+  function confirmCandidate(c: RankedCandidate) {
+    track("cadastre_candidate_confirm", { confidence: c.confidence ?? "none" });
+    void consult({ ref: c.ref, method: resolution?.method ?? "manual" });
+  }
+
+  function pickSuggestion(s: NumberSuggestion) {
+    track("cadastre_number_suggestion_pick", {});
+    void consult({ ref: s.parcelRef, method: "address_suggestion" });
+  }
+
+  function onPinConfirmed(coords: { latitude: number; longitude: number }) {
+    setMapPinVisible(false);
+    track("cadastre_map_pin_confirm", {});
+    void consult({ pin: coords, method: "map_pin" });
   }
 
   async function copyRef(ref: string) {
@@ -154,44 +190,134 @@ export default function CadastreDetailScreen() {
     <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: t("detail.cadastre.title") }} />
 
-      {/* ── Candidatos: la elección es SIEMPRE del usuario ── */}
-      {candidates && (
+      {/* ── Numerero: "¿Quisiste decir 49, 51…?" ── */}
+      {resolution?.status === "needs_address_confirmation" && (resolution.numberSuggestions?.length ?? 0) > 0 && (
         <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: th.textMuted }]}>
-            {t("detail.cadastre.candidates_title")}
+            {t("detail.cadastre.numerero_title")}
           </Text>
           <Text style={[styles.help, { color: th.textMuted }]}>
-            {t("detail.cadastre.candidates_help")}
+            {t("detail.cadastre.numerero_help")}
           </Text>
-          {candidates.map((c) => (
-            <TouchableOpacity
-              key={c.ref}
-              style={[styles.candidateRow, { borderBottomColor: th.border }]}
-              disabled={busy}
-              onPress={() => void consult({ ref: c.ref })}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.mono, { color: th.text, fontSize: 12 }]}>{c.ref}</Text>
-                <Text style={{ color: th.textMuted, fontSize: 12, marginTop: 2 }}>
-                  {[
-                    c.address,
-                    c.block && `${t("detail.cadastre.block")} ${c.block}`,
-                    c.stair && `${t("detail.cadastre.stair")} ${c.stair}`,
-                    c.floor && `${t("detail.cadastre.floor")} ${c.floor}`,
-                    c.door && `${t("detail.cadastre.door")} ${c.door}`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
+          <View style={styles.chipRow}>
+            {resolution.numberSuggestions!.map((s) => (
+              <TouchableOpacity
+                key={`${s.number}-${s.parcelRef}`}
+                disabled={busy}
+                onPress={() => pickSuggestion(s)}
+                accessibilityRole="button"
+                accessibilityLabel={t("detail.cadastre.numerero_pick", { number: s.number })}
+                style={[styles.suggestionChip, { borderColor: th.primary }]}
+              >
+                <Text style={{ color: th.primary, fontSize: 14, fontFamily: fonts.bodySemibold }}>{s.number}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Card>
+      )}
+
+      {/* ── Candidatos: la elección es SIEMPRE del usuario ── */}
+      {candidates && candidates.length > 0 && (
+        <>
+          {/* Candidato principal (si el resolver tiene una preselección defendible) */}
+          {(candidates[0].confidence === "high" || candidates[0].confidence === "medium") && !showAll ? (
+            <Card style={styles.card}>
+              <Text style={[styles.cardTitle, { color: th.textMuted }]}>
+                {t("detail.cadastre.top_candidate_title")}
+              </Text>
+              <Text style={[styles.mono, { color: th.text, fontSize: 13 }]}>{candidates[0].ref}</Text>
+              <Text style={{ color: th.textMuted, fontSize: 13, marginTop: 4 }}>
+                {candidateSummary(candidates[0], t) || "—"}
+              </Text>
+              <View style={styles.chipRow}>
+                <Text
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: th.primarySoft,
+                      color: candidates[0].confidence === "high" ? th.primary : th.textMuted,
+                    },
+                  ]}
+                >
+                  {t(`detail.cadastre.confidence_${candidates[0].confidence}`)}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={th.primary} />
-            </TouchableOpacity>
-          ))}
+              <ReasonList reasons={candidates[0].reasons} />
+              <Button
+                label={t("detail.cadastre.confirm_candidate")}
+                icon="checkmark-outline"
+                loading={busy}
+                onPress={() => confirmCandidate(candidates[0])}
+                style={{ marginTop: 12 }}
+              />
+              {candidates.length > 1 && (
+                <Button
+                  label={t("detail.cadastre.see_other_options", { count: candidates.length - 1 })}
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => setShowAll(true)}
+                  style={{ marginTop: 8 }}
+                />
+              )}
+              <Text style={[styles.help, { color: th.textSubtle, marginTop: 8 }]}>
+                {t("detail.cadastre.candidates_help")}
+              </Text>
+            </Card>
+          ) : (
+            <Card style={styles.card}>
+              <Text style={[styles.cardTitle, { color: th.textMuted }]}>
+                {t("detail.cadastre.candidates_title")}
+              </Text>
+              <Text style={[styles.help, { color: th.textMuted }]}>
+                {resolution?.method === "nearby_coordinates" || resolution?.method === "map_pin"
+                  ? t("detail.cadastre.candidates_nearby_help")
+                  : t("detail.cadastre.candidates_help")}
+              </Text>
+              {candidates.map((c) => (
+                <TouchableOpacity
+                  key={c.ref}
+                  style={[styles.candidateRow, { borderBottomColor: th.border }]}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  onPress={() => confirmCandidate(c)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.mono, { color: th.text, fontSize: 12 }]}>{c.ref}</Text>
+                    <Text style={{ color: th.textMuted, fontSize: 12, marginTop: 2 }}>
+                      {candidateSummary(c, t) || "—"}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={th.primary} />
+                </TouchableOpacity>
+              ))}
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ── Sin coincidencia clara: pin ajustable en mapa (capa 4) ── */}
+      {resolution?.status === "needs_map_pin" && (
+        <Card style={styles.card}>
+          <Text style={[styles.cardTitle, { color: th.textMuted }]}>
+            {t("detail.cadastre.map_pin_cta_title")}
+          </Text>
+          <Text style={[styles.help, { color: th.textMuted }]}>
+            {t("detail.cadastre.map_pin_cta_help")}
+          </Text>
+          <Button
+            label={t("detail.cadastre.map_pin_open")}
+            icon="location-outline"
+            onPress={() => {
+              track("cadastre_map_pin_open", {});
+              setMapPinVisible(true);
+            }}
+            style={{ marginTop: 12 }}
+          />
         </Card>
       )}
 
       {/* ── Sin datos todavía ── */}
-      {!info && !candidates && (
+      {!info && !candidates && !resolution && (
         <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: th.textMuted }]}>
             {t("detail.cadastre.empty_title")}
@@ -361,7 +487,18 @@ export default function CadastreDetailScreen() {
           size="sm"
           disabled={!manualRef.trim()}
           loading={busy}
-          onPress={() => void consult({ ref: manualRef.trim() })}
+          onPress={() => void consult({ ref: manualRef.trim(), method: "manual" })}
+          style={{ marginTop: 8 }}
+        />
+        <Button
+          label={t("detail.cadastre.map_pin_open")}
+          variant="secondary"
+          size="sm"
+          icon="location-outline"
+          onPress={() => {
+            track("cadastre_map_pin_open", {});
+            setMapPinVisible(true);
+          }}
           style={{ marginTop: 8 }}
         />
       </Card>
@@ -377,10 +514,26 @@ export default function CadastreDetailScreen() {
             {t("detail.cadastre.updated_at", { date: fetchedLabel })}
           </Text>
         )}
+        {view?.resolution && (
+          <Text style={{ color: th.textMuted, fontSize: 12, marginTop: 4 }}>
+            {t("detail.cadastre.resolved_via", {
+              method: t(METHOD_KEY_MAP[view.resolution.method] ?? "detail.cadastre.method_manual"),
+            })}
+            {view.resolution.confirmedByUser ? ` · ${t("detail.cadastre.confirmed_by_you")}` : ""}
+          </Text>
+        )}
         <Text style={[styles.help, { color: th.textMuted, marginTop: 8 }]}>
           {t("detail.cadastre.source_note")}
         </Text>
       </Card>
+
+      <MapPinSheet
+        visible={mapPinVisible}
+        initialLat={p.latitude}
+        initialLng={p.longitude}
+        onConfirm={onPinConfirmed}
+        onClose={() => setMapPinVisible(false)}
+      />
 
       <ResultModal
         visible={!!notice}
@@ -391,6 +544,80 @@ export default function CadastreDetailScreen() {
         onRequestClose={() => setNotice(null)}
       />
     </ScrollView>
+  );
+}
+
+/** Resumen de un candidato: dirección + bloque/escalera/planta/puerta + m². */
+function candidateSummary(c: RankedCandidate, t: (k: I18nKey) => string): string {
+  return [
+    c.address,
+    c.block && `${t("detail.cadastre.block")} ${c.block}`,
+    c.stair && `${t("detail.cadastre.stair")} ${c.stair}`,
+    c.floor && `${t("detail.cadastre.floor")} ${c.floor}`,
+    c.door && `${t("detail.cadastre.door")} ${c.door}`,
+    c.builtArea != null && `${c.builtArea} m²`,
+    c.distanceMeters != null && `≈${Math.round(c.distanceMeters)} m`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+const METHOD_KEY_MAP: Record<string, I18nKey> = {
+  description: "detail.cadastre.method_description",
+  coordinates: "detail.cadastre.method_coordinates",
+  nearby_coordinates: "detail.cadastre.method_nearby_coordinates",
+  address: "detail.cadastre.method_address",
+  address_suggestion: "detail.cadastre.method_address_suggestion",
+  cartociudad: "detail.cadastre.method_cartociudad",
+  map_pin: "detail.cadastre.method_map_pin",
+  manual: "detail.cadastre.method_manual",
+};
+
+// Solo los códigos conocidos se muestran; los demás se ignoran (forward-compat).
+const REASON_KEY_MAP: Record<string, I18nKey> = {
+  floor_match: "detail.cadastre.reason_floor_match",
+  floor_mismatch: "detail.cadastre.reason_floor_mismatch",
+  door_match: "detail.cadastre.reason_door_match",
+  door_mismatch: "detail.cadastre.reason_door_mismatch",
+  stair_match: "detail.cadastre.reason_stair_match",
+  block_match: "detail.cadastre.reason_block_match",
+  number_match: "detail.cadastre.reason_number_match",
+  surface_close: "detail.cadastre.reason_surface_close",
+  surface_similar: "detail.cadastre.reason_surface_similar",
+  surface_loose: "detail.cadastre.reason_surface_loose",
+  surface_far: "detail.cadastre.reason_surface_far",
+  year_close: "detail.cadastre.reason_year_close",
+  use_residential: "detail.cadastre.reason_use_residential",
+  near_distance: "detail.cadastre.reason_near_distance",
+};
+
+/** Razones comprensibles del ranking ("Coincide la planta", "92 m² frente a 89 m²"). */
+function ReasonList({ reasons }: { reasons?: CandidateReason[] }) {
+  const { th } = useTheme();
+  const { t } = useTranslation();
+  const visible = (reasons ?? []).filter((r) => REASON_KEY_MAP[r.code]).slice(0, 5);
+  if (visible.length === 0) return null;
+  return (
+    <View style={{ marginTop: 8, gap: 3 }}>
+      {visible.map((r, i) => {
+        const mismatch = r.code.endsWith("_mismatch") || r.code === "surface_far";
+        return (
+          <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Ionicons
+              name={mismatch ? "alert-circle-outline" : "checkmark-circle-outline"}
+              size={14}
+              color={mismatch ? th.dangerFg : th.primary}
+            />
+            <Text style={{ color: th.textMuted, fontSize: 12, flexShrink: 1 }}>
+              {t(REASON_KEY_MAP[r.code], {
+                listing: r.listing != null ? String(r.listing) : "?",
+                cadastre: r.cadastre != null ? String(r.cadastre) : "?",
+              })}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -506,6 +733,14 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5, gap: 12 },
   infoLabel: { fontSize: 12 },
   infoValue: { fontSize: 13, flexShrink: 1, textAlign: "right" },
+  suggestionChip: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minWidth: 44,
+    alignItems: "center",
+  },
   candidateRow: {
     flexDirection: "row",
     alignItems: "center",

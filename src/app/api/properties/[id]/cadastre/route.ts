@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import {
-  CadastreUnavailableError,
-  fetchByRefDetailed,
-  listCandidatesByAddress,
-  lookupByCoordinates,
-  parseAddress,
-} from "@/features/cadastre/lookup";
+import { CadastreUnavailableError, fetchByRefDetailed } from "@/features/cadastre/lookup";
 import { isValidCadastralRef, normalizeCadastralRef } from "@/features/cadastre/ref";
-import { wrapCadastreData, type CadastreCandidate, type CadastreInfo, type StoredCadastreData } from "@/features/cadastre/types";
+import { resolveCadastre } from "@/features/cadastre/resolver";
+import { rankCandidates } from "@/features/cadastre/rank";
+import {
+  wrapCadastreData,
+  type CadastreInfo,
+  type CadastreResolution,
+  type CadastreResolutionMethod,
+  type StoredCadastreData,
+  type StoredResolution,
+} from "@/features/cadastre/types";
 import { rateLimit } from "@/lib/rate-limit";
 import { logImportEvent } from "@/lib/import-log";
 
@@ -20,10 +23,31 @@ export const maxDuration = 60;
 /** Caducidad de la caché: los datos catastrales cambian muy despacio. */
 const CACHE_TTL_MS = 30 * 24 * 3600_000;
 
+const MethodSchema = z.enum([
+  "description",
+  "coordinates",
+  "nearby_coordinates",
+  "address",
+  "address_suggestion",
+  "cartociudad",
+  "map_pin",
+  "manual",
+]);
+
 const BodySchema = z
   .object({
-    // RC explícita: el usuario eligió un candidato o la tecleó a mano.
+    // RC explícita: el usuario CONFIRMÓ un candidato o la tecleó a mano.
+    // Es el ÚNICO camino que persiste; el resolver nunca asocia solo.
     ref: z.string().min(10).max(30).optional(),
+    // Procedencia declarada por el cliente al confirmar (telemetría honesta).
+    method: MethodSchema.optional(),
+    // Pin ajustado por el usuario en el mapa (capa 4): señal fuerte.
+    pin: z
+      .object({
+        latitude: z.coerce.number().gte(-90).lte(90),
+        longitude: z.coerce.number().gte(-180).lte(180),
+      })
+      .optional(),
     // Overrides manuales para reintentar con datos corregidos.
     latitude: z.coerce.number().gte(-90).lte(90).optional(),
     longitude: z.coerce.number().gte(-180).lte(180).optional(),
@@ -46,17 +70,44 @@ function okPayload(info: CadastreInfo, stored: StoredCadastreData, opts?: { cach
     info: infoSinRaw,
     source: stored.source,
     fetchedAt: stored.fetchedAt,
+    resolution: stored.resolution,
   };
 }
 
-function ambiguousPayload(candidates: CadastreCandidate[], warnings: string[] = []) {
-  // Tope defensivo: una calle entera puede devolver cientos de unidades.
-  return { ok: false as const, ambiguous: true as const, candidates: candidates.slice(0, 60), warnings };
+/**
+ * Payload del resolver: forma compatible con el "ambiguous" histórico (los
+ * builds sin OTA siguen viendo la lista y eligiendo) + `resolution` con el
+ * ranking, método, sugerencias del numerero y attempts (sin RC ni dirección).
+ */
+function resolutionPayload(r: CadastreResolution, warnings: string[] = []) {
+  return {
+    ok: false as const,
+    ambiguous: true as const,
+    candidates: r.candidates.slice(0, 60),
+    warnings,
+    resolution: {
+      status: r.status,
+      method: r.method,
+      confidence: r.candidates[0]?.confidence,
+      numberSuggestions: r.numberSuggestions,
+      attempts: r.attempts,
+    },
+  };
+}
+
+/** Telemetría agregada: jamás RC completa, dirección, coords ni descripción. */
+async function trackEvent(userId: string, name: string, props: Record<string, string | number | boolean>) {
+  await prisma.analyticsEvent.create({ data: { userId, name, props } }).catch(() => {});
 }
 
 /** Persiste RC + datos normalizados y rellena SOLO campos vacíos de la ficha. */
-async function persistInfo(propertyId: string, property: { yearBuilt: number | null; builtArea: number | null; address: string | null; floor: string | null }, info: CadastreInfo): Promise<StoredCadastreData> {
-  const stored = wrapCadastreData(info);
+async function persistInfo(
+  propertyId: string,
+  property: { yearBuilt: number | null; builtArea: number | null; address: string | null; floor: string | null },
+  info: CadastreInfo,
+  resolution: StoredResolution
+): Promise<StoredCadastreData> {
+  const stored = wrapCadastreData(info, resolution);
   const patch: Record<string, unknown> = {
     cadastralRef: info.ref,
     cadastralData: stored as unknown as Record<string, unknown>,
@@ -116,24 +167,50 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     await prisma.property.update({ where: { id }, data: userPatch });
   }
 
+  const signalsBase = {
+    floor: property.floor,
+    builtArea: property.builtArea,
+    yearBuilt: property.yearBuilt,
+  };
+
   try {
-    // ── 1. RC explícita (candidato elegido o tecleada) ──────────────────────
+    // ── 1. RC explícita: ÚNICO camino que persiste (confirmación del usuario) ─
     if (body.ref) {
       const ref = normalizeCadastralRef(body.ref);
       if (!isValidCadastralRef(ref)) {
         return NextResponse.json({ error: "REF_INVALID" }, { status: 400 });
       }
+      const method: CadastreResolutionMethod = body.method ?? "manual";
       const r = await fetchByRefDetailed(ref);
-      if (r.kind === "many") return NextResponse.json(ambiguousPayload(r.candidates));
-      if (r.kind === "none") return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-      const stored = await persistInfo(id, property, r.info);
-      await logImportEvent("CATASTRO", { propertyId: id, ok: true, message: `RC ${r.info.ref} (manual)`, meta: { ref: r.info.ref, method: "ref" } });
+      if (r.kind === "many") {
+        // RC de finca: viviendas ordenadas; la elección sigue siendo del usuario.
+        const ranked = rankCandidates(r.candidates, { ...signalsBase });
+        await trackEvent(ownerId, "cadastre_resolve", {
+          status: "ambiguous", method, candidates: ranked.length, confirmed: false,
+        });
+        return NextResponse.json(
+          resolutionPayload({
+            status: "ambiguous", method, candidates: ranked, attempts: [{ stage: method, outcome: "hit" }], confirmed: false,
+          })
+        );
+      }
+      if (r.kind === "none") {
+        await trackEvent(ownerId, "cadastre_resolve", { status: "not_found", method, candidates: 0, confirmed: false });
+        return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+      }
+      const stored = await persistInfo(id, property, r.info, {
+        method,
+        resolvedAt: new Date().toISOString(),
+        confirmedByUser: true,
+      });
+      await logImportEvent("CATASTRO", { propertyId: id, ok: true, message: `RC ${r.info.ref} (confirmada)`, meta: { ref: r.info.ref, method } });
+      await trackEvent(ownerId, "cadastre_confirm", { method });
       return NextResponse.json(okPayload(r.info, stored));
     }
 
-    // ── 2. Caché fresca ─────────────────────────────────────────────────────
+    // ── 2. Caché fresca (solo consultas sin pin y sin force) ────────────────
     const cachedData = property.cadastralData as unknown as StoredCadastreData | CadastreInfo | null;
-    if (!body.force && property.cadastralRef && cachedData && typeof cachedData === "object") {
+    if (!body.force && !body.pin && property.cadastralRef && cachedData && typeof cachedData === "object") {
       const isStored = "schema" in cachedData && "fetchedAt" in cachedData;
       const fetchedAt = isStored ? Date.parse((cachedData as StoredCadastreData).fetchedAt) : NaN;
       if (isStored && Number.isFinite(fetchedAt) && Date.now() - fetchedAt < CACHE_TTL_MS) {
@@ -142,72 +219,49 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       }
     }
 
-    // ── 3. Búsqueda: coordenadas primero, dirección después ─────────────────
-    const warnings: string[] = [];
-    const lat = body.latitude ?? property.latitude;
-    const lng = body.longitude ?? property.longitude;
+    // ── 3. Resolver (embudo completo). NUNCA persiste: propone y el usuario
+    //      confirma con body.ref en una llamada posterior. ──────────────────
+    const resolution = await resolveCadastre({
+      title: property.title,
+      description: property.description,
+      latitude: body.latitude ?? property.latitude,
+      longitude: body.longitude ?? property.longitude,
+      address: body.address ?? property.address,
+      city: body.city ?? property.city,
+      province: body.province ?? property.province,
+      ...signalsBase,
+      pin: body.pin ?? null,
+    });
 
-    if (lat != null && lng != null) {
-      try {
-        const parcelRef = await lookupByCoordinates(lat, lng);
-        if (parcelRef) {
-          const r = await fetchByRefDetailed(parcelRef);
-          if (r.kind === "one") {
-            const stored = await persistInfo(id, property, r.info);
-            await logImportEvent("CATASTRO", { propertyId: id, ok: true, message: `RC ${r.info.ref} vía coords`, meta: { ref: r.info.ref, method: "coords" } });
-            return NextResponse.json(okPayload(r.info, stored));
-          }
-          if (r.kind === "many") return NextResponse.json(ambiguousPayload(r.candidates, warnings));
-          warnings.push(`La parcela ${parcelRef} no tiene datos descriptivos`);
-        } else {
-          warnings.push("Sin resultado por coordenadas");
-        }
-      } catch (e) {
-        if (e instanceof CadastreUnavailableError) throw e;
-        warnings.push(`Coordenadas: ${(e as Error).message}`);
-      }
-    } else {
-      warnings.push("Sin coordenadas en la ficha");
+    await trackEvent(ownerId, "cadastre_resolve", {
+      status: resolution.status,
+      method: resolution.method ?? "none",
+      candidates: resolution.candidates.length,
+      suggestions: resolution.numberSuggestions?.length ?? 0,
+      stages: resolution.attempts.length,
+      confirmed: false,
+    });
+
+    if (resolution.status === "upstream_unavailable") {
+      await logImportEvent("CATASTRO", { propertyId: id, ok: false, message: "Catastro/geocoder no disponibles" }).catch(() => {});
+      return NextResponse.json({ error: "CADASTRE_UNAVAILABLE" }, { status: 503 });
     }
-
-    const provinceIn = body.province ?? property.province;
-    const cityIn = body.city ?? property.city;
-    const addressIn = body.address ?? property.address;
-    if (provinceIn && cityIn && addressIn) {
-      const parsed = parseAddress(addressIn);
-      if (parsed) {
-        try {
-          const candidates = await listCandidatesByAddress({
-            province: provinceIn,
-            city: cityIn,
-            street: parsed.street,
-            number: parsed.number,
-            sigla: parsed.sigla,
-          });
-          if (candidates.length > 1) return NextResponse.json(ambiguousPayload(candidates, warnings));
-          if (candidates.length === 1) {
-            const r = await fetchByRefDetailed(candidates[0].ref);
-            if (r.kind === "one") {
-              const stored = await persistInfo(id, property, r.info);
-              await logImportEvent("CATASTRO", { propertyId: id, ok: true, message: `RC ${r.info.ref} vía dirección`, meta: { ref: r.info.ref, method: "address" } });
-              return NextResponse.json(okPayload(r.info, stored));
-            }
-            if (r.kind === "many") return NextResponse.json(ambiguousPayload(r.candidates, warnings));
-            warnings.push("El inmueble localizado no tiene datos descriptivos");
-          } else {
-            warnings.push("Sin resultado por dirección");
-          }
-        } catch (e) {
-          if (e instanceof CadastreUnavailableError) throw e;
-          warnings.push(`Dirección: ${(e as Error).message}`);
-        }
-      } else {
-        warnings.push("No se pudo interpretar la dirección");
-      }
+    if (resolution.status === "not_found" || resolution.status === "needs_map_pin") {
+      await logImportEvent("CATASTRO", {
+        propertyId: id, ok: false,
+        message: resolution.attempts.map((a) => `${a.stage}:${a.outcome}`).join(" · ") || "Sin resultado",
+      });
+      return NextResponse.json(
+        { error: "NOT_FOUND", warnings: [], resolution: { status: resolution.status, method: resolution.method, attempts: resolution.attempts } },
+        { status: 404 }
+      );
     }
-
-    await logImportEvent("CATASTRO", { propertyId: id, ok: false, message: warnings.join(" · ") || "Sin resultado", meta: { warnings } });
-    return NextResponse.json({ error: "NOT_FOUND", warnings }, { status: 404 });
+    await logImportEvent("CATASTRO", {
+      propertyId: id, ok: true,
+      message: `${resolution.status} vía ${resolution.method} (${resolution.candidates.length} candidatos)`,
+      meta: { method: resolution.method, status: resolution.status },
+    });
+    return NextResponse.json(resolutionPayload(resolution));
   } catch (e) {
     // Degradación controlada: el fallo del Catastro nunca rompe la ficha.
     if (e instanceof CadastreUnavailableError) {

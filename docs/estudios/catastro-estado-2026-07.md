@@ -1,5 +1,21 @@
 # Catastro en Nidokey — estudio técnico y decisión de arquitectura (jul-2026)
 
+> **Actualización 2026-07-30 (tarde)**: implementado el EMBUDO COMPLETO de
+> resolución (`src/features/cadastre/resolver.ts`): (1) RC extraída del anuncio
+> (`extract.ts`) y validada con DNPRC; (2) coordenadas → RCCOOR y, si vacío,
+> RCCOOR_Distancia (`parseNearbyParcels`, fixture dorado real); (3) dirección →
+> DNPLOC **conservando el numerero** (`parseDnploc`; verificado: `nump[]` solo
+> llega con números cercanos) y fallback CartoCiudad
+> (`src/features/geocoding/cartociudad.ts`, devuelve RC de parcela como pista a
+> validar); (4) pin ajustable en mapa (`apps/mobile/components/MapPinSheet.tsx`,
+> WebView + Leaflet 1.9.4 con SRI verificado + teselas IGN/IDEE, sin módulos
+> nativos → OTA). Ranking determinista y explicable (`rank.ts`), hidratación
+> DNPRC acotada (máx. 8, concurrencia 2), persistencia schema 2 con
+> método/confirmación. **Nada se persiste sin confirmación del usuario**: se
+> eliminó el auto-persist por coords/dirección que existía en la ruta.
+> ⚠️ Gotcha cazado: `fast-xml-parser` con `parseTagValue:true` convertía `pc1`
+> "0071701" en número y corrompía la RC — ahora `parseTagValue:false`.
+
 > Escrito por Claude Code el 2026-07-30. La tarea delegada a Codex
 > (`docs/estudios/catastro-codex.md`) falló dos veces por caída de su ejecutor
 > en modo edición sin llegar a escribir nada; este documento la sustituye.

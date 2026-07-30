@@ -35,7 +35,9 @@ import {
 import { executorAvailability } from "./lib/executors.mjs";
 
 const SERVER_NAME = "nidokey-graph";
-const SERVER_VERSION = "0.4.0";
+const SERVER_VERSION = "0.4.1";
+const SESSION_CONTEXT_MAX_CHARACTERS = 6000;
+const SESSION_CONTEXT_DEFAULT_RESULTS = 4;
 const TRUSTED_AGENTS = new Set(["codex", "claude-code"]);
 const PRIVILEGED_TOOLS = new Set([
   "delegate_task",
@@ -57,6 +59,7 @@ const state = {
   indexChecked: false,
   startupRefresh: null,
   delegatedTaskId: process.env.NIDOKEY_GRAPH_TASK_ID ?? null,
+  deliveredContextTasks: new Set(),
 };
 
 const baseInstructions = [
@@ -83,15 +86,21 @@ const tools = [
         task: {
           type: "string",
           minLength: 1,
+          maxLength: 1000,
           description: "Objetivo concreto de la tarea actual, expresado en lenguaje natural.",
         },
         refresh: {
           type: "boolean",
           description: "Actualizar incrementalmente el índice antes de recuperar contexto.",
-          default: true,
+          default: false,
         },
-        max_results: { type: "integer", minimum: 1, maximum: 12, default: 8 },
-        max_hops: { type: "integer", minimum: 0, maximum: 2, default: 1 },
+        max_results: {
+          type: "integer",
+          minimum: 1,
+          maximum: 6,
+          default: SESSION_CONTEXT_DEFAULT_RESULTS,
+        },
+        max_hops: { type: "integer", minimum: 0, maximum: 1, default: 0 },
       },
       additionalProperties: false,
     },
@@ -580,53 +589,324 @@ function refreshSafely() {
   }
 }
 
+function clipText(value, maximum) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length <= maximum ? text : `${text.slice(0, Math.max(0, maximum - 1))}…`;
+}
+
+function compactWork(work) {
+  const agentsByName = new Map();
+  for (const agent of work.agents ?? []) {
+    const current = agentsByName.get(agent.name) ?? {
+      name: agent.name,
+      sessions: 0,
+      latestSeenAt: null,
+      delegatedTasks: [],
+    };
+    current.sessions += 1;
+    if (!current.latestSeenAt || agent.lastSeenAt > current.latestSeenAt) {
+      current.latestSeenAt = agent.lastSeenAt;
+    }
+    if (
+      agent.delegatedTaskId &&
+      !current.delegatedTasks.includes(agent.delegatedTaskId) &&
+      current.delegatedTasks.length < 3
+    ) {
+      current.delegatedTasks.push(agent.delegatedTaskId);
+    }
+    agentsByName.set(agent.name, current);
+  }
+  const latestDecision = work.decisions?.[0];
+  const latestHandoff = work.handoffs?.[0];
+  return {
+    agents: [...agentsByName.values()].slice(0, 3),
+    claims: (work.claims ?? []).slice(0, 5).map((claim) => ({
+      id: claim.id,
+      agent: claim.agent,
+      scope: claim.scope,
+      task: clipText(claim.task, 180),
+      expiresAt: claim.expires_at,
+    })),
+    latestDecision: latestDecision
+      ? {
+          id: latestDecision.id,
+          agent: latestDecision.agent,
+          title: clipText(latestDecision.title, 180),
+          rationale: clipText(latestDecision.rationale, 320),
+          paths: (latestDecision.paths ?? []).slice(0, 5),
+          createdAt: latestDecision.created_at,
+        }
+      : null,
+    latestHandoff: latestHandoff
+      ? {
+          id: latestHandoff.id,
+          agent: latestHandoff.agent,
+          summary: clipText(latestHandoff.summary, 420),
+          paths: (latestHandoff.paths ?? []).slice(0, 5),
+          createdAt: latestHandoff.created_at,
+        }
+      : null,
+  };
+}
+
+function compactTaskInbox(taskInbox) {
+  const tasks = taskInbox.tasks ?? [];
+  return {
+    count: tasks.length,
+    tasks: tasks.slice(0, 5).map((task) => ({
+      id: task.id,
+      title: clipText(task.title, 160),
+      targetAgent: task.targetAgent,
+      status: task.status,
+      priority: task.priority,
+      scope: task.scope,
+      eligibility: task.eligibility?.state ?? task.status,
+    })),
+  };
+}
+
+function compactSearch(search) {
+  return {
+    query: clipText(search.query, 300),
+    indexedAt: search.indexedAt,
+    resultCount: search.resultCount,
+    results: (search.context ?? []).slice(0, 6).map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      name: clipText(item.name, 120),
+      citation: item.citation,
+      excerpt: clipText(item.excerpt, 460),
+      score: item.score,
+      depth: item.depth,
+    })),
+    relations: (search.relations ?? []).slice(0, 6).map((relation) => ({
+      source: relation.sourceId ?? relation.source,
+      relation: relation.relation,
+      target: relation.targetId ?? relation.target,
+    })),
+  };
+}
+
+function compactOrchestration(orchestration, reconciledTasks) {
+  return {
+    backgroundEnabled: orchestration.backgroundEnabled,
+    limits: orchestration.limits,
+    counts: orchestration.counts,
+    activeRuns: (orchestration.activeRuns ?? []).slice(0, 3).map((run) => ({
+      id: run.id,
+      taskId: run.task_id,
+      agent: run.agent,
+      status: run.status,
+      title: clipText(run.title, 140),
+      scope: run.scope,
+      startedAt: run.started_at,
+    })),
+    reconciledTasks: (reconciledTasks ?? []).slice(0, 3),
+  };
+}
+
+function withSessionBudget(payload) {
+  let squeezed = false;
+  const measure = () => JSON.stringify(payload, null, 2).length;
+  payload.responseBudget = {
+    mode: "compact",
+    maxCharacters: SESSION_CONTEXT_MAX_CHARACTERS,
+    actualCharacters: 0,
+    approximateTokens: 0,
+    squeezed: false,
+  };
+  payload.responseBudget.actualCharacters = measure();
+  payload.responseBudget.approximateTokens = Math.ceil(
+    payload.responseBudget.actualCharacters / 4,
+  );
+
+  if (measure() > SESSION_CONTEXT_MAX_CHARACTERS) {
+    squeezed = true;
+    payload.relevantContext.results = payload.relevantContext.results
+      .slice(0, 2)
+      .map((item) => ({ ...item, excerpt: clipText(item.excerpt, 240) }));
+    payload.relevantContext.relations = [];
+    payload.coordination.agents = payload.coordination.agents.slice(0, 2);
+    payload.coordination.claims = payload.coordination.claims.slice(0, 3);
+    if (payload.coordination.latestDecision) {
+      payload.coordination.latestDecision.rationale = clipText(
+        payload.coordination.latestDecision.rationale,
+        160,
+      );
+    }
+    if (payload.coordination.latestHandoff) {
+      payload.coordination.latestHandoff.summary = clipText(
+        payload.coordination.latestHandoff.summary,
+        220,
+      );
+    }
+    payload.taskInbox.tasks = payload.taskInbox.tasks.slice(0, 3);
+    payload.orchestration.activeRuns = payload.orchestration.activeRuns.slice(0, 2);
+  }
+
+  payload.responseBudget.squeezed = squeezed;
+  payload.responseBudget.actualCharacters = measure();
+  payload.responseBudget.approximateTokens = Math.ceil(
+    payload.responseBudget.actualCharacters / 4,
+  );
+  if (measure() > SESSION_CONTEXT_MAX_CHARACTERS) {
+    const citations = payload.relevantContext.results.slice(0, 3).map((item) => ({
+      citation: item.citation,
+      name: item.name,
+    }));
+    return withSessionBudget({
+      session: payload.session,
+      contextAlreadyProvided: payload.contextAlreadyProvided ?? false,
+      index: payload.index,
+      coordination: {
+        agents: payload.coordination.agents.slice(0, 2),
+        claims: payload.coordination.claims.slice(0, 2),
+        latestDecision: payload.coordination.latestDecision
+          ? {
+              id: payload.coordination.latestDecision.id,
+              title: payload.coordination.latestDecision.title,
+            }
+          : null,
+        latestHandoff: payload.coordination.latestHandoff
+          ? {
+              id: payload.coordination.latestHandoff.id,
+              summary: clipText(payload.coordination.latestHandoff.summary, 160),
+            }
+          : null,
+      },
+      taskInbox: {
+        count: payload.taskInbox.count,
+        tasks: payload.taskInbox.tasks.slice(0, 2),
+      },
+      orchestration: {
+        backgroundEnabled: payload.orchestration.backgroundEnabled,
+        counts: payload.orchestration.counts,
+        activeRuns: payload.orchestration.activeRuns.slice(0, 1),
+      },
+      relevantContext: { citations },
+      requiredNextActions: payload.requiredNextActions.slice(0, 3),
+      detailsAvailableVia: payload.detailsAvailableVia,
+    });
+  }
+  return payload;
+}
+
 function sessionContext(input) {
-  const task = String(input.task ?? "").trim();
+  const task = clipText(input.task, 1000);
   if (!task) throw new Error("task es obligatorio");
+  const taskKey = task.toLowerCase();
   const reconciledTasks = reconcileExpiredTasks(store);
-  const refresh =
-    input.refresh === false
-      ? { ok: true, skipped: true, reason: "Ya actualizado en esta sesión" }
-      : refreshSafely();
+  const refresh = input.refresh === true || !state.startupRefresh?.ok
+    ? refreshSafely()
+    : {
+        ok: true,
+        skipped: true,
+        reason: "El índice ya se actualizó al abrir esta sesión",
+      };
   ensureIndex();
-  const work = activeWork(store);
-  const taskInbox = listDelegatedTasks(
+  const status = graphStatus(store);
+  const rawTaskInbox = listDelegatedTasks(
     store,
     { mine: true, limit: 20 },
     context(),
   );
-  return {
-    session: {
-      agent: state.agent,
-      sessionId: state.sessionId,
-      task,
-    },
+  const taskInbox = compactTaskInbox(rawTaskInbox);
+  const rawOrchestration = orchestrationStatus(store);
+  const orchestration = compactOrchestration(rawOrchestration, reconciledTasks);
+  const session = {
+    agent: state.agent,
+    sessionId: state.sessionId,
+    task,
+  };
+  const index = {
+    schemaVersion: status.schemaVersion,
+    lastIndexedAt: status.lastIndexedAt,
+    files: status.files,
+    nodes: status.nodes,
+    edges: status.edges,
+    activeClaims: status.activeClaims,
+  };
+  const detailsAvailableVia = [
+    "graph_search",
+    "get_node",
+    "trace_relationships",
+    "impact_analysis",
+    "active_work",
+    "get_delegated_task",
+  ];
+
+  if (state.deliveredContextTasks.has(taskKey)) {
+    return withSessionBudget({
+      session,
+      contextAlreadyProvided: true,
+      message:
+        "Este contexto ya se entregó en esta sesión; reutiliza el resultado anterior y amplía solo bajo demanda.",
+      automaticIndexing: {
+        atSessionStart: true,
+        atSessionEnd: true,
+        refresh,
+      },
+      index,
+      coordination: {
+        agents: [],
+        claims: [],
+        latestDecision: null,
+        latestHandoff: null,
+      },
+      taskInbox,
+      orchestration,
+      relevantContext: { query: task, resultCount: 0, results: [], relations: [] },
+      requiredNextActions: [
+        "Reutilizar el contexto ya recibido.",
+        "Ampliar únicamente con una herramienta de detalle si falta evidencia.",
+      ],
+      detailsAvailableVia,
+    });
+  }
+
+  const work = compactWork(activeWork(store));
+  const search = compactSearch(
+    graphSearch(store, {
+      query: task,
+      max_results: Math.min(
+        Math.max(Number(input.max_results) || SESSION_CONTEXT_DEFAULT_RESULTS, 1),
+        6,
+      ),
+      max_hops: Math.min(Math.max(Number(input.max_hops) || 0, 0), 1),
+    }),
+  );
+  state.deliveredContextTasks.add(taskKey);
+  return withSessionBudget({
+    session,
+    contextAlreadyProvided: false,
     automaticIndexing: {
       atSessionStart: true,
       atSessionEnd: true,
-      refresh,
+      refresh: {
+        ok: refresh.ok,
+        skipped: Boolean(refresh.skipped),
+        changedFiles: refresh.changedFiles ?? 0,
+        removedFiles: refresh.removedFiles ?? 0,
+        durationMs: refresh.durationMs ?? 0,
+        reason: refresh.reason,
+        error: refresh.error ? clipText(refresh.error, 240) : undefined,
+      },
     },
-    index: graphStatus(store),
+    index,
     coordination: work,
     taskInbox,
-    orchestration: {
-      ...orchestrationStatus(store),
-      reconciledTasks,
-    },
-    relevantContext: graphSearch(store, {
-      query: task,
-      max_results: input.max_results ?? 8,
-      max_hops: input.max_hops ?? 1,
-    }),
+    orchestration,
+    relevantContext: search,
     requiredNextActions: [
       "Verificar en el código las citas relevantes.",
-      "Consultar trace_relationships o impact_analysis si el cambio tiene dependencias.",
+      "Ampliar solo si hace falta con graph_search, trace_relationships o impact_analysis.",
       state.delegatedTaskId
         ? "El runner ya reservó el ámbito de esta tarea; no vuelvas a reclamarlo."
         : "Ejecutar claim_scope sobre el ámbito mínimo antes de editar.",
-      "Al terminar: refresh_index, record_decision cuando proceda, publish_handoff y release_claim.",
+      "Al terminar: refresh_index, registrar decisiones no triviales, publicar handoff y liberar el claim.",
     ],
-  };
+    detailsAvailableVia,
+  });
 }
 
 function sessionInstructions(refresh, work) {

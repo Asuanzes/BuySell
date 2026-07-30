@@ -618,6 +618,31 @@ test("cancela únicamente el proceso de la tarea registrada", async () => {
 test("habla MCP por stdio y publica sus herramientas", async () => {
   const root = fixture();
   const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "server.mjs");
+  const protocolDatabase = path.join(root, ".graphrag", "protocol.sqlite");
+  const seeded = openStore({ root, databasePath: protocolDatabase });
+  const longText = "contexto histórico ".repeat(320);
+  for (let index = 0; index < 10; index += 1) {
+    const createdAt = new Date(Date.now() - index * 1000).toISOString();
+    seeded.db
+      .prepare(`
+        INSERT INTO decisions(
+          id, agent, session_id, title, rationale, paths_json, created_at
+        ) VALUES(?, 'codex', 'seed-session', ?, ?, '["src/auth.ts"]', ?)
+      `)
+      .run(`decision-${index}`, `Decisión extensa ${index}`, longText, createdAt);
+    seeded.db
+      .prepare(`
+        INSERT INTO handoffs(
+          id, agent, session_id, summary, paths_json, tests_json,
+          next_steps_json, created_at
+        ) VALUES(
+          ?, 'claude-code', 'seed-session', ?, '["src/route.ts"]',
+          '["test extenso"]', '["siguiente paso extenso"]', ?
+        )
+      `)
+      .run(`handoff-${index}`, longText, createdAt);
+  }
+  seeded.close();
   const child = spawn(
     process.execPath,
     [
@@ -626,7 +651,7 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
       "--root",
       root,
       "--db",
-      path.join(root, ".graphrag", "protocol.sqlite"),
+      protocolDatabase,
     ],
     { stdio: ["pipe", "pipe", "pipe"] },
   );
@@ -659,7 +684,7 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
       capabilities: {},
     });
     assert.equal(initialized.result.serverInfo.name, "nidokey-graph");
-    assert.equal(initialized.result.serverInfo.version, "0.4.0");
+    assert.equal(initialized.result.serverInfo.version, "0.4.1");
     assert.match(initialized.result.instructions, /Bootstrap automático/);
     const listed = await request(2, "tools/list");
     assert.ok(listed.result.tools.some((tool) => tool.name === "session_context"));
@@ -675,8 +700,17 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
     const sessionPayload = JSON.parse(session.result.content[0].text);
     assert.equal(sessionPayload.session.task, "revisar autenticación");
     assert.equal(sessionPayload.automaticIndexing.atSessionStart, true);
-    assert.ok(sessionPayload.relevantContext.context.length > 0);
-    const status = await request(4, "tools/call", {
+    assert.ok(sessionPayload.relevantContext.results.length > 0);
+    assert.ok(session.result.content[0].text.length <= 6000);
+    assert.ok(sessionPayload.responseBudget.actualCharacters <= 6000);
+    const repeated = await request(4, "tools/call", {
+      name: "session_context",
+      arguments: { task: "revisar autenticación", refresh: false },
+    });
+    const repeatedPayload = JSON.parse(repeated.result.content[0].text);
+    assert.equal(repeatedPayload.contextAlreadyProvided, true);
+    assert.ok(repeated.result.content[0].text.length < 3000);
+    const status = await request(5, "tools/call", {
       name: "graph_status",
       arguments: {},
     });

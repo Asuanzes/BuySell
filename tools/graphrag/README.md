@@ -41,6 +41,24 @@ cuando se usa ejecución en segundo plano. Se excluyen:
 El grafo nunca sustituye al código. Cada resultado incluye ruta y línea para
 verificación.
 
+## Presupuesto de contexto
+
+`session_context` usa un modo compacto con un máximo estricto de 6.000
+caracteres (aproximadamente 1.500 tokens):
+
+- cuatro resultados relevantes por defecto y como máximo seis;
+- sesiones agrupadas por agente, sin metadatos repetidos;
+- una decisión y un handoff recientes, ambos resumidos;
+- hasta cinco tareas de bandeja y tres ejecuciones activas;
+- sin listados de tipos de nodo, tests históricos ni instrucciones completas;
+- una segunda llamada para la misma tarea devuelve solo un aviso breve.
+
+Los detalles no desaparecen: se recuperan bajo demanda mediante `graph_search`,
+`get_node`, `trace_relationships`, `impact_analysis`, `active_work` o
+`get_delegated_task`. El índice se refresca al abrir la sesión; `session_context`
+no repite ese recorrido salvo que se pase `refresh: true` o haya fallado el
+refresco inicial.
+
 ## Comandos
 
 ```powershell

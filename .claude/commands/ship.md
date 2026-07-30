@@ -1,5 +1,5 @@
 ---
-description: "Despliegue Nidokey: tsc de lo que cambió → commit → push (deploy web en Vercel) → eas update Android si tocó el móvil. Uso: /ship <mensaje de commit>"
+description: "Despliegue Nidokey: tsc de lo que cambió → commit → push (deploy web en Vercel) → eas update si tocó el móvil (canales preview y, si procede, production/TestFlight). Uso: /ship <mensaje de commit>"
 argument-hint: <mensaje de commit>
 ---
 
@@ -37,7 +37,7 @@ Muestra el plan: qué desplegará (web sí/no, OTA móvil sí/no) y avisos.
 ## 5. Commit
 `git add -A` y commit con `$ARGUMENTS` como mensaje, terminando con el trailer:
 ```
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ```
 (Se trabaja directo en `main`: es la rama que despliega.)
 
@@ -45,10 +45,19 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 `git push origin main`. Esto dispara el deploy del backend en Vercel solo.
 
 ## 7. OTA móvil (solo si hubo cambios en `apps/mobile/**`)
-`cd "apps/mobile" && eas update --branch preview --platform android -m "$ARGUMENTS"`
+⚠️ **HAY DOS AUDIENCIAS** (tabla en `docs/OPERACIONES.md` §1): el móvil propio
+bebe del canal `preview` y los testers de TestFlight del canal `production`.
+Un update solo llega a su canal+runtime; el canal equivocado no da error.
+
+1. Siempre: `cd "apps/mobile" && eas update --branch preview --platform all -m "$ARGUMENTS"`
+2. Si el cambio es solo-JS y debe llegar a los testers de TestFlight, pregunta
+   al usuario y publica también:
+   `eas update --branch production --platform all -m "$ARGUMENTS"`
+   (el `version` de app.json debe coincidir con el del build de esa audiencia).
+
 Si falla por sesión/auth de EAS: NO es fatal (el push ya está hecho). Avisa
 "haz el OTA donde tengas sesión EAS" y sigue.
 
 ## 8. Cierre
-Resume: hash del commit, deploy web disparado, OTA publicado o no, y pendientes
-(cambios nativos sin rebuild, iOS sin publicar, db push pendiente).
+Resume: hash del commit, deploy web disparado, OTA publicado (en qué canales) o
+no, y pendientes (cambios nativos sin rebuild/TestFlight, db push pendiente).

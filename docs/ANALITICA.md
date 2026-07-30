@@ -31,6 +31,11 @@ anonimizan (`userId → null`). Pre-login los eventos van con `deviceId` anónim
 | `push_register_failed` | El móvil no pudo registrar token de push | móvil | `reason` (sin_modulo_nativo/permiso_denegado/fallo_en_token…), `platform`, `detail` |
 | `account_deleted` | Cuenta eliminada | móvil | — |
 | `error_critical` | Error irrecuperable mostrado al usuario | móvil | `where` (pantalla) |
+| `cadastre_resolve` | El resolver catastral terminó una pasada (sin persistir) | **servidor** | `status`, `method`, `candidates` (n), `suggestions` (n), `stages` (n), `confirmed` (bool). ⚠️ JAMÁS RC, dirección, coords ni descripción |
+| `cadastre_confirm` | El usuario confirmó una RC (persistida) | **servidor** | `method` |
+| `cadastre_candidate_confirm` | Tap en "Confirmar este inmueble" | móvil | `confidence` |
+| `cadastre_number_suggestion_pick` | Tap en una sugerencia del numerero | móvil | — |
+| `cadastre_map_pin_open` / `cadastre_map_pin_confirm` | Abrir / confirmar el pin en mapa | móvil | — |
 
 Reglas para añadir eventos: nombre `snake_case` (`^[a-z0-9_.]{2,60}$`), props
 solo escalares (string ≤120 / number / boolean), documentarlo AQUÍ en el mismo

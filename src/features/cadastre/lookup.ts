@@ -21,10 +21,13 @@ import type { CadastreCandidate, CadastreInfo, CadastreUnit } from "./types";
 const BASE_COORDS = "https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC";
 const BASE_CALLEJERO_JSON = "https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejero.svc/json";
 
+// ⚠️ parseTagValue:false a propósito: pc1 "0071701" parseado como número
+// perdería los ceros iniciales y corrompería la RC. Todo se lee como string y
+// se convierte explícitamente donde haga falta.
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
-  parseTagValue: true,
+  parseTagValue: false,
   trimValues: true,
 });
 
@@ -153,9 +156,12 @@ function checkError(node: unknown, where: string): void {
       const lerr = (c as { lerr?: { err?: unknown } }).lerr;
       if (lerr && lerr.err) {
         const errs = Array.isArray(lerr.err) ? lerr.err : [lerr.err];
-        const meaningful = errs.find((e) => e && typeof e === "object" && (e as { cod?: number }).cod !== 0);
+        // cod llega como string (parseTagValue:false): coerción numérica explícita.
+        const meaningful = errs.find(
+          (e) => e && typeof e === "object" && Number((e as { cod?: unknown }).cod ?? 0) !== 0
+        );
         if (meaningful) {
-          const m = meaningful as { cod?: number; des?: string };
+          const m = meaningful as { cod?: number | string; des?: string };
           throw new Error(`Catastro [${where}] cod ${m.cod}: ${m.des ?? "error desconocido"}`);
         }
       }
@@ -181,6 +187,82 @@ export async function lookupByCoordinates(
   const pc = data.consulta_coordenadas?.coordenadas?.coord?.pc;
   if (!pc?.pc1 || !pc?.pc2) return null;
   return `${pc.pc1}${pc.pc2}`;
+}
+
+// ---------- 1b. Parcelas próximas por coordenadas (RCCOOR_Distancia) ----------
+
+export type NearbyParcel = {
+  /** RC de PARCELA (14): sus viviendas se listan después vía DNPRC. */
+  ref: string;
+  /** Dirección literal del Catastro ("CL GLORIA 49 SANTA CRUZ..."). */
+  address?: string;
+  distanceMeters: number;
+};
+
+type PcdNode = {
+  pc?: { pc1?: string; pc2?: string };
+  ldt?: string;
+  dis?: string | number;
+};
+
+/**
+ * Parseo PURO de Consulta_RCCOOR_Distancia (fixture dorado 2026-07-30):
+ * consulta_coordenadas_distancias.coordenadas_distancias.coordd.lpcd.pcd[]
+ * con pc{pc1,pc2}, ldt y dis (metros). Sin lpcd = punto a >~50 m de cualquier
+ * parcela → lista vacía (NO es un fallo del servicio).
+ * Dedupe por RC, orden por distancia, tope defensivo.
+ */
+export function parseNearbyParcels(data: unknown, limit = 10): NearbyParcel[] {
+  const root = (data as {
+    consulta_coordenadas_distancias?: {
+      coordenadas_distancias?: { coordd?: { lpcd?: { pcd?: PcdNode[] | PcdNode } } | Array<{ lpcd?: { pcd?: PcdNode[] | PcdNode } }> };
+    };
+  })?.consulta_coordenadas_distancias;
+  const coorddRaw = root?.coordenadas_distancias?.coordd;
+  const coordds = Array.isArray(coorddRaw) ? coorddRaw : coorddRaw ? [coorddRaw] : [];
+  const byRef = new Map<string, NearbyParcel>();
+  for (const coordd of coordds) {
+    const raw = coordd?.lpcd?.pcd;
+    const items = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    for (const pcd of items) {
+      const pc1 = pcd.pc?.pc1?.toString();
+      const pc2 = pcd.pc?.pc2?.toString();
+      if (!pc1 || !pc2) continue;
+      const ref = `${pc1}${pc2}`;
+      const dis = Number(pcd.dis ?? NaN);
+      const parcel: NearbyParcel = {
+        ref,
+        address: pcd.ldt?.toString().trim() || undefined,
+        distanceMeters: Number.isFinite(dis) ? dis : 9999,
+      };
+      const prev = byRef.get(ref);
+      if (!prev || parcel.distanceMeters < prev.distanceMeters) byRef.set(ref, parcel);
+    }
+  }
+  return [...byRef.values()]
+    .sort((a, b) => a.distanceMeters - b.distanceMeters || a.ref.localeCompare(b.ref))
+    .slice(0, limit);
+}
+
+/**
+ * Parcelas a ≤~50 m del punto. ⚠️ Coordenada_X = LONGITUD, Coordenada_Y =
+ * LATITUD (EPSG:4326) — igual que Consulta_RCCOOR. Lista vacía = sin parcelas
+ * cerca; el transporte roto sigue lanzando CadastreUnavailableError.
+ */
+/** URL del servicio de distancia. PURA para poder fijar en tests que
+ *  Coordenada_X recibe la LONGITUD y Coordenada_Y la LATITUD. */
+export function rccoorDistanciaUrl(lat: number, lng: number): string {
+  return (
+    `${BASE_COORDS}/OVCCoordenadas.asmx/Consulta_RCCOOR_Distancia` +
+    `?SRS=EPSG:4326&Coordenada_X=${lng}&Coordenada_Y=${lat}`
+  );
+}
+
+export async function listNearbyParcels(lat: number, lng: number, limit = 10): Promise<NearbyParcel[]> {
+  const url = rccoorDistanciaUrl(lat, lng);
+  const data = await fetchXml(url);
+  checkError(data, "Consulta_RCCOOR_Distancia");
+  return parseNearbyParcels(data, limit);
 }
 
 // ---------- 2. Por dirección ----------
@@ -220,18 +302,75 @@ function candidateFrom(item: RcdnpItem): CadastreCandidate | null {
   };
 }
 
+/** Sugerencia del numerero: número existente cercano + su parcela. */
+export type NumberSuggestion = { number: string; parcelRef: string };
+
+type NumereroNump = { pc?: { pc1?: string; pc2?: string }; num?: { pnp?: string | number; plp?: string } };
+
+type DnplocRoot = {
+  control?: { cuerr?: number };
+  lerr?: Array<{ cod?: string | number; des?: string }>;
+  numerero?: { nump?: NumereroNump[] | NumereroNump };
+  bico?: { bi?: { idbi?: { rc?: RcParts } }; idbi?: { rc?: RcParts } };
+  lrcdnp?: { rcdnp?: RcdnpItem[] | RcdnpItem };
+};
+
+export type DnplocParsed =
+  | { kind: "one"; ref: string }
+  | { kind: "candidates"; candidates: CadastreCandidate[] }
+  // El número no existe pero el OVC sugiere cercanos ("¿quisiste decir 49?").
+  // ⚠️ SOLO desde la estructura oficial `numerero.nump[]`; jamás inventadas.
+  | { kind: "number_suggestions"; suggestions: NumberSuggestion[] }
+  | { kind: "none" };
+
 /**
- * Consulta_DNPLOC. Devuelve TODOS los candidatos: una dirección sin
- * planta/puerta suele corresponder a varios inmuebles del mismo portal y la
- * elección es del usuario, nunca nuestra.
+ * Parseo PURO de Consulta_DNPLOC. Verificado 2026-07-30 con el servicio real:
+ * el numerero convive con el error en la MISMA respuesta ({control.cuerr:1,
+ * numerero.nump[], lerr[cod:43]}), y con números muy lejanos llega el cod 43
+ * pelado sin numerero. Un parser que lance al ver lerr PIERDE las sugerencias:
+ * por eso el numerero se lee ANTES de evaluar el error.
  */
-export async function listCandidatesByAddress(params: {
+export function parseDnploc(root: DnplocRoot | undefined): DnplocParsed {
+  const rawNump = root?.numerero?.nump;
+  const numps = Array.isArray(rawNump) ? rawNump : rawNump ? [rawNump] : [];
+  if (numps.length > 0) {
+    const seen = new Set<string>();
+    const suggestions: NumberSuggestion[] = [];
+    for (const n of numps) {
+      const pc1 = n.pc?.pc1?.toString();
+      const pc2 = n.pc?.pc2?.toString();
+      const num = n.num?.pnp?.toString().trim();
+      if (!pc1 || !pc2 || !num || seen.has(num)) continue;
+      seen.add(num);
+      suggestions.push({ number: num, parcelRef: `${pc1}${pc2}` });
+    }
+    if (suggestions.length > 0) return { kind: "number_suggestions", suggestions: suggestions.slice(0, 12) };
+  }
+
+  checkJsonError(root, "Consulta_DNPLOC");
+
+  const directRc = root?.bico?.bi?.idbi?.rc ?? root?.bico?.idbi?.rc;
+  if (directRc?.pc1 && directRc?.pc2) return { kind: "one", ref: joinRC(directRc) };
+
+  const list = root?.lrcdnp?.rcdnp;
+  const items = Array.isArray(list) ? list : list ? [list] : [];
+  const candidates = items.map(candidateFrom).filter((c): c is CadastreCandidate => c != null);
+  if (candidates.length > 0) return { kind: "candidates", candidates };
+  return { kind: "none" };
+}
+
+/**
+ * Consulta_DNPLOC con resultado detallado (incluye el numerero). Los errores
+ * de DATOS sin sugerencias siguen lanzando CadastreDataError; el transporte
+ * roto lanza CadastreUnavailableError.
+ */
+export async function queryByAddress(params: {
   province: string;
   city: string;
   street: string;
   number?: string;
   sigla?: string;
-}): Promise<CadastreCandidate[]> {
+}): Promise<DnplocParsed> {
   const q = new URLSearchParams({
     Provincia: params.province.toUpperCase(),
     Municipio: params.city.toUpperCase(),
@@ -244,36 +383,29 @@ export async function listCandidatesByAddress(params: {
     Puerta: "",
   });
   const url = `${BASE_CALLEJERO_JSON}/Consulta_DNPLOC?${q.toString()}`;
-  const data = (await fetchJson(url)) as {
-    consulta_dnplocResult?: {
-      bico?: { bi?: { idbi?: { rc?: RcParts } }; idbi?: { rc?: RcParts } };
-      lrcdnp?: { rcdnp?: RcdnpItem[] | RcdnpItem };
-    };
-  };
-  const root = data?.consulta_dnplocResult;
-  checkJsonError(root, "Consulta_DNPLOC");
-
-  // Caso 1: respuesta directa (un solo inmueble)
-  const directRc = root?.bico?.bi?.idbi?.rc ?? root?.bico?.idbi?.rc;
-  if (directRc?.pc1 && directRc?.pc2) {
-    return [{ ref: joinRC(directRc) }];
-  }
-  // Caso 2: lista de inmuebles (lrcdnp.rcdnp[])
-  const list = root?.lrcdnp?.rcdnp;
-  const items = Array.isArray(list) ? list : list ? [list] : [];
-  return items.map(candidateFrom).filter((c): c is CadastreCandidate => c != null);
+  const data = (await fetchJson(url)) as { consulta_dnplocResult?: DnplocRoot };
+  return parseDnploc(data?.consulta_dnplocResult);
 }
 
-/** Compat: primera RC por dirección (para el enriquecimiento en background). */
-export async function lookupByAddress(params: {
+/**
+ * Compat: lista plana de candidatos por dirección. Los flujos nuevos deben
+ * usar queryByAddress (conserva el numerero); aquí las sugerencias se reportan
+ * como el error de datos original (cod 43) para no cambiar la semántica.
+ */
+export async function listCandidatesByAddress(params: {
   province: string;
   city: string;
   street: string;
   number?: string;
   sigla?: string;
-}): Promise<string | null> {
-  const candidates = await listCandidatesByAddress(params);
-  return candidates[0]?.ref ?? null;
+}): Promise<CadastreCandidate[]> {
+  const r = await queryByAddress(params);
+  if (r.kind === "one") return [{ ref: r.ref }];
+  if (r.kind === "candidates") return r.candidates;
+  if (r.kind === "number_suggestions") {
+    throw new CadastreDataError("43", "Catastro [Consulta_DNPLOC]: EL NUMERO NO EXISTE");
+  }
+  return [];
 }
 
 function joinRC(rc: { pc1?: string; pc2?: string; car?: string; cc1?: string; cc2?: string }): string {
@@ -392,9 +524,20 @@ function infoFromBi(
 
   const cn = bi.idbi?.cn?.toString().trim().toUpperCase();
   // Plano/mapa: preferimos la URL oficial que devuelve el propio servicio
-  // (finca.infgraf.igraf); el fallback construido se mantiene por compat.
+  // (finca.infgraf.igraf) — pero SOLO si apunta a la Sede (la URL viene de una
+  // respuesta externa y se persiste como Media). Fallback construido por compat.
+  const igraf = finca?.infgraf?.igraf;
+  const igrafSafe = (() => {
+    if (!igraf) return null;
+    try {
+      const h = new URL(igraf).hostname.toLowerCase();
+      return h === "sedecatastro.gob.es" || h.endsWith(".sedecatastro.gob.es") ? igraf : null;
+    } catch {
+      return null;
+    }
+  })();
   const floorplanUrl =
-    finca?.infgraf?.igraf ||
+    igrafSafe ||
     `https://www1.sedecatastro.gob.es/Cartografia/GeneraGraficoParcela.aspx?refcat=${encodeURIComponent(fullRef)}&del=${rc?.pc1?.slice(0, 2)}&mun=${rc?.pc1?.slice(2, 5)}`;
 
   return {
@@ -498,116 +641,9 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// ---------- 4. Orquestador: enriquecer un Property ----------
-
-export type EnrichInput = {
-  latitude?: number | null;
-  longitude?: number | null;
-  province?: string | null;
-  city?: string | null;
-  address?: string | null;
-};
-
-export type EnrichResult = {
-  ref: string | null;
-  info: CadastreInfo | null;
-  method: "coords" | "address" | null;
-  warnings: string[];
-};
-
-/**
- * Intenta enriquecer un inmueble buscando primero por coordenadas
- * (si disponibles, es el método más fiable) y cayendo a búsqueda
- * por dirección. No lanza nunca: devuelve warnings.
- */
-type Attempt = { ref: string; info: CadastreInfo | null; method: "coords" | "address" };
-
-export async function enrichProperty(input: EnrichInput): Promise<EnrichResult> {
-  const warnings: string[] = [];
-  const attempts: Attempt[] = [];
-
-  // 1. Intento por coords
-  if (input.latitude != null && input.longitude != null) {
-    try {
-      const ref = await lookupByCoordinates(input.latitude, input.longitude);
-      if (ref) {
-        const info = await fetchByRef(ref).catch((e) => {
-          warnings.push(`Detalle de ${ref} no disponible: ${(e as Error).message}`);
-          return null;
-        });
-        attempts.push({ ref, info, method: "coords" });
-      } else {
-        warnings.push("Sin resultado por coordenadas");
-      }
-    } catch (e) {
-      warnings.push(`Coords falló: ${(e as Error).message}`);
-    }
-  } else {
-    warnings.push("Sin coordenadas en la ficha");
-  }
-
-  // 2. Intento por dirección (SIEMPRE intentamos también, no solo si fallaron coords:
-  //    coords a veces dan una parcela rústica vacía y la dirección la urbana real).
-  if (input.province && input.city && input.address) {
-    const parsed = parseAddress(input.address);
-    if (parsed) {
-      try {
-        const ref = await lookupByAddress({
-          province: input.province,
-          city: input.city,
-          street: parsed.street,
-          number: parsed.number,
-          sigla: parsed.sigla,
-        });
-        if (ref) {
-          // Si ya teníamos ref por coords y son la misma, no repetimos fetchByRef
-          const sameAsCoords = attempts.find((a) => a.ref === ref);
-          if (sameAsCoords) {
-            attempts.push({ ref, info: sameAsCoords.info, method: "address" });
-          } else {
-            const info = await fetchByRef(ref).catch((e) => {
-              warnings.push(`Detalle de ${ref} no disponible: ${(e as Error).message}`);
-              return null;
-            });
-            attempts.push({ ref, info, method: "address" });
-          }
-        } else {
-          warnings.push("Sin resultado por dirección");
-        }
-      } catch (e) {
-        warnings.push(`Dirección falló: ${(e as Error).message}`);
-      }
-    } else {
-      warnings.push("No se pudo parsear la dirección");
-    }
-  }
-
-  if (attempts.length === 0) {
-    return { ref: null, info: null, method: null, warnings };
-  }
-
-  // Score: el que tenga MÁS datos descriptivos gana. Una parcela rústica sin
-  // edificación da info=null o sin builtArea/yearBuilt → score 0. Una urbana
-  // con address+yearBuilt+builtArea da score alto.
-  function infoScore(info: CadastreInfo | null): number {
-    if (!info) return 0;
-    let s = 0;
-    if (info.address) s += 2;
-    if (info.builtArea != null) s += 2;
-    if (info.yearBuilt != null) s += 2;
-    if (info.use) s += 1;
-    if (info.floor) s += 1;
-    return s;
-  }
-  attempts.sort((a, b) => infoScore(b.info) - infoScore(a.info));
-  const best = attempts[0];
-  if (infoScore(best.info) === 0) {
-    warnings.push(
-      "Catastro encontró la parcela pero no tiene datos descriptivos. Suele ocurrir en parcelas rústicas o construcciones en elaboración."
-    );
-  }
-  return { ref: best.ref, info: best.info, method: best.method, warnings };
-}
+// (El antiguo orquestador enrichProperty se eliminó el 2026-07-30: asociaba la
+// RC en el import sin confirmación del usuario, en contra de la regla del
+// embudo. La resolución vive en src/features/cadastre/resolver.ts.)
 
 const SIGLA_MAP: Record<string, string> = {
   "calle": "CL", "c/": "CL", "c.": "CL",

@@ -1,8 +1,6 @@
 import { z } from "zod";
 import type { Portal, PropertyType } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { enrichProperty } from "@/features/cadastre/lookup";
-import { wrapCadastreData } from "@/features/cadastre/types";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
 import { notifyLinkedConversations } from "@/lib/chat/context-events";
 import { dhashFromUrl } from "@/lib/dhash";
@@ -742,8 +740,9 @@ async function postImportTasks(propertyId: string, opts: { skipAutoMerge?: boole
     await logImportEvent("HASH", { propertyId, ok: false, message: (e as Error).message });
   }
 
-  // 2. Catastro
-  await enrichInBackground(propertyId);
+  // 2. Catastro: YA NO se asocia en segundo plano. Regla del embudo (2026-07-30):
+  // ninguna capa persiste una RC sin confirmación explícita del usuario — la
+  // resolución vive en POST /api/properties/[id]/cadastre (resolver + confirmación).
 
   // 3. Geocode si seguimos sin coords pero tenemos dirección/ciudad.
   try {
@@ -833,58 +832,3 @@ async function postImportTasks(propertyId: string, opts: { skipAutoMerge?: boole
   }
 }
 
-async function enrichInBackground(propertyId: string): Promise<void> {
-  try {
-    const p = await prisma.property.findUnique({ where: { id: propertyId } });
-    if (!p) return;
-    if (p.cadastralRef) return; // ya enriquecido
-    const r = await enrichProperty({
-      latitude: p.latitude,
-      longitude: p.longitude,
-      province: p.province,
-      city: p.city,
-      address: p.address,
-    });
-    if (!r.ref) {
-      await logImportEvent("CATASTRO", {
-        propertyId, ok: false,
-        message: r.warnings.join(" · ") || "Sin resultado",
-        meta: { warnings: r.warnings },
-      });
-      return;
-    }
-    const patch: Record<string, unknown> = {
-      cadastralRef: r.ref,
-      // Envuelto con fuente + fecha (schema 1); el móvil acepta también el legado.
-      cadastralData: r.info ? (wrapCadastreData(r.info) as unknown as Record<string, unknown>) : undefined,
-    };
-    if (r.info?.yearBuilt && !p.yearBuilt) patch.yearBuilt = r.info.yearBuilt;
-    if (r.info?.builtArea && !p.builtArea) patch.builtArea = r.info.builtArea;
-    if (r.info?.address && !p.address) patch.address = r.info.address;
-    if (r.info?.floor && !p.floor) patch.floor = r.info.floor;
-    await prisma.property.update({ where: { id: propertyId }, data: patch });
-    if (r.info?.hasFloorplan && r.info.floorplanUrl) {
-      const exists = await prisma.media.findFirst({
-        where: { propertyId, source: "CADASTRE", kind: "FLOORPLAN" },
-      });
-      if (!exists) {
-        await prisma.media.create({
-          data: {
-            propertyId,
-            kind: "FLOORPLAN",
-            source: "CADASTRE",
-            url: r.info.floorplanUrl,
-            caption: "Plano catastral",
-          },
-        });
-      }
-    }
-    await logImportEvent("CATASTRO", {
-      propertyId, ok: true,
-      message: `RC ${r.ref} vía ${r.method}`,
-      meta: { ref: r.ref, method: r.method, warnings: r.warnings },
-    });
-  } catch (e) {
-    await logImportEvent("CATASTRO", { propertyId, ok: false, message: (e as Error).message });
-  }
-}
