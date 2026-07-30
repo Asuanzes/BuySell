@@ -70,7 +70,7 @@ export async function GET() {
       (
         await prisma.property.findMany({
           where: { id: { in: ids } },
-          include: { media: { take: 1, orderBy: { order: "asc" } } },
+          include: { media: { take: 1, where: { kind: "PHOTO" }, orderBy: { order: "asc" } } },
         })
       ).forEach((r) => out.push(decorate(propertyToBaseRecord(r), type)));
     }

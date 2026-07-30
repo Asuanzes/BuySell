@@ -49,7 +49,7 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
         operationType: true,
         rooms: true,
         bathrooms: true,
-        media: { take: 1, orderBy: { order: "asc" }, select: { url: true } },
+        media: { take: 1, where: { kind: "PHOTO" }, orderBy: { order: "asc" }, select: { url: true } },
       },
     });
     if (!p) return null;

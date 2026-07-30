@@ -8,7 +8,7 @@ import type { Property, Media, CryptoHolding, MarketInstrument, JobListing, Book
  * fila Prisma (fechas como Date). De momento el tipo es siempre "property";
  * cuando se use el discriminador `recordType` de la tabla, se leerá aquí.
  */
-export type PropertyWithCover = Property & { media?: Pick<Media, "url">[] };
+export type PropertyWithCover = Property & { media?: (Pick<Media, "url"> & Partial<Pick<Media, "kind">>)[] };
 
 export function propertyToBaseRecord(p: PropertyWithCover): BaseRecord {
   const subtitle = [p.city, p.neighborhood].filter(Boolean).join(" · ") || null;
@@ -38,7 +38,10 @@ export function propertyToBaseRecord(p: PropertyWithCover): BaseRecord {
     subtitle,
     status: p.status,
     primaryValue,
-    imageUrl: p.media?.[0]?.url ?? null,
+    // Portada = primera FOTO. El detalle incluye TODO el media (planos
+    // FLOORPLAN del Catastro incluidos) y el plano no es portada; las queries
+    // de lista ya filtran PHOTO y entran por el fallback sin `kind`.
+    imageUrl: (p.media?.find((m) => m.kind === "PHOTO") ?? p.media?.[0])?.url ?? null,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
     meta: {

@@ -24,7 +24,9 @@ export async function GET(req: NextRequest) {
     const properties = await prisma.property.findMany({
       where: { ownerId },
       orderBy: { updatedAt: "desc" },
-      include: { media: { take: 1, orderBy: { order: "asc" } } },
+      // Solo fotos: el plano FLOORPLAN del Catastro comparte tabla y order 0,
+      // sin el filtro se colaba como imagen del banner.
+      include: { media: { take: 1, where: { kind: "PHOTO" }, orderBy: { order: "asc" } } },
       take: 100,
     });
     return NextResponse.json(properties.map(propertyToBaseRecord));

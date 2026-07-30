@@ -50,10 +50,22 @@ var __operation = function() {
   return 'SALE';
 };
 
+var __postTries = 0;
 var __post = function(obj) {
-  // Inyecta la operación en toda extracción (evita repetirlo en cada portal).
-  if (obj && obj.type === 'extracted' && obj.data && obj.data.operationType == null) {
-    try { obj.data.operationType = __operation(); } catch(e) { obj.data.operationType = 'SALE'; }
+  if (obj && obj.type === 'extracted' && obj.data) {
+    // Inyecta la operación en toda extracción (evita repetirlo en cada portal).
+    if (obj.data.operationType == null) {
+      try { obj.data.operationType = __operation(); } catch(e) { obj.data.operationType = 'SALE'; }
+    }
+    // SPA sin hidratar: onLoadEnd dispara antes de que el precio esté en el DOM
+    // (las imágenes/descripción sobreviven porque se rascan del HTML/JSON crudo,
+    // el precio no — Fotocasa importaba sin precio). Reintentar la extracción
+    // entera; al 4º intento se envía lo que haya (hay anuncios "a consultar").
+    // Idealista queda fuera: su script ya trae bucle propio (__nkIdealistaRunning)
+    // y re-lanzarlo desde aquí chocaría con ese flag y no publicaría nunca.
+    if (obj.data.price == null && __postTries < 3 && !window.__nkIdealistaRunning && typeof __extract === 'function') {
+      __postTries++; setTimeout(__extract, 1300); return;
+    }
   }
   window.ReactNativeWebView.postMessage(JSON.stringify(obj));
 };
@@ -649,7 +661,15 @@ export function getExtractorScript(url: string): string {
   return `(function() {
   try {
     ${SHARED_HELPERS}
-    ${portalCode}
+    // Declaración (no expresión) para que __post la vea por hoisting al reintentar.
+    function __extract() {
+      try {
+        ${portalCode}
+      } catch(e) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', reason: String(e && e.message || e) }));
+      }
+    }
+    __extract();
   } catch(e) {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', reason: String(e && e.message || e) }));
   }
