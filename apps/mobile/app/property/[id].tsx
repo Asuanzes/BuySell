@@ -263,6 +263,60 @@ export default function PropertyDetailScreen() {
           <ActionBtn icon="create-outline" label={t("common.edit")} onPress={() => router.push(`/property/form?id=${p.id}` as never)} />
         </View>
 
+        {/* Anuncios vinculados ANTES de características: es lo accionable
+            (precio por portal + abrir) y compacto — una fila por anuncio. */}
+        {p.listings.length > 0 && (
+          <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
+            <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_listings")}</Text>
+            {p.listings.map((l, i) => {
+              const statusLabel = LISTING_STATUS_LABEL[l.status];
+              // "No se pudo comprobar" (blocked/error) ≠ "el anuncio ya no existe".
+              const checkFailed = l.lastCheckResult === "blocked" || l.lastCheckResult === "error";
+              const fmtDay = (iso: string | null) =>
+                iso ? new Date(iso).toLocaleDateString() : null;
+              const metaLine = [
+                checkFailed && t("detail.property.listing_check_failed"),
+                fmtDay(l.lastCheckedAt) && t("detail.property.listing_checked_at", { date: fmtDay(l.lastCheckedAt) }),
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <TouchableOpacity
+                  key={l.id}
+                  style={[
+                    styles.listingRow,
+                    { borderBottomColor: th.border },
+                    i === p.listings.length - 1 && { borderBottomWidth: 0, paddingBottom: 0 },
+                  ]}
+                  onPress={() => Linking.openURL(l.url)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={[styles.listingPortal, { color: th.text }]}>{portalLabel(l.portal)}</Text>
+                      {statusLabel && (
+                        <Text style={[styles.statusChip, { backgroundColor: th.primarySoft, color: th.primary }]}>
+                          {statusLabel}
+                        </Text>
+                      )}
+                    </View>
+                    {!!metaLine && (
+                      <Text style={[styles.listingMeta, { color: checkFailed ? th.dangerFg : th.textMuted }]}>
+                        {metaLine}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={[styles.listingPrice, { color: th.accent }]}>
+                    {l.operationType === "RENT"
+                      ? t("card.per_month", { value: formatPrice(l.lastPrice) })
+                      : formatPrice(l.lastPrice)}
+                  </Text>
+                  <Ionicons name="open-outline" size={16} color={th.primary} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
           <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_features")}</Text>
           <View style={styles.grid}>
@@ -326,57 +380,6 @@ export default function PropertyDetailScreen() {
           <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
             <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.description")}</Text>
             <Text style={[styles.description, { color: th.text }]}>{p.description}</Text>
-          </View>
-        )}
-
-        {p.listings.length > 0 && (
-          <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
-            <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_listings")}</Text>
-            {p.listings.map((l) => {
-              const statusLabel = LISTING_STATUS_LABEL[l.status];
-              // "No se pudo comprobar" (blocked/error) ≠ "el anuncio ya no existe".
-              const checkFailed = l.lastCheckResult === "blocked" || l.lastCheckResult === "error";
-              const fmtDay = (iso: string | null) =>
-                iso ? new Date(iso).toLocaleDateString() : null;
-              const metaLine = [
-                fmtDay(l.lastCheckedAt) && t("detail.property.listing_checked_at", { date: fmtDay(l.lastCheckedAt) }),
-                fmtDay(l.lastSeenAt) && t("detail.property.listing_seen_at", { date: fmtDay(l.lastSeenAt) }),
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return (
-                <TouchableOpacity
-                  key={l.id}
-                  style={[styles.listingRow, { borderBottomColor: th.border }]}
-                  onPress={() => Linking.openURL(l.url)}
-                >
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={[styles.listingPortal, { color: th.text }]}>{portalLabel(l.portal)}</Text>
-                      {statusLabel && (
-                        <Text style={[styles.statusChip, { backgroundColor: th.primarySoft, color: th.primary }]}>
-                          {statusLabel}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={[styles.listingMeta, { color: th.accent }]}>
-                      {l.operationType === "RENT"
-                        ? t("card.per_month", { value: formatPrice(l.lastPrice) })
-                        : formatPrice(l.lastPrice)}
-                    </Text>
-                    {!!metaLine && (
-                      <Text style={[styles.listingMeta, { color: th.textMuted }]}>{metaLine}</Text>
-                    )}
-                    {checkFailed && (
-                      <Text style={[styles.listingMeta, { color: th.dangerFg }]}>
-                        {t("detail.property.listing_check_failed")}
-                      </Text>
-                    )}
-                  </View>
-                  <Ionicons name="open-outline" size={18} color={th.primary} />
-                </TouchableOpacity>
-              );
-            })}
           </View>
         )}
 
@@ -526,11 +529,12 @@ const styles = StyleSheet.create({
   tagText: { fontSize: 11, fontFamily: fonts.bodyMedium },
   description: { fontSize: 13, lineHeight: 20 },
   listingRow: {
-    flexDirection: "row", alignItems: "center",
-    paddingVertical: 12, borderBottomWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingVertical: 8, borderBottomWidth: 1,
   },
   listingPortal: { fontSize: 14, fontFamily: fonts.bodyMedium },
-  listingMeta: { fontSize: 12, marginTop: 2 },
+  listingPrice: { fontSize: 14, fontFamily: fonts.bodySemibold },
+  listingMeta: { fontSize: 11, marginTop: 1 },
   statusChip: {
     fontSize: 10,
     paddingHorizontal: 6,
