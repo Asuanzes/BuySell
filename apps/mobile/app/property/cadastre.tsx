@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Linking,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -11,8 +12,18 @@ import {
 } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
+
+// Portapapeles: módulo nativo OPCIONAL (mismo blindaje que MessageSheet.tsx).
+// Una OTA sobre un binario sin ExpoClipboard (APK anterior al 26/7) no debe
+// crashear: si falta, "copiar" cae al Share nativo del sistema.
+let clipboardModule: { setStringAsync: (s: string) => Promise<boolean> } | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  clipboardModule = require("expo-clipboard");
+} catch {
+  clipboardModule = null;
+}
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
@@ -100,8 +111,13 @@ export default function CadastreDetailScreen() {
   }
 
   async function copyRef(ref: string) {
-    await Clipboard.setStringAsync(ref);
-    setNotice({ tone: "success", title: t("detail.cadastre.copied") });
+    if (clipboardModule) {
+      await clipboardModule.setStringAsync(ref);
+      setNotice({ tone: "success", title: t("detail.cadastre.copied") });
+    } else {
+      // Binario sin ExpoClipboard: el share sheet del sistema permite copiar.
+      await Share.share({ message: ref });
+    }
   }
 
   if (error) {
