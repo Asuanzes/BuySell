@@ -17,7 +17,13 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     include: {
       media: { orderBy: { order: "asc" } },
       listings: true,
-      priceHistory: { orderBy: { observedAt: "asc" } },
+      // Cada snapshot lleva la operación de su anuncio: una ficha mixta
+      // (venta + alquiler) necesita series separables — 220.000 € y 900 €/mes
+      // jamás deben mezclarse en la misma curva.
+      priceHistory: {
+        orderBy: { observedAt: "asc" },
+        include: { listing: { select: { operationType: true } } },
+      },
     },
   });
   if (!property) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -2,6 +2,9 @@ import { z } from "zod";
 import type { Portal, PropertyType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { enrichProperty } from "@/features/cadastre/lookup";
+import { wrapCadastreData } from "@/features/cadastre/types";
+import { evaluateAlerts } from "@/lib/alerts/evaluate";
+import { notifyLinkedConversations } from "@/lib/chat/context-events";
 import { dhashFromUrl } from "@/lib/dhash";
 import { slugifyTitle } from "@nidokey/shared";
 import { findSimilar } from "@/features/matching/find-similar";
@@ -279,14 +282,22 @@ export function parseFeaturesArray(features: string[] | undefined): Partial<Impo
  * Sanea el payload: pone a null cualquier valor que no pase los validadores
  * de cordura. Evita que un parser-error contamine la BBDD. Adicionalmente
  * intenta rellenar campos vacíos re-parseando el array `features`.
+ *
+ * `effectiveOperation`: operación REAL del anuncio (la del Listing existente en
+ * un re-import). Sin ella, un re-import de un alquiler cuyo payload no traiga
+ * operationType validaría la renta con la banda de VENTA (≥ 10.000 €) y la
+ * nulearía — el cambio de renta jamás se registraría.
  */
-export function sanitizePayload(p: ImportListingPayload): ImportListingPayload {
+export function sanitizePayload(
+  p: ImportListingPayload,
+  effectiveOperation?: "SALE" | "RENT" | "RENT_TO_OWN"
+): ImportListingPayload {
   const out = { ...p };
   // 1. Validar y nulear lo que no sea cuerdo. El precio se valida con la banda
   //    de su operación: alquiler 100–50.000 €/mes, venta ≥ 10.000 €. Así una
   //    renta de 450 € no se descarta (isValidPriceEur la rechazaría) ni un
   //    precio de venta bajo se cuela como renta.
-  const isRent = out.operationType === "RENT";
+  const isRent = (effectiveOperation ?? out.operationType) === "RENT";
   const priceOk = isRent ? isValidMonthlyRentEur(out.price ?? null) : isValidPriceEur(out.price ?? null);
   if (!priceOk) out.price = null;
   if (!isValidBuiltArea(out.builtArea ?? null)) out.builtArea = null;
@@ -349,18 +360,20 @@ export async function importListing(
   rawPayload: ImportListingPayload,
   opts: { ownerId?: string | null } = {}
 ): Promise<ImportResult> {
-  const payload = sanitizePayload(rawPayload);
+  // El Listing existente manda sobre la operación (un re-import no cambia un
+  // alquiler a venta) y su operación decide la banda de validación del precio.
+  const existing = await prisma.listing.findUnique({
+    where: { url: rawPayload.url },
+    include: { property: true },
+  });
+
+  const payload = sanitizePayload(rawPayload, existing?.operationType ?? undefined);
   const portal = payload.portal ?? detectPortal(payload.url);
   const operationType = payload.operationType ?? "SALE";
   const isRent = operationType === "RENT";
   const priceCents = payload.price != null ? payload.price * 100 : null;
   const depositCents = payload.deposit != null ? payload.deposit * 100 : null;
   const ownerId = opts.ownerId ?? null;
-
-  const existing = await prisma.listing.findUnique({
-    where: { url: payload.url },
-    include: { property: true },
-  });
 
   // ---------- Update path ----------
   if (existing) {
@@ -406,27 +419,62 @@ export async function importListing(
 
     const priceChanged = priceCents != null && priceCents !== previousPrice;
 
-    await prisma.listing.update({
-      where: { id: existing.id },
-      data: {
-        lastPrice: priceCents ?? existing.lastPrice,
-        lastSeenAt: new Date(),
-        lastCheckedAt: new Date(),
-        status: priceChanged
-          ? priceCents! < (previousPrice ?? Infinity)
-            ? "PRICE_DROP"
-            : "PRICE_UP"
-          : existing.status,
-      },
-    });
+    // Reaparición: si el anuncio estaba REMOVED/SOLD y el usuario lo re-importa,
+    // es que la página vuelve a estar viva → reactivar para que el cron lo
+    // vuelva a vigilar. Con cambio de precio, el estado ya es PRICE_*.
+    const wasGone = existing.status === "REMOVED" || existing.status === "SOLD";
+    // Primer precio conocido (previousPrice null) = línea base, no PRICE_DROP.
+    const newStatus = priceChanged
+      ? previousPrice == null
+        ? wasGone
+          ? ("ACTIVE" as const)
+          : existing.status
+        : priceCents! < previousPrice
+        ? ("PRICE_DROP" as const)
+        : ("PRICE_UP" as const)
+      : wasGone
+      ? ("ACTIVE" as const)
+      : existing.status;
 
+    // Con cambio de precio: transacción + guard optimista (mismo patrón que el
+    // runner) — dos imports concurrentes de la misma URL no pueden duplicar
+    // snapshot ni disparar la alerta dos veces.
+    let priceApplied = false;
     if (priceChanged && priceCents != null) {
-      await prisma.priceSnapshot.create({
+      priceApplied = await prisma.$transaction(async (tx) => {
+        const upd = await tx.listing.updateMany({
+          where: { id: existing.id, lastPrice: previousPrice },
+          data: {
+            lastPrice: priceCents,
+            lastSeenAt: new Date(),
+            lastCheckedAt: new Date(),
+            lastCheckResult: "ok",
+            lastCheckDetail: null,
+            status: newStatus,
+          },
+        });
+        if (upd.count === 0) return false;
+        await tx.priceSnapshot.create({
+          data: {
+            listingId: existing.id,
+            propertyId: existing.propertyId,
+            price: priceCents,
+            source: portal,
+          },
+        });
+        return true;
+      });
+    }
+    if (!priceApplied) {
+      // Sin cambio (o carrera perdida): solo marcar visto/comprobado.
+      await prisma.listing.update({
+        where: { id: existing.id },
         data: {
-          listingId: existing.id,
-          propertyId: existing.propertyId,
-          price: priceCents,
-          source: portal,
+          lastSeenAt: new Date(),
+          lastCheckedAt: new Date(),
+          lastCheckResult: "ok",
+          lastCheckDetail: null,
+          ...(priceChanged ? {} : { status: newStatus }),
         },
       });
     }
@@ -482,7 +530,7 @@ export async function importListing(
     // El precio nuevo va a su columna según la operación del anuncio: alquiler →
     // monthlyRent, venta → currentPrice. Así una ficha mixta conserva ambos.
     const priceColumn =
-      priceChanged && priceCents != null
+      priceApplied && priceCents != null
         ? existingIsRent
           ? { monthlyRent: priceCents }
           : { currentPrice: priceCents }
@@ -495,6 +543,24 @@ export async function importListing(
         ...priceColumn,
       },
     });
+
+    // Alertas + hilos vinculados: el re-import (userscript/share sheet) es el
+    // ÚNICO canal de cambios para los portales manual-only (Idealista,
+    // Milanuncios, Yaencontre) — sin este enganche sus alertas no saltaban
+    // nunca. Mismo contrato que el recheck del runner.
+    if (priceApplied && priceCents != null) {
+      await evaluateAlerts("property", existing.propertyId, existingIsRent ? "rent" : "price", {
+        oldCents: previousPrice,
+        newCents: priceCents,
+        status: newStatus,
+      });
+      await notifyLinkedConversations("property", existing.propertyId, {
+        oldCents: previousPrice,
+        newCents: priceCents,
+        status: newStatus,
+        isRent: existingIsRent,
+      });
+    }
 
     // Refrescar fotos del portal: borramos las anteriores PHOTO+PORTAL_SCRAPE
     // (las USER_UPLOAD se conservan intactas) y volvemos a crear desde el payload.
@@ -530,7 +596,9 @@ export async function importListing(
 
     return {
       created: false,
-      priceChanged,
+      // Carrera perdida = otro proceso ya aplicó este mismo cambio: para este
+      // caller no hubo cambio (idempotencia del doble procesado).
+      priceChanged: priceApplied,
       mediaRefreshed,
       photoCount: payload.images.length,
       propertyId: existing.propertyId,
@@ -787,7 +855,8 @@ async function enrichInBackground(propertyId: string): Promise<void> {
     }
     const patch: Record<string, unknown> = {
       cadastralRef: r.ref,
-      cadastralData: r.info as unknown as Record<string, unknown>,
+      // Envuelto con fuente + fecha (schema 1); el móvil acepta también el legado.
+      cadastralData: r.info ? (wrapCadastreData(r.info) as unknown as Record<string, unknown>) : undefined,
     };
     if (r.info?.yearBuilt && !p.yearBuilt) patch.yearBuilt = r.info.yearBuilt;
     if (r.info?.builtArea && !p.builtArea) patch.builtArea = r.info.builtArea;

@@ -67,10 +67,14 @@ export function intFrom(s: string | null | undefined): number | null {
 /**
  * Extrae el precio en EUROS (entero) de un texto tipo "270.000 €".
  * Devuelve null si no detecta.
+ *
+ * `minPlainDigits`: mínimo de dígitos para un número SIN puntos de millar.
+ * Venta usa 4 (evita ruido tipo "3 €"); alquiler necesita 3 ("850 €/mes").
  */
-export function parsePriceEur(s: string | null | undefined): number | null {
+export function parsePriceEur(s: string | null | undefined, minPlainDigits: 3 | 4 = 4): number | null {
   if (!s) return null;
-  const m = s.replace(/\s/g, "").match(/(\d{1,3}(?:\.\d{3})+|\d{4,})\s*€/);
+  const re = minPlainDigits === 3 ? /(\d{1,3}(?:\.\d{3})+|\d{3,})\s*€/ : /(\d{1,3}(?:\.\d{3})+|\d{4,})\s*€/;
+  const m = s.replace(/\s/g, "").match(re);
   if (!m) return null;
   return parseInt(m[1].replace(/\./g, ""), 10);
 }

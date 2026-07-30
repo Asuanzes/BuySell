@@ -49,12 +49,13 @@ scraper las encuentre.
 
 Una única función `evaluateAlerts()`
 ([src/lib/alerts/evaluate.ts](../src/lib/alerts/evaluate.ts)), llamada desde
-los dos sitios que ya detectaban el cambio:
+los tres sitios que detectan el cambio:
 
 | Enganche | Cubre | Cadencia |
 | --- | --- | --- |
 | [features/sources/refresh.ts](../src/features/sources/refresh.ts) | cripto, mercados | cron cada 1-2 min |
-| [features/scraping/runner.ts](../src/features/scraping/runner.ts) | inmuebles (precio y desaparición del anuncio) | recheck de anuncios |
+| [features/scraping/runner.ts](../src/features/scraping/runner.ts) | inmuebles (precio/renta y desaparición del anuncio) | cron diario [listings-check.yml](../.github/workflows/listings-check.yml) + botón de la ficha |
+| [lib/import-listing.ts](../src/lib/import-listing.ts) (update path) | inmuebles re-importados — el ÚNICO canal de los portales manual-only (Idealista, Milanuncios, Yaencontre) | al re-importar/compartir a la app |
 
 La decisión (`shouldFire`) es **pura** y está cubierta por
 `src/lib/alerts/evaluate.test.ts`. El envoltorio no lanza nunca: un fallo en
@@ -68,6 +69,13 @@ secuencial con pausa de 1 s por anuncio (P1-8 de la auditoría). Las alertas de
 inmuebles llegan tan rápido como ese job — a volumen, horas. La UI dice
 "revisamos tus anuncios a diario" y no promete tiempo real. Arreglar ese bucle
 es trabajo aparte.
+
+Notas del recheck (jul-2026): la decisión es pura
+([recheck-plan.ts](../src/features/scraping/recheck-plan.ts), testeada con la
+secuencia determinista completa), se aplica en transacción con guard optimista
+(sin snapshots ni alertas duplicadas en carreras), los `REMOVED` se re-vigilan
+45 días para detectar reapariciones, y el resultado de cada pasada queda en
+`Listing.lastCheckResult/lastCheckDetail` (visible en la ficha móvil).
 
 ## Cuota por plan
 

@@ -1,27 +1,26 @@
-import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
-import { Button, Card } from "@/components/ui";
+import { Card } from "@/components/ui";
 
 /**
- * Pantallas de herramienta del panel contextual de Inmuebles: Catastro, Registro
- * de la Propiedad y Estadísticas de zona (INE). De momento **solo diseño/UI**;
- * la integración real con OVC / Registro / INE queda como TODO (banners
- * "pendiente"). Los datos disponibles llegan por query params (ref, city).
+ * Pantallas de herramienta del panel contextual de Inmuebles: Registro de la
+ * Propiedad y Estadísticas de zona (INE). De momento **solo diseño/UI**; la
+ * integración real con Registro / INE queda como TODO (banners "pendiente").
+ * El Catastro ya tiene pantalla real en app/property/cadastre.tsx.
  */
 export default function ToolScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
-  const { tool, ref, city } = useLocalSearchParams<{ tool?: string; ref?: string; city?: string }>();
+  const { tool, city } = useLocalSearchParams<{ tool?: string; city?: string }>();
   const key = tool ?? "";
   // El id llega como string libre de la ruta → Record con t() (sin template
   // literal tipado posible aquí).
   const TITLES: Record<string, string> = {
-    catastro: t("tools.catastro.title"),
     registro: t("tools.registro.title"),
     ine: t("tools.ine.title"),
   };
@@ -30,7 +29,6 @@ export default function ToolScreen() {
   return (
     <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title }} />
-      {key === "catastro" && <Catastro refValue={ref} />}
       {key === "registro" && <Registro />}
       {key === "ine" && <Ine city={city} />}
       {!TITLES[key] && (
@@ -40,40 +38,8 @@ export default function ToolScreen() {
   );
 }
 
-// ── Catastro ───────────────────────────────────────────────────────────────
-function Catastro({ refValue }: { refValue?: string }) {
-  const { th } = useTheme();
-  const { t } = useTranslation();
-  const has = !!refValue;
-  return (
-    <>
-      <Card style={styles.card}>
-        <Text style={[styles.cardTitle, { color: th.textMuted }]}>{t("tools.catastro.ref_title")}</Text>
-        <Text style={[styles.mono, { color: has ? th.text : th.textSubtle }]}>
-          {has ? refValue : t("tools.catastro.ref_missing")}
-        </Text>
-      </Card>
-      <Card style={styles.card}>
-        <Text style={[styles.cardTitle, { color: th.textMuted }]}>{t("tools.catastro.data_title")}</Text>
-        <InfoRow label={t("tools.catastro.row_built_area")} value="—" />
-        <InfoRow label={t("tools.catastro.row_main_use")} value="—" />
-        <InfoRow label={t("tools.catastro.row_year")} value="—" />
-        <InfoRow label={t("tools.catastro.row_floor")} value="—" />
-      </Card>
-      {has && (
-        <Button
-          label={t("tools.catastro.search_btn")}
-          icon="open-outline"
-          variant="secondary"
-          onPress={() =>
-            Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(`catastro ${refValue}`)}`)
-          }
-        />
-      )}
-      <Pending text={t("tools.catastro.pending")} />
-    </>
-  );
-}
+// Catastro ya NO vive aquí: tiene pantalla real con datos del OVC en
+// app/property/cadastre.tsx (la ficha navega directamente a ella).
 
 // ── Registro de la Propiedad ─────────────────────────────────────────────────
 function Registro() {
@@ -157,7 +123,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   cardBody: { fontSize: 13, lineHeight: 19 },
-  mono: { fontSize: 14, fontFamily: "monospace" },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",

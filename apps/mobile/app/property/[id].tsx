@@ -23,6 +23,7 @@ import { useTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { fetchPropertyDetail, type PropertyDetail } from "@/lib/records/property";
+import { parseCadastralData } from "@/lib/records/cadastre";
 import { toolsForType, type ToolDef } from "@/lib/records/tools";
 import { CategoryContextSheet } from "@/components/CategoryContextSheet";
 import { ResultModal } from "@/components/ui";
@@ -61,6 +62,14 @@ export default function PropertyDetailScreen() {
     LOCAL: t("detail.property.type_local"),
     TERRENO: t("detail.property.type_terreno"),
     OTRO: t("detail.property.type_otro"),
+  };
+  const LISTING_STATUS_LABEL: Record<string, string | null> = {
+    ACTIVE: t("detail.property.listing_status_active"),
+    PRICE_DROP: t("detail.property.listing_status_drop"),
+    PRICE_UP: t("detail.property.listing_status_up"),
+    SOLD: t("detail.property.listing_status_sold"),
+    REMOVED: t("detail.property.listing_status_removed"),
+    UNKNOWN: null,
   };
   const portalLabel = (portal: string): string =>
     PORTAL_BRAND[portal] ??
@@ -133,7 +142,7 @@ export default function PropertyDetailScreen() {
         return;
       case "catastro":
         setSheetOpen(false);
-        router.push(`/tools/catastro?ref=${encodeURIComponent(p.cadastralRef ?? "")}` as never);
+        router.push(`/property/cadastre?id=${p.id}` as never);
         return;
       case "registro":
         setSheetOpen(false);
@@ -173,6 +182,7 @@ export default function PropertyDetailScreen() {
   }
 
   const photos = p.media.filter((m) => m.kind === "PHOTO");
+  const cadInfo = parseCadastralData(p.cadastralData)?.info ?? null;
   const isRent = p.operationType === "RENT";
   // Ficha mixta: el mismo inmueble se vende Y se alquila → enseñamos ambos y la
   // rentabilidad bruta (renta anual / precio de compra).
@@ -328,32 +338,86 @@ export default function PropertyDetailScreen() {
         {p.listings.length > 0 && (
           <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
             <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_listings")}</Text>
-            {p.listings.map((l) => (
-              <TouchableOpacity
-                key={l.id}
-                style={[styles.listingRow, { borderBottomColor: th.border }]}
-                onPress={() => Linking.openURL(l.url)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.listingPortal, { color: th.text }]}>{portalLabel(l.portal)}</Text>
-                  <Text style={[styles.listingMeta, { color: th.accent }]}>
-                    {l.operationType === "RENT"
-                      ? t("card.per_month", { value: formatPrice(l.lastPrice) })
-                      : formatPrice(l.lastPrice)}
-                  </Text>
-                </View>
-                <Ionicons name="open-outline" size={18} color={th.primary} />
-              </TouchableOpacity>
-            ))}
+            {p.listings.map((l) => {
+              const statusLabel = LISTING_STATUS_LABEL[l.status];
+              // "No se pudo comprobar" (blocked/error) ≠ "el anuncio ya no existe".
+              const checkFailed = l.lastCheckResult === "blocked" || l.lastCheckResult === "error";
+              const fmtDay = (iso: string | null) =>
+                iso ? new Date(iso).toLocaleDateString() : null;
+              const metaLine = [
+                fmtDay(l.lastCheckedAt) && t("detail.property.listing_checked_at", { date: fmtDay(l.lastCheckedAt) }),
+                fmtDay(l.lastSeenAt) && t("detail.property.listing_seen_at", { date: fmtDay(l.lastSeenAt) }),
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <TouchableOpacity
+                  key={l.id}
+                  style={[styles.listingRow, { borderBottomColor: th.border }]}
+                  onPress={() => Linking.openURL(l.url)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={[styles.listingPortal, { color: th.text }]}>{portalLabel(l.portal)}</Text>
+                      {statusLabel && (
+                        <Text style={[styles.statusChip, { backgroundColor: th.primarySoft, color: th.primary }]}>
+                          {statusLabel}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={[styles.listingMeta, { color: th.accent }]}>
+                      {l.operationType === "RENT"
+                        ? t("card.per_month", { value: formatPrice(l.lastPrice) })
+                        : formatPrice(l.lastPrice)}
+                    </Text>
+                    {!!metaLine && (
+                      <Text style={[styles.listingMeta, { color: th.textMuted }]}>{metaLine}</Text>
+                    )}
+                    {checkFailed && (
+                      <Text style={[styles.listingMeta, { color: th.dangerFg }]}>
+                        {t("detail.property.listing_check_failed")}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="open-outline" size={18} color={th.primary} />
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
-        {p.cadastralRef && (
-          <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
-            <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_cadastre")}</Text>
-            <Text style={[styles.cadastral, { color: th.text }]}>{p.cadastralRef}</Text>
-          </View>
-        )}
+        {/* Tarjeta resumen del Catastro: ref + uso/superficie/año y acceso al
+            detalle. Sin ref todavía → CTA para consultar (misma pantalla). */}
+        <View style={[styles.section, { backgroundColor: th.surface, borderColor: th.border }]}>
+          <Text style={[styles.sectionTitle, { color: th.textMuted }]}>{t("detail.property.section_cadastre")}</Text>
+          {p.cadastralRef ? (
+            <>
+              <Text style={[styles.cadastral, { color: th.text }]} selectable>{p.cadastralRef}</Text>
+              {cadInfo && (
+                <View style={[styles.grid, { marginTop: 10 }]}>
+                  <Spec label={t("detail.cadastre.use")} value={cadInfo.use ?? "—"} />
+                  <Spec label={t("detail.cadastre.built_area")} value={cadInfo.builtArea != null ? `${cadInfo.builtArea} m²` : "—"} />
+                  <Spec label={t("detail.cadastre.year")} value={cadInfo.yearBuilt ?? "—"} />
+                  <Spec
+                    label={t("detail.cadastre.land_label")}
+                    value={cadInfo.landType === "UR" ? t("detail.cadastre.land_urban") : cadInfo.landType === "RU" ? t("detail.cadastre.land_rustic") : "—"}
+                  />
+                </View>
+              )}
+            </>
+          ) : (
+            <Text style={[styles.listingMeta, { color: th.textMuted }]}>{t("detail.cadastre.status_missing")}</Text>
+          )}
+          <TouchableOpacity
+            style={[styles.listingRow, { borderBottomColor: "transparent" }]}
+            onPress={() => router.push(`/property/cadastre?id=${p.id}` as never)}
+          >
+            <Text style={[styles.listingPortal, { color: th.primary }]}>
+              {p.cadastralRef ? t("detail.cadastre.view_detail") : t("detail.cadastre.consult")}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={th.primary} />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <View style={[styles.floatBar, { top: insets.top + 8 }]} pointerEvents="box-none">
@@ -505,5 +569,12 @@ const styles = StyleSheet.create({
   },
   listingPortal: { fontSize: 14, fontFamily: fonts.bodyMedium },
   listingMeta: { fontSize: 12, marginTop: 2 },
+  statusChip: {
+    fontSize: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
   cadastral: { fontSize: 12, fontFamily: "monospace" },
 });

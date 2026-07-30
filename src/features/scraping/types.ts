@@ -20,6 +20,12 @@ export type ScrapeOutcome =
 export type ScrapeContext = {
   /** Precio en céntimos guardado en BBDD para este Listing, si lo había. */
   previousPriceCents?: number | null;
+  /**
+   * Operación del anuncio: decide la banda de validación del precio.
+   * RENT usa la banda de renta mensual (100–50.000 €); SALE y RENT_TO_OWN la
+   * de venta (≥ 10.000 €). Sin ella, una renta de 850 € se descartaba siempre.
+   */
+  operationType?: "SALE" | "RENT" | "RENT_TO_OWN";
 };
 
 export interface PortalAdapter {

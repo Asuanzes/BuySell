@@ -327,6 +327,11 @@ model Listing {
   lastPrice     Int?
   lastSeenAt    DateTime?
   lastCheckedAt DateTime?
+  // Observabilidad del recheck: resultado del último intento ("ok" | "gone" |
+  // "blocked" | "error" | "manual") + detalle legible. Distingue "no pude
+  // comprobar" (blocked/error) de "el anuncio ya no existe" (gone).
+  lastCheckResult String?
+  lastCheckDetail String?
   createdAt     DateTime        @default(now())
 
   snapshots     PriceSnapshot[]

@@ -1,0 +1,35 @@
+name: listings-check
+
+# Recheck diario de anuncios inmobiliarios. Sin este reloj el seguimiento de
+# precios de inmuebles NO corre solo: /api/listings/check existía pero nadie lo
+# llamaba (el botón manual de la ficha era el único disparador). El endpoint
+# recorre los listings activos con pausa de 1 s por anuncio y detecta bajadas,
+# subidas y desapariciones (alertas + histórico).
+#
+# `CRON_SECRET` = secret del repo, DEBE coincidir con el env de Vercel.
+# Una vez al día basta: los portales inmobiliarios no cambian precio cada hora
+# y así no martilleamos ni sus servidores ni el presupuesto de Vercel.
+
+on:
+  schedule:
+    - cron: "15 6 * * *" # diario a las 06:15 UTC
+  workflow_dispatch: {} # botón manual (pestaña Actions)
+
+concurrency:
+  group: listings-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recheck de anuncios activos
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS --max-time 320 \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "https://nidokey.es/api/listings/check"

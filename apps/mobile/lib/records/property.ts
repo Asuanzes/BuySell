@@ -42,6 +42,8 @@ export type PropertyDetail = {
   hasPool: boolean | null;
   energyRating: string;
   cadastralRef: string | null;
+  /** Datos catastrales persistidos (legado o schema 1); parsear con parseCadastralData. */
+  cadastralData: unknown;
   tags: string[];
   media: { id: string; kind: string; url: string }[];
   listings: {
@@ -49,8 +51,13 @@ export type PropertyDetail = {
     portal: string;
     operationType: string;
     url: string;
+    status: string; // ACTIVE | PRICE_DROP | PRICE_UP | SOLD | REMOVED | UNKNOWN
     lastPrice: number | null;
+    lastSeenAt: string | null;
     lastCheckedAt: string | null;
+    /** "ok" | "gone" | "blocked" | "error" | "manual" | null (aún sin comprobar). */
+    lastCheckResult?: string | null;
+    lastCheckDetail?: string | null;
   }[];
 };
 
