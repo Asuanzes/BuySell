@@ -425,8 +425,15 @@ export default function NewTrip() {
     await loadFlightClassic();
   }
 
-  /** Búsqueda de siempre: una petición, se espera y se pinta. */
-  async function loadFlightClassic() {
+  /**
+   * Búsqueda de siempre: una petición, se espera y se pinta.
+   *
+   * `useAi` se pasa EXPLÍCITAMENTE en vez de leer el estado `aiSearch`, porque
+   * quien la llama desde el fallback necesita lo contrario de lo que dice el
+   * interruptor: si el stream no abrió, repetir con IA gastaría otras 6
+   * consultas de pago por una sola acción del usuario.
+   */
+  async function loadFlightClassic(useAi = aiSearch) {
     // Sin esto, apagar la IA y volver a buscar seguiría enseñando los resultados
     // de la búsqueda en directo anterior.
     stream.reset();
@@ -445,7 +452,7 @@ export default function NewTrip() {
           adults: String(totalAdults),
         });
         if (allChildAges.length) fq.set("children", allChildAges.join(","));
-        if (aiSearch) {
+        if (useAi) {
           fq.set("aiSearch", "1");
           fq.set("lang", i18n.language.startsWith("en") ? "en" : "es");
         }
@@ -454,13 +461,13 @@ export default function NewTrip() {
         // cuando lo que hubo fue un corte por tiempo.
         const { items, ai } = await api<{ items: FlightOption[]; ai?: AiInfo }>(
           `/api/travel/flights?${fq.toString()}`,
-          aiSearch ? { timeoutMs: 55_000 } : undefined
+          useAi ? { timeoutMs: 55_000 } : undefined
         );
         setFlights(items);
         setAiInfo(ai ?? null);
         // Sin IA se preselecciona el más barato. Con IA NO: el primero puede
         // mover las fechas del viaje, y eso lo decide el usuario a propósito.
-        setFlight(aiSearch ? null : items[0] ?? null);
+        setFlight(useAi ? null : items[0] ?? null);
       } else {
         setFlights([]);
         setFlight(null);
@@ -500,9 +507,21 @@ export default function NewTrip() {
   useEffect(() => {
     if (!stream.error || streamFellBack.current) return;
     streamFellBack.current = true;
+    const status = stream.errorStatus;
+    const message = stream.error;
     stream.reset();
+    // Sin cuota (429) o sin sesión (401) no hay nada que reintentar: repetir
+    // devolvería el mismo error y, si quedara algo de cuota, la gastaría para
+    // nada. Se enseña el motivo del servidor tal cual.
+    if (status === 429 || status === 401) {
+      setError(message);
+      setStep(3);
+      return;
+    }
     setError(t("trip.stream_unavailable"));
-    void loadFlightClassic();
+    // Reintento SIN IA a propósito: una consulta en vez de seis. El usuario ha
+    // hecho una acción, no puede costarle el presupuesto de dos búsquedas.
+    void loadFlightClassic(false);
     // loadFlightClassic depende de todo el formulario; el candado ya garantiza
     // que esto corre una sola vez por búsqueda.
     // eslint-disable-next-line react-hooks/exhaustive-deps

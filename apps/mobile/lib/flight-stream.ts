@@ -69,7 +69,10 @@ export function openFlightStream(
       if (!res.ok) {
         // El cuerpo de error sí es JSON corriente (401, 429, 400).
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error || `HTTP ${res.status}`);
+        // El código se conserva: quien llama necesita distinguir "no hay cuota"
+        // (reintentar solo gasta más) de "el transporte falló" (ahí sí compensa
+        // caer a la búsqueda normal).
+        throw Object.assign(new Error(body?.error || `HTTP ${res.status}`), { status: res.status });
       }
       if (!res.body) throw new Error("stream_unavailable");
 
@@ -106,6 +109,8 @@ export type FlightSearchStream = {
   running: boolean;
   /** Fallo real del transporte. Cancelar NO llena esto. */
   error: string | null;
+  /** Código HTTP del fallo, si lo hubo. 429 = sin cuota; 401 = sesión caducada. */
+  errorStatus: number | null;
   start: (query: Record<string, string>) => void;
   stop: () => void;
   reset: () => void;
@@ -122,6 +127,7 @@ export function useFlightSearchStream(): FlightSearchStream {
   const [state, setState] = useState<SearchProgressState>(initialProgressState);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const handle = useRef<FlightStreamHandle | null>(null);
   /** Deja de aplicar eventos cuando el componente ya no está: setState sobre un
    *  componente desmontado es un aviso en desarrollo y trabajo tirado en producción. */
@@ -152,6 +158,7 @@ export function useFlightSearchStream(): FlightSearchStream {
     handle.current = null;
     setRunning(false);
     setError(null);
+    setErrorStatus(null);
     setState(initialProgressState);
   }, []);
 
@@ -159,6 +166,7 @@ export function useFlightSearchStream(): FlightSearchStream {
     handle.current?.stop();
     setState(initialProgressState);
     setError(null);
+    setErrorStatus(null);
     setRunning(true);
     const own = openFlightStream(query, {
       // Reducer puro: aplicar el mismo evento dos veces es inofensivo, así que
@@ -172,7 +180,9 @@ export function useFlightSearchStream(): FlightSearchStream {
         }
       },
       onError: (err) => {
-        if (mounted.current && handle.current === own) setError(err.message);
+        if (!mounted.current || handle.current !== own) return;
+        setError(err.message);
+        setErrorStatus(typeof (err as { status?: number }).status === "number" ? (err as { status?: number }).status! : null);
       },
       onClose: () => {
         if (handle.current === own) handle.current = null;
@@ -182,5 +192,5 @@ export function useFlightSearchStream(): FlightSearchStream {
     handle.current = own;
   }, []);
 
-  return { state, running, error, start, stop, reset };
+  return { state, running, error, errorStatus, start, stop, reset };
 }
