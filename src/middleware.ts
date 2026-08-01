@@ -28,6 +28,9 @@ const PUBLIC_PATHS = [
   /^\/billing\/pay\/fake$/,            // checkout fake hospedado (suscripción)
   /^\/billing\/pay\/return$/,          // puente HTTPS -> deep link móvil
   /^\/api\/cron(\/.*)?$/,             // validada por CRON_SECRET en el handler
+  /^\/api\/listings\/check$/,         // recheck: el handler acepta CRON_SECRET O usuario.
+                                      // Sin esto el middleware trataba el CRON_SECRET como
+                                      // JWT móvil y devolvía 401 antes de llegar al handler.
   /^\/food\/pay\/return$/,             // puente HTTPS -> deep link móvil
   /^\/food\/pay\/fake$/,               // checkout fake hospedado
   /^\/api\/avatar\/[^/]+$/,           // foto de perfil: 302 a URL firmada (expo-image no manda Bearer)
@@ -43,7 +46,7 @@ const PUBLIC_PATHS = [
   /^\/(?!api\/).*\.[a-zA-Z0-9]+$/,
 ];
 
-function isPublic(pathname: string): boolean {
+export function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((re) => re.test(pathname));
 }
 
