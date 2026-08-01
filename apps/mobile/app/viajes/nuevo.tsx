@@ -99,7 +99,7 @@ function offerToFlightOption(o: NormalizedOffer, base: { start: string; end: str
   const out = o.legs[0]!;
   const back = o.legs[1] ?? null;
   return {
-    offerId: o.offerIds[0] ?? o.candidateKey,
+    offerId: o.offerKey,
     origin: out.origin,
     destination: out.destination,
     priceCents: o.totalTripCost,

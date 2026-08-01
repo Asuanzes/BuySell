@@ -15,6 +15,7 @@
  */
 import {
   distanceKm,
+  offerKeyOf,
   type FlightCandidate,
   type FlightSearchRequest,
   type NormalizedOffer,
@@ -229,6 +230,10 @@ export function normalizeOffer(offer: DuffelOffer, ctx: NormalizeContext): Norma
   const durations = legs.map((l) => l.durationMinutes).filter((d): d is number => d != null);
 
   return {
+    offerKey: offerKeyOf(ctx.candidate.key, [offer.id], {
+      departISO: legs[0]!.departISO,
+      totalCents: total,
+    }),
     candidateKey: ctx.candidate.key,
     offerIds: [offer.id],
     structure: ctx.candidate.structure,
@@ -301,9 +306,14 @@ export function combineSplit(
   const confidence: OfferConfidence =
     out.confidence === "expired" || back.confidence === "expired" ? "expired" : "verified";
 
+  const offerIds = [...out.offerIds, ...back.offerIds].slice(0, 2);
   return {
+    offerKey: offerKeyOf(ctx.candidate.key, offerIds, {
+      departISO: out.legs[0]!.departISO,
+      totalCents: out.totalTripCost + back.totalTripCost,
+    }),
     candidateKey: ctx.candidate.key,
-    offerIds: [...out.offerIds, ...back.offerIds].slice(0, 2),
+    offerIds,
     structure: ctx.candidate.structure,
     ticketType: "split",
     fareTotal: out.fareTotal + back.fareTotal,
@@ -359,7 +369,7 @@ export function withSavings(offers: NormalizedOffer[], baseline: NormalizedOffer
  */
 export function buildRankings(offers: NormalizedOffer[]): SearchRankings {
   if (!offers.length) return { cheapest: [], balanced: [], fastest: [], savings: [] };
-  const id = (o: NormalizedOffer) => o.candidateKey;
+  const id = (o: NormalizedOffer) => o.offerKey;
   const costs = offers.map((o) => o.totalTripCost);
   const times = offers.map((o) => o.durationMinutes ?? Number.POSITIVE_INFINITY);
   const finiteTimes = times.filter((t) => Number.isFinite(t));

@@ -62,6 +62,7 @@ describe("FlightSearchRequest", () => {
 
 describe("NormalizedOffer", () => {
   const offer = {
+    offerKey: "round_trip:MAD-BCN@2026-09-10#off_1",
     candidateKey: candidateKey("round_trip", [{ origin: "MAD", destination: "BCN", date: "2026-09-10" }]),
     offerIds: ["off_1"],
     structure: "round_trip" as const,

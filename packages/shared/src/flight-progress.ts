@@ -64,9 +64,17 @@ export const initialProgressState: SearchProgressState = {
   partialReason: null,
 };
 
-/** Inserta o reemplaza por `candidateKey`, manteniendo el orden por coste. */
+/**
+ * Inserta o reemplaza por `offerKey`, manteniendo el orden por coste.
+ *
+ * Por `offerKey` y NO por `candidateKey`: un mismo itinerario devuelve varias
+ * ofertas (aerolíneas y horarios distintos), y deduplicar por el candidato hacía
+ * que la última recibida borrase a las anteriores. Como la lista llega ordenada
+ * de más barata a más cara, la superviviente era siempre la MÁS CARA: el resumen
+ * anunciaba un precio que luego no aparecía en la lista.
+ */
 function upsertOffer(offers: NormalizedOffer[], offer: NormalizedOffer): NormalizedOffer[] {
-  const next = offers.filter((o) => o.candidateKey !== offer.candidateKey);
+  const next = offers.filter((o) => o.offerKey !== offer.offerKey);
   next.push(offer);
   return next.sort((a, b) => a.totalTripCost - b.totalTripCost);
 }

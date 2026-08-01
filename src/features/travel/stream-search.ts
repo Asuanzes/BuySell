@@ -458,12 +458,15 @@ function finalize(
   }
 ): FlightSearchResponse {
   const withPct = withSavings(offers, baseline);
-  const sorted = [...new Set(withPct)].sort((a, b) => a.totalTripCost - b.totalTripCost);
+  // Dedup REAL por identidad de oferta: un Set sobre objetos no deduplica nada
+  // (cada uno es una referencia distinta) y dejaba pasar repetidos.
+  const unicas = new Map(withPct.map((o) => [o.offerKey, o]));
+  const sorted = [...unicas.values()].sort((a, b) => a.totalTripCost - b.totalTripCost);
   const latencies = [...meta.latencies].sort((a, b) => a - b);
   return {
     searchId: meta.searchId,
     algoVersion: ALGO_VERSION,
-    baseline: baseline ? withPct.find((o) => o.candidateKey === baseline.candidateKey) ?? baseline : null,
+    baseline: baseline ? withPct.find((o) => o.offerKey === baseline.offerKey) ?? baseline : null,
     offers: sorted,
     rankings: buildRankings(sorted),
     partial: meta.partial,

@@ -270,7 +270,7 @@ describe("ahorro", () => {
   const baseline = normalizeOffer(D.roundTripDirect!, ctx())!;
 
   it("se calcula sobre el coste TOTAL, no sobre la tarifa", () => {
-    const barato = { ...baseline, candidateKey: "k2", totalTripCost: 10000 };
+    const barato = { ...baseline, offerKey: "k2", candidateKey: "k2", totalTripCost: 10000 };
     const [o] = withSavings([barato], baseline);
     assert.equal(o!.savingsCents, 4491);
     assert.equal(o!.savingsPct, 31);
@@ -289,9 +289,9 @@ describe("ahorro", () => {
   });
 
   it("un ahorro negativo se calcula pero queda fuera del carrusel de ahorro", () => {
-    const caro = { ...baseline, candidateKey: "k3", totalTripCost: 20000 };
+    const caro = { ...baseline, offerKey: "k3", candidateKey: "k3", totalTripCost: 20000 };
     const offers = withSavings([caro, baseline], baseline);
-    assert.ok(offers.find((o) => o.candidateKey === "k3")!.savingsPct! < 0);
+    assert.ok(offers.find((o) => o.offerKey === "k3")!.savingsPct! < 0);
     const rank = buildRankings(offers);
     assert.ok(!rank.savings.includes("k3"));
   });
@@ -299,9 +299,10 @@ describe("ahorro", () => {
 
 describe("rankings", () => {
   const baseline = normalizeOffer(D.roundTripDirect!, ctx())!;
-  const rapido: NormalizedOffer = { ...baseline, candidateKey: "rapido", totalTripCost: 18000, durationMinutes: 100 };
+  const rapido: NormalizedOffer = { ...baseline, offerKey: "rapido", candidateKey: "rapido", totalTripCost: 18000, durationMinutes: 100 };
   const barato: NormalizedOffer = {
     ...baseline,
+    offerKey: "barato",
     candidateKey: "barato",
     totalTripCost: 9000,
     durationMinutes: 400,
@@ -312,7 +313,7 @@ describe("rankings", () => {
   const rank = buildRankings(offers);
 
   it("«más barato» ordena por coste total", () => {
-    assert.deepEqual(rank.cheapest, ["barato", baseline.candidateKey, "rapido"]);
+    assert.deepEqual(rank.cheapest, ["barato", baseline.offerKey, "rapido"]);
   });
 
   it("«más rápido» ordena por duración", () => {

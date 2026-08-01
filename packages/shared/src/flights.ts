@@ -194,6 +194,22 @@ export function candidateKey(structure: CandidateStructure, legs: CandidateLeg[]
     .join("+")}`;
 }
 
+/**
+ * Identidad única de una oferta dentro de su candidato.
+ *
+ * Se prefieren los ids del proveedor. Cuando no los hay (un precio `observed`,
+ * que viene de datos cacheados y no de una oferta concreta) se cae a salida +
+ * importe, que es lo que distingue dos opciones a ojos del viajero.
+ */
+export function offerKeyOf(
+  candidate: string,
+  offerIds: string[],
+  fallback: { departISO?: string | null; totalCents?: number | null }
+): string {
+  if (offerIds.length) return `${candidate}#${offerIds.join("+")}`;
+  return `${candidate}#${fallback.departISO ?? "?"}|${fallback.totalCents ?? 0}`;
+}
+
 // ── Oferta normalizada ──────────────────────────────────────────────────────
 
 /**
@@ -220,6 +236,14 @@ export const OfferLeg = z.object({
 export type OfferLeg = z.infer<typeof OfferLeg>;
 
 export const NormalizedOffer = z.object({
+  /**
+   * Identidad ÚNICA de esta oferta. No vale `candidateKey`: un mismo candidato
+   * (misma ruta y fechas) devuelve varias ofertas —distintas aerolíneas y
+   * horarios— y usar la clave del candidato para identificarlas hacía que unas
+   * pisaran a otras al deduplicar, dejando en pantalla la más cara.
+   */
+  offerKey: z.string().min(1),
+  /** A qué itinerario pertenece. Varias ofertas comparten candidato. */
   candidateKey: z.string().min(1),
   /** Ids del proveedor (2 en un billete partido). Vacío si el precio es `observed`. */
   offerIds: z.array(z.string()).max(2),

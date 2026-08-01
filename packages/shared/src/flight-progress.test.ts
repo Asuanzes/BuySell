@@ -25,8 +25,10 @@ const ev = <T extends SearchProgressEvent["type"]>(
     ...rest,
   }) as SearchProgressEvent;
 
-const offer = (key: string, total: number): NormalizedOffer => ({
-  candidateKey: key,
+/** `key` identifica la OFERTA; `candidate` el itinerario (varias lo comparten). */
+const offer = (key: string, total: number, candidate = key): NormalizedOffer => ({
+  offerKey: key,
+  candidateKey: candidate,
   offerIds: [`off_${key}`],
   structure: "round_trip",
   ticketType: "single",
@@ -118,6 +120,55 @@ describe("eventos fuera de orden", () => {
     const found = ev("offer.found", { offer: offer("k1", 9000) }, { seq: 3 });
     const s = reduce([started, found, found, found]);
     assert.equal(s.offers.length, 1);
+  });
+
+  it("dos ofertas del MISMO itinerario conviven: la barata no la borra la cara", () => {
+    // Regresión del fallo real: Duffel devuelve varias aerolíneas para el mismo
+    // itinerario. Al deduplicar por candidato, la última aplicada (la más cara,
+    // porque la lista llega ordenada de menor a mayor) borraba a la más barata,
+    // y el resumen anunciaba un Iberia que no aparecía en la lista.
+    seq = 0;
+    const CAND = "round_trip:MAD-DBV@2026-08-24+DBV-MAD@2026-08-29";
+    const iberia = offer("iberia", 41000, CAND);
+    const british = offer("british", 68000, CAND);
+    const s = reduce([
+      ev("search.started", { algoVersion: "fs-1", request: {} }, { seq: 0 }),
+      ev("offer.found", { offer: iberia }, { seq: 1 }),
+      ev("offer.found", { offer: british }, { seq: 2 }),
+    ]);
+    assert.equal(s.offers.length, 2, "las dos tienen que sobrevivir");
+    assert.equal(s.best?.offerKey, "iberia");
+    assert.equal(s.offers[0]!.totalTripCost, 41000, "la más barata, la primera");
+  });
+
+  it("lo mismo al llegar en el paquete final de search.completed", () => {
+    seq = 0;
+    const CAND = "round_trip:MAD-DBV@2026-08-24+DBV-MAD@2026-08-29";
+    const iberia = offer("iberia", 41000, CAND);
+    const british = offer("british", 68000, CAND);
+    const s = reduce([
+      ev("search.started", { algoVersion: "fs-1", request: {} }, { seq: 0 }),
+      ev(
+        "search.completed",
+        {
+          response: {
+            searchId: SID,
+            algoVersion: "fs-1",
+            baseline: british,
+            // Ordenadas de menor a mayor, como las manda el servidor.
+            offers: [iberia, british],
+            rankings: { cheapest: ["iberia", "british"], balanced: [], fastest: [], savings: ["iberia"] },
+            partial: false,
+            degraded: null,
+            budget: { duffelCalls: { used: 4, max: 6 }, dailyRemaining: 40 },
+            summary: "La más barata es Iberia.",
+          },
+        },
+        { seq: 1 }
+      ),
+    ]);
+    assert.equal(s.offers.length, 2);
+    assert.equal(s.best?.offerKey, "iberia", "el resumen y la lista tienen que coincidir");
   });
 
   it("una oferta reenviada con otro precio ACTUALIZA, no añade", () => {
