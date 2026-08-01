@@ -64,22 +64,51 @@ function excerpt(content, tokens, maxLength = 900) {
   return `${start > 0 ? "…" : ""}${content.slice(start, end).trim()}${end < content.length ? "…" : ""}`;
 }
 
+function clipText(value, maximum) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length <= maximum
+    ? text
+    : `${text.slice(0, Math.max(0, maximum - 1))}…`;
+}
+
+function compactMetadata(value, depth = 0) {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return clipText(value, 240);
+  if (typeof value !== "object") return value;
+  if (depth >= 2) return Array.isArray(value) ? `[${value.length} items]` : "[object]";
+  if (Array.isArray(value)) {
+    return value.slice(0, 8).map((item) => compactMetadata(item, depth + 1));
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, 12)
+      .map(([key, item]) => [key, compactMetadata(item, depth + 1)]),
+  );
+}
+
 function citation(node) {
   if (!node.filePath) return null;
   return node.startLine ? `${node.filePath}:${node.startLine}` : node.filePath;
 }
 
-function compactNode(node, tokens = []) {
-  return {
+function compactNode(node, tokens = [], options = {}) {
+  const result = {
     id: node.id,
     kind: node.kind,
-    name: node.name,
+    name: clipText(node.name, 180),
     citation: citation(node),
-    signature: node.signature,
-    excerpt: excerpt(node.content, tokens),
+    signature: node.signature ? clipText(node.signature, 240) : null,
+    excerpt: excerpt(
+      node.content,
+      tokens,
+      Math.min(Math.max(Number(options.excerptLength ?? 900), 120), 900),
+    ),
     authority: node.authority,
-    metadata: node.metadata,
   };
+  if (options.includeMetadata === true) {
+    result.metadata = compactMetadata(node.metadata);
+  }
+  return result;
 }
 
 function seedRows(store, query, maxResults, nodeKinds) {
@@ -142,14 +171,25 @@ function neighborRows(store, nodeId) {
 export function graphSearch(store, input) {
   const query = String(input.query ?? "").trim();
   if (!query) throw new Error("query es obligatorio");
-  const maxResults = Math.min(Math.max(Number(input.max_results ?? 8), 1), 20);
-  const maxHops = Math.min(Math.max(Number(input.max_hops ?? 1), 0), 3);
+  const maxResults = Math.min(Math.max(Number(input.max_results ?? 4), 1), 12);
+  const maxHops = Math.min(Math.max(Number(input.max_hops ?? 0), 0), 3);
+  const maxRelations = Math.min(Math.max(Number(input.max_relations ?? 12), 0), 20);
+  const includeMetadata = input.include_metadata === true;
   const nodeKinds = Array.isArray(input.node_kinds) ? input.node_kinds : null;
+  const seedLimit =
+    maxHops > 0 && maxResults > 1
+      ? Math.max(1, Math.ceil(maxResults * 0.6))
+      : maxResults;
   const { rows, tokens } = seedRows(store, query, maxResults, nodeKinds);
   const seeds = rows.map((row) => store.hydrateNode(row));
+  const primarySeeds = seeds.slice(0, seedLimit);
   const visited = new Map();
   const relations = [];
-  let frontier = seeds.map((node, index) => ({ node, depth: 0, score: 100 - index * 4 }));
+  let frontier = primarySeeds.map((node, index) => ({
+    node,
+    depth: 0,
+    score: 100 - index * 4,
+  }));
 
   for (const item of frontier) {
     visited.set(item.node.id, { ...item, seed: true });
@@ -176,16 +216,33 @@ export function graphSearch(store, input) {
     frontier.push(...next);
   }
 
+  if (visited.size < maxResults) {
+    for (const [index, node] of seeds.entries()) {
+      if (visited.size >= maxResults) break;
+      if (visited.has(node.id)) continue;
+      visited.set(node.id, {
+        node,
+        depth: 0,
+        score: 100 - index * 4,
+        seed: true,
+      });
+    }
+  }
+
   const context = [...visited.values()]
     .sort((left, right) => right.score - left.score)
-    .slice(0, Math.min(maxResults * 3, 40))
+    .slice(0, maxResults)
     .map((item) => ({
-      ...compactNode(item.node, tokens),
+      ...compactNode(item.node, tokens, {
+        excerptLength: 360,
+        includeMetadata,
+      }),
       depth: item.depth,
       seed: item.seed,
       score: Math.round(item.score * 100) / 100,
     }));
   const included = new Set(context.map((item) => item.id));
+  const seenRelations = new Set();
 
   return {
     query,
@@ -194,7 +251,13 @@ export function graphSearch(store, input) {
     context,
     relations: relations
       .filter((relation) => included.has(relation.from) && included.has(relation.to))
-      .slice(0, 80),
+      .filter((relation) => {
+        const key = `${relation.from}\0${relation.relation}\0${relation.to}`;
+        if (seenRelations.has(key)) return false;
+        seenRelations.add(key);
+        return true;
+      })
+      .slice(0, maxRelations),
     guidance:
       "Usa las citas para verificar en el código. El grafo orienta la búsqueda, pero CLAUDE.md y el código actual son la fuente de verdad.",
   };
@@ -203,6 +266,7 @@ export function graphSearch(store, input) {
 export function findNode(store, input) {
   const reference = String(input.reference ?? "").trim();
   if (!reference) throw new Error("reference es obligatorio");
+  const maxResults = Math.min(Math.max(Number(input.max_results ?? 4), 1), 8);
   const normalized = normalizePath(reference.replace(/:\d+$/, ""));
   let rows = [];
   const exact = store.getNode(reference) ?? store.getNode(`file:${normalized}`);
@@ -215,18 +279,34 @@ export function findNode(store, input) {
         ORDER BY
           CASE WHEN name = ? OR file_path = ? THEN 0 ELSE 1 END,
           authority DESC
-        LIMIT 20
+        LIMIT ?
       `)
-      .all(reference, normalized, `%${reference}%`, `%${normalized}%`, reference, normalized)
+      .all(
+        reference,
+        normalized,
+        `%${reference}%`,
+        `%${normalized}%`,
+        reference,
+        normalized,
+        maxResults,
+      )
       .map((row) => store.hydrateNode(row));
   }
-  return rows.map((node) => compactNode(node, tokensFor(reference)));
+  return rows.map((node) =>
+    compactNode(node, tokensFor(reference), {
+      excerptLength: 500,
+      includeMetadata: input.include_metadata === true,
+    }),
+  );
 }
 
 export function traceRelationships(store, input) {
   const matches = findNode(store, { reference: input.start });
   if (!matches.length) return { start: input.start, nodes: [], relations: [] };
   const depthLimit = Math.min(Math.max(Number(input.depth ?? 2), 1), 5);
+  const maxNodes = Math.min(Math.max(Number(input.max_nodes ?? 10), 1), 12);
+  const maxRelations = Math.min(Math.max(Number(input.max_relations ?? 12), 0), 20);
+  const includeMetadata = input.include_metadata === true;
   const allowed = new Set(
     Array.isArray(input.relations) ? input.relations.map((value) => String(value).toUpperCase()) : [],
   );
@@ -234,18 +314,27 @@ export function traceRelationships(store, input) {
   const visited = new Map([[startId, { node: store.getNode(startId), depth: 0 }]]);
   const relations = [];
   let frontier = [startId];
+  let truncated = false;
 
   for (let depth = 0; depth < depthLimit; depth += 1) {
     const next = [];
     for (const nodeId of frontier) {
       for (const row of neighborRows(store, nodeId)) {
         if (allowed.size && !allowed.has(row.relation)) continue;
-        relations.push({
-          from: row.source_id,
-          relation: row.relation,
-          to: row.target_id,
-        });
+        if (relations.length < maxRelations * 4) {
+          relations.push({
+            from: row.source_id,
+            relation: row.relation,
+            to: row.target_id,
+          });
+        } else {
+          truncated = true;
+        }
         if (!visited.has(row.id)) {
+          if (visited.size >= maxNodes) {
+            truncated = true;
+            continue;
+          }
           visited.set(row.id, { node: store.hydrateNode(row), depth: depth + 1 });
           next.push(row.id);
         }
@@ -255,13 +344,31 @@ export function traceRelationships(store, input) {
     if (!frontier.length) break;
   }
 
+  const nodes = [...visited.values()].map((item) => ({
+    ...compactNode(item.node, [], {
+      excerptLength: 360,
+      includeMetadata,
+    }),
+    depth: item.depth,
+  }));
+  const included = new Set(nodes.map((node) => node.id));
+  const seen = new Set();
+  const boundedRelations = relations
+    .filter((relation) => included.has(relation.from) && included.has(relation.to))
+    .filter((relation) => {
+      const key = `${relation.from}\0${relation.relation}\0${relation.to}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  if (boundedRelations.length > maxRelations) truncated = true;
+
   return {
     start: startId,
-    nodes: [...visited.values()].map((item) => ({
-      ...compactNode(item.node),
-      depth: item.depth,
-    })),
-    relations: relations.slice(0, 200),
+    nodes,
+    relations: boundedRelations.slice(0, maxRelations),
+    truncated,
+    limits: { maxNodes, maxRelations, depth: depthLimit },
   };
 }
 
@@ -269,6 +376,9 @@ export function impactAnalysis(store, input) {
   const matches = findNode(store, { reference: input.reference });
   if (!matches.length) return { reference: input.reference, affected: [], relations: [] };
   const depthLimit = Math.min(Math.max(Number(input.depth ?? 3), 1), 5);
+  const maxAffected = Math.min(Math.max(Number(input.max_nodes ?? 8), 1), 8);
+  const maxRelations = Math.min(Math.max(Number(input.max_relations ?? 16), 0), 20);
+  const includeMetadata = input.include_metadata === true;
   const impactRelations = new Set([
     "IMPORTS",
     "CALLS",
@@ -283,6 +393,7 @@ export function impactAnalysis(store, input) {
   const visited = new Map(startIds.map((id) => [id, { node: store.getNode(id), depth: 0, reason: "target" }]));
   const relations = [];
   let frontier = startIds;
+  let truncated = false;
 
   for (let depth = 0; depth < depthLimit; depth += 1) {
     const next = [];
@@ -299,8 +410,20 @@ export function impactAnalysis(store, input) {
         .all(nodeId);
       for (const row of rows) {
         if (!impactRelations.has(row.relation)) continue;
-        relations.push({ from: row.source_id, relation: row.relation, to: row.target_id });
+        if (relations.length < maxRelations * 4) {
+          relations.push({
+            from: row.source_id,
+            relation: row.relation,
+            to: row.target_id,
+          });
+        } else {
+          truncated = true;
+        }
         if (!visited.has(row.source_id)) {
+          if (visited.size - startIds.length >= maxAffected) {
+            truncated = true;
+            continue;
+          }
           const hydrated = store.hydrateNode(row);
           visited.set(row.source_id, {
             node: hydrated,
@@ -315,19 +438,41 @@ export function impactAnalysis(store, input) {
     if (!frontier.length) break;
   }
 
+  const affected = [...visited.values()]
+    .filter((item) => item.depth > 0)
+    .sort((left, right) => left.depth - right.depth || right.node.authority - left.node.authority)
+    .slice(0, maxAffected)
+    .map((item) => ({
+      ...compactNode(item.node, [], {
+        excerptLength: 360,
+        includeMetadata,
+      }),
+      depth: item.depth,
+      reason: item.reason,
+    }));
+  const included = new Set([...startIds, ...affected.map((item) => item.id)]);
+  const seen = new Set();
+  const boundedRelations = relations
+    .filter((relation) => included.has(relation.from) && included.has(relation.to))
+    .filter((relation) => {
+      const key = `${relation.from}\0${relation.relation}\0${relation.to}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  if (boundedRelations.length > maxRelations) truncated = true;
+
   return {
     reference: input.reference,
     targets: startIds,
-    affected: [...visited.values()]
-      .filter((item) => item.depth > 0)
-      .sort((left, right) => left.depth - right.depth || right.node.authority - left.node.authority)
-      .slice(0, 80)
-      .map((item) => ({
-        ...compactNode(item.node),
-        depth: item.depth,
-        reason: item.reason,
-      })),
-    relations: relations.slice(0, 200),
+    affected,
+    relations: boundedRelations.slice(0, maxRelations),
+    truncated,
+    limits: {
+      maxAffected,
+      maxRelations,
+      depth: depthLimit,
+    },
     warning:
       "Es un análisis estructural heurístico. Confirma los usos dinámicos, configuración, reflexión y consumidores externos antes de eliminar o cambiar código.",
   };

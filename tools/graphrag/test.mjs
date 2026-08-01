@@ -9,12 +9,20 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { openStore } from "./lib/store.mjs";
 import { refreshIndex } from "./lib/indexer.mjs";
-import { graphSearch, impactAnalysis } from "./lib/retrieval.mjs";
+import {
+  findNode,
+  graphSearch,
+  impactAnalysis,
+  traceRelationships,
+} from "./lib/retrieval.mjs";
 import {
   activeWork,
   claimScope,
+  publishHandoff,
+  recordDecision,
   registerAgent,
   releaseClaim,
+  releaseSessionClaims,
 } from "./lib/coordination.mjs";
 import {
   authorizeBackgroundTasks,
@@ -31,6 +39,7 @@ import {
   buildExecution,
   buildTaskPrompt,
   containsObviousSecret,
+  parseTaskOutput,
   redactObviousSecrets,
   sanitizedEnvironment,
 } from "./lib/executors.mjs";
@@ -78,8 +87,53 @@ test("indexa símbolos, imports y recupera contexto con citas", () => {
     });
     assert.ok(search.context.some((node) => node.name === "requireUserId"));
     assert.ok(search.context.some((node) => node.citation?.startsWith("src/auth.ts:")));
+    assert.ok(search.context.every((node) => !("metadata" in node)));
+    assert.ok(search.context.every((node) => node.excerpt.length <= 360));
+    const bounded = graphSearch(store, {
+      query: "autenticación require user",
+      max_results: 1,
+      max_hops: 1,
+    });
+    assert.equal(bounded.context.length, 1);
+    const included = new Set(bounded.context.map((node) => node.id));
+    assert.ok(
+      bounded.relations.every(
+        (relation) => included.has(relation.from) && included.has(relation.to),
+      ),
+    );
+    const expanded = graphSearch(store, {
+      query: "autenticación require user",
+      max_results: 5,
+      max_hops: 1,
+    });
+    assert.ok(expanded.context.some((node) => node.depth > 0));
     const impact = impactAnalysis(store, { reference: "requireUserId", depth: 3 });
     assert.ok(impact.affected.some((node) => node.citation?.startsWith("src/route.ts:")));
+    const boundedImpact = impactAnalysis(store, {
+      reference: "requireUserId",
+      depth: 5,
+      max_nodes: 1,
+      max_relations: 1,
+    });
+    assert.ok(boundedImpact.affected.length <= 1);
+    assert.ok(boundedImpact.relations.length <= 1);
+    const trace = traceRelationships(store, {
+      start: "requireUserId",
+      depth: 5,
+      max_nodes: 2,
+      max_relations: 1,
+    });
+    assert.ok(trace.nodes.length <= 2);
+    assert.ok(trace.relations.length <= 1);
+    assert.equal("metadata" in findNode(store, { reference: "requireUserId" })[0], false);
+    assert.equal(
+      "metadata" in
+        findNode(store, {
+          reference: "requireUserId",
+          include_metadata: true,
+        })[0],
+      true,
+    );
   } finally {
     store.close();
     fs.rmSync(root, { recursive: true, force: true });
@@ -138,6 +192,39 @@ test("mantiene sesiones paralelas del mismo agente sin sobrescribirlas", () => {
       new Set(work.agents.map((agent) => agent.sessionId)),
       new Set(["codex-one", "codex-two"]),
     );
+    recordDecision(
+      store,
+      { agent: "codex", sessionId: "codex-one" },
+      {
+        title: "Decisión de prueba",
+        rationale: "Mantener el contrato actual.",
+        paths: ["src/auth.ts"],
+      },
+    );
+    publishHandoff(
+      store,
+      { agent: "codex", sessionId: "codex-one" },
+      {
+        summary: "Entrega de prueba.",
+        paths: ["src/auth.ts"],
+      },
+    );
+    assert.equal(activeWork(store).decisions.length, 0);
+    assert.equal(activeWork(store).handoffs.length, 0);
+    const withHistory = activeWork(store, {
+      includeHistory: true,
+      historyLimit: 1,
+    });
+    assert.equal(withHistory.decisions.length, 1);
+    assert.equal(withHistory.handoffs.length, 1);
+    releaseSessionClaims(store, {
+      agent: "codex",
+      sessionId: "codex-two",
+    });
+    assert.deepEqual(
+      activeWork(store).agents.map((agent) => agent.sessionId),
+      ["codex-one"],
+    );
   } finally {
     store.close();
     fs.rmSync(root, { recursive: true, force: true });
@@ -195,6 +282,27 @@ test("delega, evita duplicados y persiste TaskOutput con handoff", () => {
     const detail = getDelegatedTask(store, delegated.task.id);
     assert.equal(detail.task.result.summary, "requireUserId valida el token antes de continuar.");
     assert.equal(detail.events.some((event) => event.event === "succeeded"), true);
+    const statusOnly = getDelegatedTask(store, delegated.task.id, {
+      detail: "status",
+    });
+    assert.equal(statusOnly.task.status, "succeeded");
+    assert.equal("instructions" in statusOnly.task, false);
+    assert.equal("result" in statusOnly.task, false);
+    assert.equal("events" in statusOnly, false);
+    const summary = getDelegatedTask(store, delegated.task.id, {
+      detail: "summary",
+    });
+    assert.equal(summary.task.result.summary, "requireUserId valida el token antes de continuar.");
+    assert.ok(summary.events.length <= 5);
+    const compactList = listDelegatedTasks(store, { limit: 10 });
+    const compactTask = compactList.tasks.find((task) => task.id === delegated.task.id);
+    assert.equal("instructions" in compactTask, false);
+    assert.equal("result" in compactTask, false);
+    const fullList = listDelegatedTasks(store, { limit: 10, detail: "full" });
+    assert.equal(
+      fullList.tasks.find((task) => task.id === delegated.task.id).result.summary,
+      "requireUserId valida el token antes de continuar.",
+    );
     assert.ok(store.getNode(`handoff:${completed.handoffId}`));
   } finally {
     store.close();
@@ -224,6 +332,17 @@ test("respeta dependencias, límites de profundidad y leases atómicos", () => {
       mode: "analyze",
       depends_on: [first.id],
     }).task;
+    assert.throws(
+      () =>
+        delegateTask(store, codex, {
+          target_agent: "claude-code",
+          title: "Demasiadas dependencias",
+          instructions: "No debe crearse.",
+          scope: "src/route.ts",
+          depends_on: Array.from({ length: 9 }, (_, index) => `dependency-${index}`),
+        }),
+      /máximo 8 dependencias/,
+    );
     const board = listDelegatedTasks(store, { limit: 10 });
     assert.equal(
       board.tasks.find((task) => task.id === dependent.id).eligibility.state,
@@ -453,7 +572,26 @@ test("construye ejecutores sin shell ni prompt en la línea de comandos", () => 
   };
   const prompt = buildTaskPrompt({ ...base, targetAgent: "codex" });
   assert.match(prompt, /TAREA_ID: task-test/);
+  assert.match(prompt, /context_key="task-test"/);
   assert.match(prompt, /No hagas commit, push/);
+  const promptWithDependency = buildTaskPrompt(
+    { ...base, targetAgent: "codex" },
+    [{ id: "dependency-long", result: { summary: "x".repeat(5000) } }],
+  );
+  assert.ok(promptWithDependency.length < prompt.length + 700);
+  const oversizedOutput = parseTaskOutput(
+    JSON.stringify({
+      outcome: "completed",
+      summary: "s".repeat(5000),
+      changedPaths: [],
+      tests: ["t".repeat(800)],
+      nextSteps: ["n".repeat(800)],
+      needsUserInput: false,
+    }),
+  );
+  assert.equal(oversizedOutput.summary.length, 4000);
+  assert.equal(oversizedOutput.tests[0].length, 500);
+  assert.equal(oversizedOutput.nextSteps[0].length, 500);
   const codex = buildExecution({
     task: { ...base, targetAgent: "codex" },
     root: process.cwd(),
@@ -621,6 +759,7 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
   const protocolDatabase = path.join(root, ".graphrag", "protocol.sqlite");
   const seeded = openStore({ root, databasePath: protocolDatabase });
   const longText = "contexto histórico ".repeat(320);
+  const escapedLongText = "\\ruta\\subcarpeta ".repeat(900).slice(0, 12000);
   for (let index = 0; index < 10; index += 1) {
     const createdAt = new Date(Date.now() - index * 1000).toISOString();
     seeded.db
@@ -642,6 +781,41 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
       `)
       .run(`handoff-${index}`, longText, createdAt);
   }
+  const queuedTask = delegateTask(
+    seeded,
+    { agent: "claude-code", sessionId: "seed-claude" },
+    {
+      target_agent: "codex",
+      title: "Tarea pendiente extensa",
+      instructions: escapedLongText,
+      acceptance_criteria: ["No repetir el contexto completo"],
+      scope: "src/auth.ts",
+      mode: "analyze",
+    },
+  ).task;
+  const terminalTask = delegateTask(
+    seeded,
+    { agent: "claude-code", sessionId: "seed-claude" },
+    {
+      target_agent: "codex",
+      title: "Tarea terminada extensa",
+      instructions: escapedLongText,
+      scope: "src/route.ts",
+      mode: "analyze",
+    },
+  ).task;
+  const terminalWorker = { agent: "codex", sessionId: "seed-codex-worker" };
+  assert.equal(
+    claimDelegatedTask(seeded, terminalWorker, {
+      task_id: terminalTask.id,
+    }).acquired,
+    true,
+  );
+  completeDelegatedTask(seeded, terminalWorker, {
+    task_id: terminalTask.id,
+    summary: longText.slice(0, 3900),
+    outcome: "completed",
+  });
   seeded.close();
   const child = spawn(
     process.execPath,
@@ -653,7 +827,10 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
       "--db",
       protocolDatabase,
     ],
-    { stdio: ["pipe", "pipe", "pipe"] },
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, NIDOKEY_GRAPH_AGENT: "codex" },
+    },
   );
   const output = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
   const messages = [];
@@ -684,7 +861,7 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
       capabilities: {},
     });
     assert.equal(initialized.result.serverInfo.name, "nidokey-graph");
-    assert.equal(initialized.result.serverInfo.version, "0.4.1");
+    assert.equal(initialized.result.serverInfo.version, "0.5.0");
     assert.match(initialized.result.instructions, /Bootstrap automático/);
     const listed = await request(2, "tools/list");
     assert.ok(listed.result.tools.some((tool) => tool.name === "session_context"));
@@ -695,20 +872,32 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
     assert.ok(listed.result.tools.some((tool) => tool.name === "claim_scope"));
     const session = await request(3, "tools/call", {
       name: "session_context",
-      arguments: { task: "revisar autenticación", refresh: false },
+      arguments: {
+        task: "revisar autenticación",
+        context_key: "auth-review",
+        refresh: false,
+      },
     });
     const sessionPayload = JSON.parse(session.result.content[0].text);
     assert.equal(sessionPayload.session.task, "revisar autenticación");
     assert.equal(sessionPayload.automaticIndexing.atSessionStart, true);
     assert.ok(sessionPayload.relevantContext.results.length > 0);
-    assert.ok(session.result.content[0].text.length <= 6000);
-    assert.ok(sessionPayload.responseBudget.actualCharacters <= 6000);
+    assert.ok(sessionPayload.taskInbox.tasks.some((task) => task.id === queuedTask.id));
+    assert.ok(!sessionPayload.taskInbox.tasks.some((task) => task.id === terminalTask.id));
+    assert.ok(session.result.content[0].text.length <= 4000);
+    assert.ok(sessionPayload.responseBudget.actualCharacters <= 4000);
     const repeated = await request(4, "tools/call", {
       name: "session_context",
-      arguments: { task: "revisar autenticación", refresh: false },
+      arguments: {
+        task: "auditar de nuevo el módulo de autenticación",
+        context_key: "auth-review",
+        refresh: false,
+      },
     });
     const repeatedPayload = JSON.parse(repeated.result.content[0].text);
     assert.equal(repeatedPayload.contextAlreadyProvided, true);
+    assert.equal(repeatedPayload.contextMode, "reuse");
+    assert.equal(repeatedPayload.relevantContext.results.length, 0);
     assert.ok(repeated.result.content[0].text.length < 3000);
     const status = await request(5, "tools/call", {
       name: "graph_status",
@@ -716,6 +905,139 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
     });
     assert.equal(status.result.isError, undefined);
     assert.match(status.result.content[0].text, /"recentlyActiveAgents": 1/);
+
+    const taskList = await request(6, "tools/call", {
+      name: "list_delegated_tasks",
+      arguments: { mine: true, limit: 10 },
+    });
+    const taskListPayload = JSON.parse(taskList.result.content[0].text);
+    assert.ok(taskList.result.content[0].text.length <= 4000);
+    assert.ok(taskListPayload.tasks.some((task) => task.id === queuedTask.id));
+    assert.ok(taskListPayload.tasks.every((task) => !("instructions" in task)));
+    assert.ok(taskListPayload.tasks.every((task) => !("result" in task)));
+
+    const oversizedFullList = await request(13, "tools/call", {
+      name: "list_delegated_tasks",
+      arguments: { mine: true, limit: 10, detail: "full" },
+    });
+    const oversizedFullPayload = JSON.parse(
+      oversizedFullList.result.content[0].text,
+    );
+    assert.ok(oversizedFullList.result.content[0].text.length <= 16000);
+    assert.equal(oversizedFullPayload.responseTruncated, true);
+
+    const taskStatus = await request(7, "tools/call", {
+      name: "get_delegated_task",
+      arguments: { task_id: terminalTask.id, detail: "status" },
+    });
+    const taskStatusPayload = JSON.parse(taskStatus.result.content[0].text);
+    assert.ok(taskStatus.result.content[0].text.length <= 3000);
+    assert.equal(taskStatusPayload.task.status, "succeeded");
+    assert.equal("result" in taskStatusPayload.task, false);
+    assert.equal("events" in taskStatusPayload, false);
+
+    const taskSummary = await request(8, "tools/call", {
+      name: "get_delegated_task",
+      arguments: { task_id: terminalTask.id, detail: "summary" },
+    });
+    const taskSummaryPayload = JSON.parse(taskSummary.result.content[0].text);
+    assert.ok(taskSummary.result.content[0].text.length <= 6000);
+    assert.ok(taskSummaryPayload.task.result.summary.length <= 1200);
+
+    const active = await request(9, "tools/call", {
+      name: "active_work",
+      arguments: {},
+    });
+    const activePayload = JSON.parse(active.result.content[0].text);
+    assert.ok(active.result.content[0].text.length <= 5000);
+    assert.equal("decisions" in activePayload, false);
+    assert.equal("handoffs" in activePayload, false);
+    assert.ok(activePayload.delegation.tasks.some((task) => task.id === queuedTask.id));
+    assert.ok(!activePayload.delegation.tasks.some((task) => task.id === terminalTask.id));
+
+    const search = await request(10, "tools/call", {
+      name: "graph_search",
+      arguments: {
+        query: "autenticación require user",
+        max_results: 12,
+        max_hops: 1,
+      },
+    });
+    const searchPayload = JSON.parse(search.result.content[0].text);
+    assert.ok(search.result.content[0].text.length <= 10000);
+    assert.ok(searchPayload.context.length <= 12);
+    assert.ok(searchPayload.context.every((node) => !("metadata" in node)));
+
+    const nodeDetail = await request(14, "tools/call", {
+      name: "get_node",
+      arguments: {
+        reference: "src",
+        max_results: 8,
+        include_metadata: true,
+      },
+    });
+    const nodeDetailPayload = JSON.parse(nodeDetail.result.content[0].text);
+    assert.ok(Array.isArray(nodeDetailPayload));
+    assert.ok(nodeDetailPayload.length <= 8);
+    assert.ok(nodeDetail.result.content[0].text.length <= 16000);
+
+    const traced = await request(15, "tools/call", {
+      name: "trace_relationships",
+      arguments: {
+        start: "src/auth.ts",
+        depth: 5,
+        max_nodes: 12,
+        max_relations: 20,
+        include_metadata: true,
+      },
+    });
+    const tracedPayload = JSON.parse(traced.result.content[0].text);
+    assert.equal(tracedPayload.responseTruncated, undefined);
+    assert.ok(tracedPayload.nodes.length <= 12);
+    assert.ok(tracedPayload.relations.length <= 20);
+    assert.ok(traced.result.content[0].text.length <= 16000);
+
+    const impacted = await request(16, "tools/call", {
+      name: "impact_analysis",
+      arguments: {
+        reference: "requireUserId",
+        depth: 5,
+        max_nodes: 8,
+        max_relations: 20,
+        include_metadata: true,
+      },
+    });
+    const impactedPayload = JSON.parse(impacted.result.content[0].text);
+    assert.equal(impactedPayload.responseTruncated, undefined);
+    assert.ok(impactedPayload.affected.length <= 8);
+    assert.ok(impactedPayload.relations.length <= 20);
+    assert.ok(impacted.result.content[0].text.length <= 16000);
+
+    const delta = await request(11, "tools/call", {
+      name: "session_context",
+      arguments: {
+        task: "revisar route require user",
+        context_key: "route-review",
+        refresh: false,
+      },
+    });
+    const deltaPayload = JSON.parse(delta.result.content[0].text);
+    assert.equal(deltaPayload.contextMode, "delta");
+    assert.ok(deltaPayload.relevantContext.results.length > 0);
+    assert.ok(delta.result.content[0].text.length <= 4000);
+
+    const forced = await request(12, "tools/call", {
+      name: "session_context",
+      arguments: {
+        task: "revisar route require user",
+        context_key: "route-review",
+        force_context: true,
+        refresh: false,
+      },
+    });
+    const forcedPayload = JSON.parse(forced.result.content[0].text);
+    assert.equal(forcedPayload.contextMode, "bootstrap");
+    assert.ok(forcedPayload.relevantContext.results.length > 0);
   } finally {
     child.stdin.end();
     await new Promise((resolve) => child.once("exit", resolve));

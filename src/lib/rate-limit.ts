@@ -10,24 +10,29 @@ import { prisma } from "@/lib/db";
  * Uso: const r = await rateLimit("otp-ip", ip, { limit: 5, windowMs: 15 * 60_000 });
  *      if (!r.ok) return 429;
  *
+ * `cost` (por defecto 1) consume varias unidades de golpe: lo usa la búsqueda
+ * IA de vuelos, donde una sola petición del usuario dispara N búsquedas de
+ * pago en Duffel y debe descontar N del tope diario, no 1.
+ *
  * La clave codifica nombre + id + número de ventana, de modo que cada ventana
  * fija crea una fila nueva; las caducadas se purgan en el cron de limpieza.
  */
 export async function rateLimit(
   name: string,
   id: string,
-  opts: { limit: number; windowMs: number }
+  opts: { limit: number; windowMs: number; cost?: number }
 ): Promise<{ ok: boolean; remaining: number; resetAt: Date }> {
   const window = Math.floor(Date.now() / opts.windowMs);
   const key = `${name}:${id}:${window}`;
   const resetAt = new Date((window + 1) * opts.windowMs);
+  const cost = Math.max(1, Math.round(opts.cost ?? 1));
 
   let count: number;
   try {
     const row = await prisma.rateLimit.upsert({
       where: { key },
-      create: { key, count: 1, resetAt },
-      update: { count: { increment: 1 } },
+      create: { key, count: cost, resetAt },
+      update: { count: { increment: cost } },
     });
     count = row.count;
   } catch {
@@ -35,7 +40,7 @@ export async function rateLimit(
     // el create. Reintentar como update puro es determinista.
     const row = await prisma.rateLimit.update({
       where: { key },
-      data: { count: { increment: 1 } },
+      data: { count: { increment: cost } },
     });
     count = row.count;
   }

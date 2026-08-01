@@ -39,6 +39,8 @@ export function buildHolidayImport(args: {
   /** Ocupación por habitación. */
   occupancy?: TravelOccupancy[] | null;
   transport?: TransportLeg | null;
+  /** Vuelta de un billete partido (dos solo-idas). Ver HolidayTripMeta. */
+  transportReturn?: TransportLeg | null;
   /** Traslado aeropuerto↔hotel (estimado), si el paquete lo incluye. */
   transfer?: TransportLeg | null;
   accommodation?: AccommodationChoice | null;
@@ -71,6 +73,7 @@ export function buildHolidayImport(args: {
       tripType,
       occupancy: args.occupancy ?? null,
       transport: args.transport ?? null,
+      transportReturn: args.transportReturn ?? null,
       transfer: args.transfer ?? null,
       accommodation: args.accommodation ?? null,
       totalCents: total,

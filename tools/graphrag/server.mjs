@@ -35,9 +35,20 @@ import {
 import { executorAvailability } from "./lib/executors.mjs";
 
 const SERVER_NAME = "nidokey-graph";
-const SERVER_VERSION = "0.4.1";
-const SESSION_CONTEXT_MAX_CHARACTERS = 6000;
-const SESSION_CONTEXT_DEFAULT_RESULTS = 4;
+const SERVER_VERSION = "0.5.0";
+const SESSION_CONTEXT_MAX_CHARACTERS = 4000;
+const SESSION_CONTEXT_DEFAULT_RESULTS = 2;
+const TOOL_RESPONSE_BUDGETS = {
+  session_context: SESSION_CONTEXT_MAX_CHARACTERS,
+  list_delegated_tasks: 4000,
+  active_work: 5000,
+  orchestration_status: 2500,
+  graph_status: 4000,
+  graph_search: 10000,
+  get_node: 8000,
+  trace_relationships: 10000,
+  impact_analysis: 10000,
+};
 const TRUSTED_AGENTS = new Set(["codex", "claude-code"]);
 const PRIVILEGED_TOOLS = new Set([
   "delegate_task",
@@ -60,6 +71,8 @@ const state = {
   startupRefresh: null,
   delegatedTaskId: process.env.NIDOKEY_GRAPH_TASK_ID ?? null,
   deliveredContextTasks: new Set(),
+  contextBootstrapDelivered: false,
+  contextSnapshot: null,
 };
 
 const baseInstructions = [
@@ -69,6 +82,7 @@ const baseInstructions = [
   "Antes de editar: revisa el trabajo activo devuelto y reclama el ámbito mínimo con claim_scope.",
   "No edites un ámbito reclamado por otra sesión.",
   "Usa graph_search/trace_relationships para localizar contexto y verifica siempre las citas en el código.",
+  "Para seguimiento frecuente usa orchestration_status; solicita detail=summary o full solo bajo demanda.",
   "Tras cambios: refresh_index, record_decision si hubo una decisión no trivial, publish_handoff y release_claim.",
   "El índice se actualiza incrementalmente al abrir y cerrar la sesión; las decisiones y handoffs lo enriquecen entre agentes.",
   "CLAUDE.md y el código actual son la fuente de verdad; README y docs históricas tienen menor autoridad.",
@@ -101,6 +115,18 @@ const tools = [
           default: SESSION_CONTEXT_DEFAULT_RESULTS,
         },
         max_hops: { type: "integer", minimum: 0, maximum: 1, default: 0 },
+        context_key: {
+          type: "string",
+          minLength: 1,
+          maxLength: 200,
+          description:
+            "Identificador estable opcional de la tarea; evita repetir contexto si cambia su redacción.",
+        },
+        force_context: {
+          type: "boolean",
+          default: false,
+          description: "Forzar un bootstrap completo aunque ya se haya entregado en la sesión.",
+        },
       },
       additionalProperties: false,
     },
@@ -130,13 +156,18 @@ const tools = [
         },
         acceptance_criteria: {
           type: "array",
-          items: { type: "string" },
-          maxItems: 30,
+          items: { type: "string", maxLength: 500 },
+          maxItems: 10,
           default: [],
         },
         mode: { type: "string", enum: ["analyze", "edit"], default: "analyze" },
         priority: { type: "integer", minimum: 0, maximum: 3, default: 1 },
-        depends_on: { type: "array", items: { type: "string" }, default: [] },
+        depends_on: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 8,
+          default: [],
+        },
         parent_task_id: { type: "string" },
         idempotency_key: { type: "string", maxLength: 200 },
         max_depth: { type: "integer", minimum: 0, maximum: 3, default: 2 },
@@ -169,7 +200,13 @@ const tools = [
         },
         root_id: { type: "string" },
         mine: { type: "boolean", default: true },
-        limit: { type: "integer", minimum: 1, maximum: 100, default: 30 },
+        limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+        detail: {
+          type: "string",
+          enum: ["status", "summary", "full"],
+          default: "status",
+          description: "Nivel de detalle; full solo debe usarse bajo demanda.",
+        },
       },
       additionalProperties: false,
     },
@@ -188,7 +225,16 @@ const tools = [
     inputSchema: {
       type: "object",
       required: ["task_id"],
-      properties: { task_id: { type: "string", minLength: 1 } },
+      properties: {
+        task_id: { type: "string", minLength: 1 },
+        detail: {
+          type: "string",
+          enum: ["status", "summary", "full"],
+          default: "status",
+          description:
+            "status para seguimiento, summary para entrega acotada y full para auditoría explícita.",
+        },
+      },
       additionalProperties: false,
     },
     annotations: {
@@ -234,10 +280,25 @@ const tools = [
           enum: ["completed", "partial", "blocked", "failed"],
           default: "completed",
         },
-        summary: { type: "string", minLength: 1, maxLength: 16000 },
-        changed_paths: { type: "array", items: { type: "string" }, default: [] },
-        tests: { type: "array", items: { type: "string" }, default: [] },
-        next_steps: { type: "array", items: { type: "string" }, default: [] },
+        summary: { type: "string", minLength: 1, maxLength: 4000 },
+        changed_paths: {
+          type: "array",
+          items: { type: "string", maxLength: 1000 },
+          maxItems: 50,
+          default: [],
+        },
+        tests: {
+          type: "array",
+          items: { type: "string", maxLength: 500 },
+          maxItems: 20,
+          default: [],
+        },
+        next_steps: {
+          type: "array",
+          items: { type: "string", maxLength: 500 },
+          maxItems: 20,
+          default: [],
+        },
         needs_user_input: { type: "boolean", default: false },
       },
       additionalProperties: false,
@@ -356,8 +417,14 @@ const tools = [
       required: ["query"],
       properties: {
         query: { type: "string", minLength: 1 },
-        max_results: { type: "integer", minimum: 1, maximum: 20, default: 8 },
-        max_hops: { type: "integer", minimum: 0, maximum: 3, default: 1 },
+        max_results: { type: "integer", minimum: 1, maximum: 12, default: 4 },
+        max_hops: { type: "integer", minimum: 0, maximum: 3, default: 0 },
+        max_relations: { type: "integer", minimum: 0, maximum: 20, default: 12 },
+        include_metadata: {
+          type: "boolean",
+          default: false,
+          description: "Incluir metadatos acotados de nodos solo cuando sean necesarios.",
+        },
         node_kinds: {
           type: "array",
           items: { type: "string" },
@@ -381,7 +448,11 @@ const tools = [
     inputSchema: {
       type: "object",
       required: ["reference"],
-      properties: { reference: { type: "string", minLength: 1 } },
+      properties: {
+        reference: { type: "string", minLength: 1 },
+        max_results: { type: "integer", minimum: 1, maximum: 8, default: 4 },
+        include_metadata: { type: "boolean", default: false },
+      },
       additionalProperties: false,
     },
     annotations: {
@@ -402,6 +473,14 @@ const tools = [
       properties: {
         start: { type: "string", minLength: 1 },
         depth: { type: "integer", minimum: 1, maximum: 5, default: 2 },
+        max_nodes: { type: "integer", minimum: 1, maximum: 12, default: 10 },
+        max_relations: {
+          type: "integer",
+          minimum: 0,
+          maximum: 20,
+          default: 12,
+        },
+        include_metadata: { type: "boolean", default: false },
         relations: {
           type: "array",
           items: { type: "string" },
@@ -428,6 +507,14 @@ const tools = [
       properties: {
         reference: { type: "string", minLength: 1 },
         depth: { type: "integer", minimum: 1, maximum: 5, default: 3 },
+        max_nodes: { type: "integer", minimum: 1, maximum: 8, default: 8 },
+        max_relations: {
+          type: "integer",
+          minimum: 0,
+          maximum: 20,
+          default: 16,
+        },
+        include_metadata: { type: "boolean", default: false },
       },
       additionalProperties: false,
     },
@@ -442,8 +529,15 @@ const tools = [
   {
     name: "active_work",
     description:
-      "Muestra agentes activos, ámbitos reclamados, decisiones y handoffs recientes para coordinar trabajo paralelo.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      "Muestra agentes, ámbitos, tareas y ejecuciones activas. El historial es opcional y acotado.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        include_history: { type: "boolean", default: false },
+        history_limit: { type: "integer", minimum: 1, maximum: 3, default: 1 },
+      },
+      additionalProperties: false,
+    },
     annotations: {
       title: "Trabajo paralelo activo",
       readOnlyHint: true,
@@ -549,10 +643,72 @@ function writeMessage(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
-function resultText(value) {
-  const text = JSON.stringify(value, null, 2);
+function responseBudgetFor(toolName, input = {}) {
+  if (toolName === "get_delegated_task") {
+    if (input.detail === "full") return 24000;
+    if (input.detail === "summary") return 6000;
+    return 3000;
+  }
+  if (toolName === "list_delegated_tasks") {
+    if (input.detail === "full") return 16000;
+    if (input.detail === "summary") return 8000;
+  }
+  if (toolName === "active_work" && input.include_history === true) return 8000;
+  if (toolName === "graph_search" && input.include_metadata === true) return 16000;
+  if (
+    ["get_node", "trace_relationships", "impact_analysis"].includes(toolName) &&
+    input.include_metadata === true
+  ) {
+    return 16000;
+  }
+  return TOOL_RESPONSE_BUDGETS[toolName] ?? 16000;
+}
+
+function emergencyResponseText(toolName, value, maximum) {
+  const serialized = JSON.stringify(value);
+  const payloadFor = (previewLength) => ({
+    tool: toolName,
+    responseTruncated: true,
+    message:
+      "La respuesta superó su presupuesto. Reduce resultados o solicita un nivel de detalle más compacto.",
+    preview: serialized.slice(0, previewLength),
+    responseBudget: {
+      mode: "emergency",
+      maxCharacters: maximum,
+      originalCharacters: serialized.length,
+    },
+  });
+  let lower = 0;
+  let upper = Math.min(serialized.length, maximum);
+  let best = JSON.stringify(payloadFor(0), null, 2);
+  while (lower <= upper) {
+    const candidateLength = Math.floor((lower + upper) / 2);
+    const candidate = JSON.stringify(payloadFor(candidateLength), null, 2);
+    if (candidate.length <= maximum) {
+      best = candidate;
+      lower = candidateLength + 1;
+    } else {
+      upper = candidateLength - 1;
+    }
+  }
+  if (best.length > maximum) {
+    return JSON.stringify({
+      tool: toolName,
+      responseTruncated: true,
+      responseBudget: { mode: "emergency", maxCharacters: maximum },
+    });
+  }
+  return best;
+}
+
+function resultText(toolName, value, input = {}) {
+  const maximum = responseBudgetFor(toolName, input);
+  let text = JSON.stringify(value, null, 2);
+  if (text.length > maximum) {
+    text = emergencyResponseText(toolName, value, maximum);
+  }
   return {
-    content: [{ type: "text", text: text.length > 48000 ? `${text.slice(0, 48000)}\n…truncated` : text }],
+    content: [{ type: "text", text }],
   };
 }
 
@@ -705,96 +861,145 @@ function compactOrchestration(orchestration, reconciledTasks) {
   };
 }
 
-function withSessionBudget(payload) {
-  let squeezed = false;
-  const measure = () => JSON.stringify(payload, null, 2).length;
-  payload.responseBudget = {
-    mode: "compact",
-    maxCharacters: SESSION_CONTEXT_MAX_CHARACTERS,
-    actualCharacters: 0,
-    approximateTokens: 0,
-    squeezed: false,
+function compactActiveWork(work, delegation, orchestration, input = {}) {
+  const coordination = compactWork(work);
+  const includeHistory = input.include_history === true;
+  const historyLimit = Math.min(Math.max(Number(input.history_limit ?? 1), 1), 3);
+  return {
+    agents: coordination.agents,
+    claims: coordination.claims,
+    delegation: compactTaskInbox(delegation),
+    orchestration: compactOrchestration(orchestration, []),
+    ...(includeHistory
+      ? {
+          decisions: (work.decisions ?? []).slice(0, historyLimit).map((decision) => ({
+            id: decision.id,
+            agent: decision.agent,
+            title: clipText(decision.title, 180),
+            rationale: clipText(decision.rationale, 320),
+            paths: (decision.paths ?? []).slice(0, 5),
+            createdAt: decision.created_at,
+          })),
+          handoffs: (work.handoffs ?? []).slice(0, historyLimit).map((handoff) => ({
+            id: handoff.id,
+            agent: handoff.agent,
+            summary: clipText(handoff.summary, 420),
+            paths: (handoff.paths ?? []).slice(0, 5),
+            tests: (handoff.tests ?? []).slice(0, 3).map((test) => clipText(test, 180)),
+            nextSteps: (handoff.nextSteps ?? [])
+              .slice(0, 3)
+              .map((step) => clipText(step, 180)),
+            createdAt: handoff.created_at,
+          })),
+        }
+      : {}),
   };
-  payload.responseBudget.actualCharacters = measure();
-  payload.responseBudget.approximateTokens = Math.ceil(
-    payload.responseBudget.actualCharacters / 4,
-  );
+}
 
-  if (measure() > SESSION_CONTEXT_MAX_CHARACTERS) {
-    squeezed = true;
-    payload.relevantContext.results = payload.relevantContext.results
-      .slice(0, 2)
-      .map((item) => ({ ...item, excerpt: clipText(item.excerpt, 240) }));
-    payload.relevantContext.relations = [];
-    payload.coordination.agents = payload.coordination.agents.slice(0, 2);
-    payload.coordination.claims = payload.coordination.claims.slice(0, 3);
-    if (payload.coordination.latestDecision) {
-      payload.coordination.latestDecision.rationale = clipText(
-        payload.coordination.latestDecision.rationale,
-        160,
+function sessionSnapshot(work) {
+  return {
+    latestDecisionId: work.latestDecision?.id ?? null,
+    latestHandoffId: work.latestHandoff?.id ?? null,
+  };
+}
+
+function withSessionBudget(payload) {
+  const stamp = (value, squeezed) => {
+    value.responseBudget = {
+      mode: "compact",
+      maxCharacters: SESSION_CONTEXT_MAX_CHARACTERS,
+      actualCharacters: 0,
+      approximateTokens: 0,
+      squeezed,
+    };
+    for (let iteration = 0; iteration < 2; iteration += 1) {
+      value.responseBudget.actualCharacters = JSON.stringify(value, null, 2).length;
+      value.responseBudget.approximateTokens = Math.ceil(
+        value.responseBudget.actualCharacters / 4,
       );
     }
-    if (payload.coordination.latestHandoff) {
-      payload.coordination.latestHandoff.summary = clipText(
-        payload.coordination.latestHandoff.summary,
-        220,
-      );
-    }
-    payload.taskInbox.tasks = payload.taskInbox.tasks.slice(0, 3);
-    payload.orchestration.activeRuns = payload.orchestration.activeRuns.slice(0, 2);
-  }
+    return value;
+  };
+  const measure = (value) => JSON.stringify(value, null, 2).length;
+  stamp(payload, false);
+  if (measure(payload) <= SESSION_CONTEXT_MAX_CHARACTERS) return payload;
 
-  payload.responseBudget.squeezed = squeezed;
-  payload.responseBudget.actualCharacters = measure();
-  payload.responseBudget.approximateTokens = Math.ceil(
-    payload.responseBudget.actualCharacters / 4,
-  );
-  if (measure() > SESSION_CONTEXT_MAX_CHARACTERS) {
-    const citations = payload.relevantContext.results.slice(0, 3).map((item) => ({
-      citation: item.citation,
-      name: item.name,
-    }));
-    return withSessionBudget({
-      session: payload.session,
-      contextAlreadyProvided: payload.contextAlreadyProvided ?? false,
-      index: payload.index,
-      coordination: {
-        agents: payload.coordination.agents.slice(0, 2),
-        claims: payload.coordination.claims.slice(0, 2),
-        latestDecision: payload.coordination.latestDecision
-          ? {
-              id: payload.coordination.latestDecision.id,
-              title: payload.coordination.latestDecision.title,
-            }
-          : null,
-        latestHandoff: payload.coordination.latestHandoff
-          ? {
-              id: payload.coordination.latestHandoff.id,
-              summary: clipText(payload.coordination.latestHandoff.summary, 160),
-            }
-          : null,
-      },
-      taskInbox: {
-        count: payload.taskInbox.count,
-        tasks: payload.taskInbox.tasks.slice(0, 2),
-      },
-      orchestration: {
-        backgroundEnabled: payload.orchestration.backgroundEnabled,
-        counts: payload.orchestration.counts,
-        activeRuns: payload.orchestration.activeRuns.slice(0, 1),
-      },
-      relevantContext: { citations },
-      requiredNextActions: payload.requiredNextActions.slice(0, 3),
-      detailsAvailableVia: payload.detailsAvailableVia,
-    });
-  }
-  return payload;
+  const results = payload.relevantContext?.results ?? [];
+  const squeezed = {
+    session: payload.session,
+    contextMode: payload.contextMode,
+    contextAlreadyProvided: payload.contextAlreadyProvided ?? false,
+    message: payload.message,
+    automaticIndexing: payload.automaticIndexing,
+    index: payload.index,
+    coordination: {
+      agents: (payload.coordination?.agents ?? []).slice(0, 2),
+      claims: (payload.coordination?.claims ?? []).slice(0, 2),
+      latestDecision: payload.coordination?.latestDecision
+        ? {
+            id: payload.coordination.latestDecision.id,
+            title: payload.coordination.latestDecision.title,
+          }
+        : null,
+      latestHandoff: payload.coordination?.latestHandoff
+        ? {
+            id: payload.coordination.latestHandoff.id,
+            summary: clipText(payload.coordination.latestHandoff.summary, 160),
+          }
+        : null,
+    },
+    taskInbox: {
+      count: payload.taskInbox?.count ?? 0,
+      tasks: (payload.taskInbox?.tasks ?? []).slice(0, 2),
+    },
+    orchestration: {
+      backgroundEnabled: payload.orchestration?.backgroundEnabled,
+      counts: payload.orchestration?.counts,
+      activeRuns: (payload.orchestration?.activeRuns ?? []).slice(0, 1),
+    },
+    relevantContext: {
+      query: clipText(payload.relevantContext?.query, 200),
+      resultCount: payload.relevantContext?.resultCount ?? results.length,
+      results: results.slice(0, 2).map((item) => ({
+        citation: item.citation,
+        name: item.name,
+        excerpt: clipText(item.excerpt, 180),
+      })),
+      relations: [],
+    },
+    requiredNextActions: (payload.requiredNextActions ?? []).slice(0, 2),
+    detailsAvailableVia: (payload.detailsAvailableVia ?? []).slice(0, 4),
+  };
+  stamp(squeezed, true);
+  if (measure(squeezed) <= SESSION_CONTEXT_MAX_CHARACTERS) return squeezed;
+
+  squeezed.automaticIndexing = {
+    atSessionStart: true,
+    atSessionEnd: true,
+  };
+  squeezed.coordination.agents = squeezed.coordination.agents.slice(0, 1);
+  squeezed.coordination.claims = squeezed.coordination.claims.slice(0, 1);
+  squeezed.taskInbox.tasks = squeezed.taskInbox.tasks.slice(0, 1);
+  squeezed.relevantContext.results = squeezed.relevantContext.results.slice(0, 1);
+  squeezed.detailsAvailableVia = ["graph_search", "active_work", "get_delegated_task"];
+  return stamp(squeezed, true);
 }
 
 function sessionContext(input) {
   const task = clipText(input.task, 1000);
   if (!task) throw new Error("task es obligatorio");
-  const taskKey = task.toLowerCase();
+  const stableKey = clipText(input.context_key, 200);
+  const taskKey = stableKey
+    ? `key:${stableKey.toLowerCase()}`
+    : `task:${task.toLowerCase()}`;
+  const forceContext = input.force_context === true;
+  const taskAlreadyDelivered = state.deliveredContextTasks.has(taskKey);
+  const contextMode =
+    forceContext || !state.contextBootstrapDelivered
+      ? "bootstrap"
+      : taskAlreadyDelivered
+        ? "reuse"
+        : "delta";
   const reconciledTasks = reconcileExpiredTasks(store);
   const refresh = input.refresh === true || !state.startupRefresh?.ok
     ? refreshSafely()
@@ -807,7 +1012,12 @@ function sessionContext(input) {
   const status = graphStatus(store);
   const rawTaskInbox = listDelegatedTasks(
     store,
-    { mine: true, limit: 20 },
+    {
+      target_agent: state.agent,
+      status: ["queued", "running", "needs_input", "cancel_requested", "retrying"],
+      detail: "status",
+      limit: 10,
+    },
     context(),
   );
   const taskInbox = compactTaskInbox(rawTaskInbox);
@@ -817,6 +1027,7 @@ function sessionContext(input) {
     agent: state.agent,
     sessionId: state.sessionId,
     task,
+    contextKey: stableKey || undefined,
   };
   const index = {
     schemaVersion: status.schemaVersion,
@@ -835,50 +1046,51 @@ function sessionContext(input) {
     "get_delegated_task",
   ];
 
-  if (state.deliveredContextTasks.has(taskKey)) {
-    return withSessionBudget({
-      session,
-      contextAlreadyProvided: true,
-      message:
-        "Este contexto ya se entregó en esta sesión; reutiliza el resultado anterior y amplía solo bajo demanda.",
-      automaticIndexing: {
-        atSessionStart: true,
-        atSessionEnd: true,
-        refresh,
-      },
-      index,
-      coordination: {
-        agents: [],
-        claims: [],
-        latestDecision: null,
-        latestHandoff: null,
-      },
-      taskInbox,
-      orchestration,
-      relevantContext: { query: task, resultCount: 0, results: [], relations: [] },
-      requiredNextActions: [
-        "Reutilizar el contexto ya recibido.",
-        "Ampliar únicamente con una herramienta de detalle si falta evidencia.",
-      ],
-      detailsAvailableVia,
-    });
-  }
-
-  const work = compactWork(activeWork(store));
-  const search = compactSearch(
-    graphSearch(store, {
-      query: task,
-      max_results: Math.min(
-        Math.max(Number(input.max_results) || SESSION_CONTEXT_DEFAULT_RESULTS, 1),
-        6,
-      ),
-      max_hops: Math.min(Math.max(Number(input.max_hops) || 0, 0), 1),
-    }),
+  const work = compactWork(
+    activeWork(store, { includeHistory: true, historyLimit: 1 }),
   );
+  const previousSnapshot = state.contextSnapshot;
+  if (contextMode !== "bootstrap" && previousSnapshot) {
+    if (work.latestDecision?.id === previousSnapshot.latestDecisionId) {
+      work.latestDecision = null;
+    }
+    if (work.latestHandoff?.id === previousSnapshot.latestHandoffId) {
+      work.latestHandoff = null;
+    }
+  }
+  const search =
+    contextMode === "reuse"
+      ? { query: task, resultCount: 0, results: [], relations: [] }
+      : compactSearch(
+          graphSearch(store, {
+            query: task,
+            max_results: Math.min(
+              Math.max(
+                Number(input.max_results) || SESSION_CONTEXT_DEFAULT_RESULTS,
+                1,
+              ),
+              6,
+            ),
+            max_hops: Math.min(Math.max(Number(input.max_hops) || 0, 0), 1),
+            max_relations: 6,
+            include_metadata: false,
+          }),
+        );
   state.deliveredContextTasks.add(taskKey);
+  state.contextBootstrapDelivered = true;
+  state.contextSnapshot = sessionSnapshot(
+    compactWork(activeWork(store, { includeHistory: true, historyLimit: 1 })),
+  );
   return withSessionBudget({
     session,
-    contextAlreadyProvided: false,
+    contextMode,
+    contextAlreadyProvided: contextMode === "reuse",
+    message:
+      contextMode === "reuse"
+        ? "Contexto reutilizado; solo se entregan coordinación y estados actuales."
+        : contextMode === "delta"
+          ? "La sesión ya estaba inicializada; se entrega contexto relevante de la nueva tarea y solo novedades globales."
+          : undefined,
     automaticIndexing: {
       atSessionStart: true,
       atSessionEnd: true,
@@ -897,14 +1109,19 @@ function sessionContext(input) {
     taskInbox,
     orchestration,
     relevantContext: search,
-    requiredNextActions: [
-      "Verificar en el código las citas relevantes.",
-      "Ampliar solo si hace falta con graph_search, trace_relationships o impact_analysis.",
-      state.delegatedTaskId
-        ? "El runner ya reservó el ámbito de esta tarea; no vuelvas a reclamarlo."
-        : "Ejecutar claim_scope sobre el ámbito mínimo antes de editar.",
-      "Al terminar: refresh_index, registrar decisiones no triviales, publicar handoff y liberar el claim.",
-    ],
+    requiredNextActions:
+      contextMode === "reuse"
+        ? [
+            "Reutilizar el contexto ya recibido.",
+            "Consultar detalle únicamente si cambió el estado o falta evidencia.",
+          ]
+        : [
+            "Verificar en el código las citas relevantes.",
+            state.delegatedTaskId
+              ? "El runner ya reservó el ámbito; no lo reclames de nuevo."
+              : "Reclamar el ámbito mínimo antes de editar.",
+            "Al terminar: actualizar el índice, publicar handoff y liberar el claim.",
+          ],
     detailsAvailableVia,
   });
 }
@@ -962,7 +1179,7 @@ function handleInitialize(message) {
   });
   state.sessionId = registration.sessionId;
   state.initialized = true;
-  const work = activeWork(store);
+  const work = activeWork(store, { includeHistory: true, historyLimit: 1 });
   return {
     protocolVersion: message.params?.protocolVersion ?? "2025-06-18",
     capabilities: { tools: { listChanged: false } },
@@ -997,21 +1214,67 @@ function handleToolCall(name, input) {
         delegated.created && state.delegatedTaskId
           ? dispatchEligibleTasks(store)
           : { launched: [] };
-      return { ...delegated, dispatch };
+      const { task: _fullTask, ...delegatedState } = delegated;
+      return {
+        ...delegatedState,
+        task: getDelegatedTask(store, delegated.task.id, { detail: "status" }).task,
+        dispatch,
+      };
     }
     case "list_delegated_tasks":
-      return listDelegatedTasks(store, input, context());
+      return listDelegatedTasks(
+        store,
+        {
+          ...input,
+          mine: input.mine !== false,
+          detail: input.detail ?? "status",
+          limit: input.limit ?? 10,
+        },
+        context(),
+      );
     case "get_delegated_task":
-      return getDelegatedTask(store, input.task_id);
-    case "claim_delegated_task":
-      return claimDelegatedTask(store, context(), input);
+      return getDelegatedTask(store, input.task_id, {
+        detail: input.detail ?? "status",
+      });
+    case "claim_delegated_task": {
+      const claimed = claimDelegatedTask(store, context(), input);
+      const { task: _fullTask, ...claimState } = claimed;
+      return {
+        ...claimState,
+        ...(claimed.task
+          ? {
+              task: getDelegatedTask(store, claimed.task.id, {
+                detail: "status",
+              }).task,
+            }
+          : {}),
+      };
+    }
     case "complete_delegated_task": {
       const completed = completeDelegatedTask(store, context(), input);
-      return { ...completed, dispatch: dispatchEligibleTasks(store) };
+      const { task: _fullTask, ...completionState } = completed;
+      return {
+        ...completionState,
+        task: getDelegatedTask(store, completed.task.id, {
+          detail: "status",
+        }).task,
+        dispatch: dispatchEligibleTasks(store),
+      };
     }
     case "cancel_delegated_task": {
       const cancelled = cancelDelegatedTask(store, context(), input);
-      return { ...cancelled, dispatch: dispatchEligibleTasks(store) };
+      const { task: _fullTask, ...cancellationState } = cancelled;
+      return {
+        ...cancellationState,
+        ...(cancelled.task
+          ? {
+              task: getDelegatedTask(store, cancelled.task.id, {
+                detail: "status",
+              }).task,
+            }
+          : {}),
+        dispatch: dispatchEligibleTasks(store),
+      };
     }
     case "dispatch_tasks":
       if (input.confirm_quota_use !== true) {
@@ -1041,12 +1304,28 @@ function handleToolCall(name, input) {
     case "impact_analysis":
       ensureIndex();
       return impactAnalysis(store, input);
-    case "active_work":
-      return {
-        ...activeWork(store),
-        delegation: listDelegatedTasks(store, { limit: 30 }, context()),
-        orchestration: orchestrationStatus(store),
-      };
+    case "active_work": {
+      const includeHistory = input.include_history === true;
+      const work = activeWork(store, {
+        includeHistory,
+        historyLimit: input.history_limit ?? 1,
+      });
+      const delegation = listDelegatedTasks(
+        store,
+        {
+          status: ["queued", "running", "needs_input", "cancel_requested", "retrying"],
+          detail: "status",
+          limit: 10,
+        },
+        context(),
+      );
+      return compactActiveWork(
+        work,
+        delegation,
+        orchestrationStatus(store),
+        input,
+      );
+    }
     case "claim_scope":
       ensureIndex();
       return claimScope(store, context(), input);
@@ -1081,7 +1360,11 @@ function handleRequest(message) {
     const name = message.params?.name;
     const input = message.params?.arguments ?? {};
     try {
-      writeMessage({ jsonrpc: "2.0", id, result: resultText(handleToolCall(name, input)) });
+      writeMessage({
+        jsonrpc: "2.0",
+        id,
+        result: resultText(name, handleToolCall(name, input), input),
+      });
     } catch (error) {
       writeMessage({
         jsonrpc: "2.0",

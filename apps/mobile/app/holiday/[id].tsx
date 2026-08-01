@@ -55,6 +55,7 @@ export default function HolidayDetail() {
   const destination = metaField<string | null>(record, "destination", null);
   const accommodation = metaField<AccommodationChoice | null>(record, "accommodation", null);
   const transport = metaField<TransportLeg | null>(record, "transport", null);
+  const transportReturn = metaField<TransportLeg | null>(record, "transportReturn", null);
   const transfer = metaField<TransportLeg | null>(record, "transfer", null);
   const tripType = metaField<string | null>(record, "tripType", null);
   const occupancy = metaField<{ adults: number; children: number[] }[] | null>(record, "occupancy", null);
@@ -111,6 +112,14 @@ export default function HolidayDetail() {
           : null,
       ],
       [
+        // Billete partido: la vuelta es otra compra y su importe ya va incluido
+        // en el transporte, por eso aquí solo se enseña compañía y fecha.
+        t("detail.holiday.row_transport_return"),
+        transportReturn
+          ? `${transportReturn.provider ?? t("detail.holiday.flight_fallback")}${transportReturn.departISO ? ` · ${transportReturn.departISO.slice(0, 10)}` : ""}`
+          : null,
+      ],
+      [
         t("detail.holiday.row_transfer"),
         transfer
           ? `${transfer.provider ?? t("detail.holiday.transfer_fallback")}${transfer.priceCents != null ? ` · ${formatMoney(transfer.priceCents, transfer.currency ?? "EUR")}` : ""}`
@@ -163,6 +172,15 @@ export default function HolidayDetail() {
           >
             <Ionicons name="airplane-outline" size={18} color={th.accent} />
             <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_flight")}</Text>
+          </Pressable>
+        ) : null}
+        {transportReturn?.affiliateUrl ? (
+          <Pressable
+            onPress={() => void WebBrowser.openBrowserAsync(transportReturn.affiliateUrl!)}
+            style={[styles.outlineBtn, { borderColor: th.border }]}
+          >
+            <Ionicons name="airplane-outline" size={18} color={th.accent} style={{ transform: [{ scaleX: -1 }] }} />
+            <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_return_flight")}</Text>
           </Pressable>
         ) : null}
       </ScrollView>

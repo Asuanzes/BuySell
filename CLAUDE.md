@@ -188,11 +188,13 @@ documentación, decisiones y trabajo en curso. El índice se actualiza
 incrementalmente al abrir y cerrar cada sesión. Protocolo obligatorio:
 
 1. Como primera acción de cada tarea, ejecutar `session_context` pasando el
-   objetivo concreto del usuario. No releer todo el repo si el grafo ya entrega
+   objetivo concreto del usuario y, si existe, una `context_key` estable (por
+   ejemplo el id delegado). No releer todo el repo si el grafo ya entrega
    contexto suficiente.
 2. Revisar `taskInbox`, trabajo activo, decisiones y handoffs. Si hay una tarea
    en cola asignada a `claude-code`, aceptarla con `claim_delegated_task`.
-3. Ampliar solo lo necesario con `graph_search` y verificar sus citas en código.
+3. Ampliar solo lo necesario con `graph_search` (empezar por 2–4 resultados y
+   `max_hops: 0`) y verificar sus citas en código.
 4. Reclamar el ámbito mínimo mediante `claim_scope` antes de editar.
 5. No editar ámbitos solapados reclamados por la otra sesión.
 6. Tras los cambios, ejecutar `refresh_index`.
@@ -208,9 +210,10 @@ incrementalmente al abrir y cerrar cada sesión. Protocolo obligatorio:
   usuario haya pedido ejecución paralela/en segundo plano y se haya confirmado
   el consumo de cuota de Codex o Claude. Las subtareas heredan esa autorización
   y no pueden crear raíces nuevas.
-- `list_delegated_tasks`, `get_delegated_task` y `orchestration_status`
-  permiten seguir cola, dependencias, procesos, eventos y resultados sin
-  bloquear la sesión.
+- Para seguimiento frecuente usar `orchestration_status`.
+  `list_delegated_tasks` y `get_delegated_task` usan vista `status` compacta;
+  solicitar `summary` o `full` únicamente cuando haga falta revisar la entrega,
+  dependencias, eventos o resultado completo.
 - Las dependencias, leases, reintentos, idempotencia, profundidad y concurrencia
   los controla `nidokey-graph`. Una tarea puede delegar de vuelta al otro
   agente, pero no superar el presupuesto de su raíz.

@@ -75,7 +75,7 @@ function normalizeArtifactPaths(values, root) {
       // Ignore paths outside the repository or sensitive locations.
     }
   }
-  return [...new Set(normalized)].slice(0, 100);
+  return [...new Set(normalized)].slice(0, 50);
 }
 
 function clampInteger(value, minimum, maximum, fallback) {
@@ -162,6 +162,122 @@ function hydrateTask(row) {
     updatedAt: row.updated_at,
     startedAt: row.started_at,
     completedAt: row.completed_at,
+  };
+}
+
+function clipText(value, maximum) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length <= maximum
+    ? text
+    : `${text.slice(0, Math.max(0, maximum - 1))}…`;
+}
+
+function compactEligibility(eligibility) {
+  if (!eligibility) return null;
+  return {
+    eligible: Boolean(eligibility.eligible),
+    state: eligibility.state,
+    ...(eligibility.conflict
+      ? {
+          conflict: {
+            agent: eligibility.conflict.agent,
+            scope: eligibility.conflict.scope,
+            task: clipText(eligibility.conflict.task, 180),
+            expiresAt: eligibility.conflict.expiresAt,
+          },
+        }
+      : {}),
+    ...(Array.isArray(eligibility.dependencies)
+      ? {
+          dependencies: eligibility.dependencies.slice(0, 10).map((dependency) => ({
+            id: dependency.id,
+            title: clipText(dependency.title, 140),
+            status: dependency.status,
+          })),
+        }
+      : {}),
+  };
+}
+
+function compactResult(result, maximum = 1200) {
+  if (!result) return null;
+  return {
+    outcome: result.outcome,
+    summary: clipText(result.summary, maximum),
+    changedPaths: (result.changedPaths ?? []).slice(0, 10),
+    tests: (result.tests ?? []).slice(0, 5).map((item) => clipText(item, 240)),
+    nextSteps: (result.nextSteps ?? []).slice(0, 5).map((item) => clipText(item, 240)),
+    needsUserInput: Boolean(result.needsUserInput),
+  };
+}
+
+function projectTask(task, detail = "status", eligibility = null) {
+  const base = {
+    id: task.id,
+    title: clipText(task.title, 180),
+    targetAgent: task.targetAgent,
+    status: task.status,
+    scope: task.scope,
+    priority: task.priority,
+    eligibility: compactEligibility(eligibility),
+    backgroundAuthorized: task.backgroundAuthorized,
+    runId: task.runId,
+    attempt: task.attempt,
+    maxAttempts: task.maxAttempts,
+    leaseExpiresAt: task.leaseExpiresAt,
+    error: task.error ? clipText(task.error, 400) : null,
+    updatedAt: task.updatedAt,
+    startedAt: task.startedAt,
+    completedAt: task.completedAt,
+  };
+  if (detail === "status") return base;
+  return {
+    ...base,
+    rootId: task.rootId,
+    parentId: task.parentId,
+    createdByAgent: task.createdByAgent,
+    mode: task.mode,
+    instructions: clipText(task.instructions, 800),
+    acceptanceCriteria: (task.acceptanceCriteria ?? [])
+      .slice(0, 10)
+      .map((item) => clipText(item, 240)),
+    depth: task.depth,
+    maxDepth: task.maxDepth,
+    timeoutSeconds: task.timeoutSeconds,
+    resultHandoffId: task.resultHandoffId,
+    result: compactResult(task.result),
+    createdAt: task.createdAt,
+  };
+}
+
+function projectTaskListItem(task, eligibility = null) {
+  return {
+    id: task.id,
+    title: clipText(task.title, 180),
+    targetAgent: task.targetAgent,
+    status: task.status,
+    scope: task.scope,
+    priority: task.priority,
+    eligibility: compactEligibility(eligibility),
+    updatedAt: task.updatedAt,
+  };
+}
+
+function projectRun(run) {
+  if (!run) return null;
+  return {
+    id: run.id,
+    agent: run.agent,
+    status: run.status,
+    workerPid: run.workerPid ?? run.worker_pid,
+    childPid: run.childPid ?? run.child_pid,
+    externalSessionId: run.externalSessionId ?? run.external_session_id,
+    attempt: run.attempt,
+    startedAt: run.startedAt ?? run.started_at,
+    heartbeatAt: run.heartbeatAt ?? run.heartbeat_at,
+    endedAt: run.endedAt ?? run.ended_at,
+    exitCode: run.exitCode ?? run.exit_code,
+    error: run.error ? clipText(run.error, 400) : null,
   };
 }
 
@@ -367,7 +483,10 @@ export function delegateTask(store, context, input = {}) {
   }
   const scope = normalizeScope(input.scope, store.root);
   const acceptanceCriteria = Array.isArray(input.acceptance_criteria)
-    ? input.acceptance_criteria.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 30)
+    ? input.acceptance_criteria
+        .map((item) => clipText(item, 500))
+        .filter(Boolean)
+        .slice(0, 10)
     : [];
   const mode = input.mode === "edit" ? "edit" : "analyze";
   const priority = clampInteger(input.priority, 0, 3, 1);
@@ -392,6 +511,9 @@ export function delegateTask(store, context, input = {}) {
   const dependsOn = Array.isArray(input.depends_on)
     ? [...new Set(input.depends_on.map(String).filter(Boolean))]
     : [];
+  if (dependsOn.length > 8) {
+    throw new Error("depends_on admite como máximo 8 dependencias");
+  }
   const taskId = crypto.randomUUID();
   const createdAt = nowIso();
   let rootId = taskId;
@@ -652,23 +774,35 @@ export function listDelegatedTasks(store, input = {}, context = {}) {
       LIMIT ?
     `)
     .all(...parameters);
+  const detail = ["summary", "full"].includes(input.detail)
+    ? input.detail
+    : "status";
   return {
-    tasks: rows.map((row) => ({
-      ...hydrateTask(row),
-      eligibility: taskEligibility(store, row),
-    })),
+    tasks: rows.map((row) => {
+      const task = hydrateTask(row);
+      const eligibility = taskEligibility(store, row);
+      return detail === "full"
+        ? { ...task, eligibility }
+        : detail === "summary"
+          ? projectTask(task, "summary", eligibility)
+          : projectTaskListItem(task, eligibility);
+    }),
   };
 }
 
-export function getDelegatedTask(store, taskId) {
+export function getDelegatedTask(store, taskId, options = {}) {
   const row = store.db.prepare("SELECT * FROM delegated_tasks WHERE id = ?").get(taskId);
   if (!row) throw new Error(`No existe la tarea ${taskId}`);
+  const detail = ["status", "summary", "full"].includes(options.detail)
+    ? options.detail
+    : "full";
+  const runLimit = detail === "full" ? 10 : detail === "summary" ? 3 : 1;
   const runs = store.db
     .prepare(`
       SELECT * FROM task_runs WHERE task_id = ?
-      ORDER BY started_at DESC LIMIT 10
+      ORDER BY started_at DESC LIMIT ?
     `)
-    .all(taskId)
+    .all(taskId, runLimit)
     .map((run) => ({
       id: run.id,
       agent: run.agent,
@@ -685,13 +819,34 @@ export function getDelegatedTask(store, taskId) {
       exitCode: run.exit_code,
       error: run.error,
     }));
+  const task = hydrateTask(row);
+  const eligibility = taskEligibility(store, row);
+  const counts = store.db
+    .prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM task_dependencies WHERE task_id = ?) AS dependencies,
+        (SELECT COUNT(*) FROM delegated_tasks WHERE parent_id = ?) AS children,
+        (SELECT COUNT(*) FROM task_runs WHERE task_id = ?) AS runs,
+        (SELECT COUNT(*) FROM task_events WHERE task_id = ?) AS events
+    `)
+    .get(taskId, taskId, taskId, taskId);
+
+  if (detail === "status") {
+    return {
+      task: projectTask(task, "status", eligibility),
+      runs: runs.map(projectRun),
+      counts,
+    };
+  }
+
+  const eventLimit = detail === "full" ? 50 : 5;
   const events = store.db
     .prepare(`
       SELECT event, agent, session_id, payload_json, created_at
       FROM task_events WHERE task_id = ?
-      ORDER BY id DESC LIMIT 50
+      ORDER BY id DESC LIMIT ?
     `)
-    .all(taskId)
+    .all(taskId, eventLimit)
     .map((event) => ({
       event: event.event,
       agent: event.agent,
@@ -699,14 +854,48 @@ export function getDelegatedTask(store, taskId) {
       payload: safeJsonParse(event.payload_json),
       createdAt: event.created_at,
     }));
+  const dependencies = dependenciesFor(store, taskId);
+  const children = store.db
+    .prepare("SELECT * FROM delegated_tasks WHERE parent_id = ? ORDER BY created_at")
+    .all(taskId)
+    .map(hydrateTask);
+
+  if (detail === "summary") {
+    return {
+      task: projectTask(task, "summary", eligibility),
+      dependencies: dependencies
+        .slice(0, 10)
+        .map((dependency) =>
+          projectTask(dependency, "status", taskEligibility(
+            store,
+            store.db.prepare("SELECT * FROM delegated_tasks WHERE id = ?").get(dependency.id),
+          )),
+        ),
+      children: children
+        .slice(0, 10)
+        .map((child) =>
+          projectTask(child, "status", taskEligibility(
+            store,
+            store.db.prepare("SELECT * FROM delegated_tasks WHERE id = ?").get(child.id),
+          )),
+        ),
+      runs: runs.map(projectRun),
+      events: events.map((event) => ({
+        event: event.event,
+        agent: event.agent,
+        sessionId: event.sessionId,
+        payloadPreview: clipText(JSON.stringify(event.payload ?? {}), 500),
+        createdAt: event.createdAt,
+      })),
+      counts,
+    };
+  }
+
   return {
-    task: hydrateTask(row),
-    eligibility: taskEligibility(store, row),
-    dependencies: dependenciesFor(store, taskId),
-    children: store.db
-      .prepare("SELECT * FROM delegated_tasks WHERE parent_id = ? ORDER BY created_at")
-      .all(taskId)
-      .map(hydrateTask),
+    task,
+    eligibility,
+    dependencies,
+    children,
     runs,
     events,
   };
@@ -880,13 +1069,15 @@ export function completeDelegatedTask(store, context, input = {}) {
     outcome: ["completed", "partial", "blocked", "failed"].includes(input.outcome)
       ? input.outcome
       : "completed",
-    summary: redactObviousSecrets(boundedText(input.summary, 16000, "summary")),
+    summary: redactObviousSecrets(boundedText(input.summary, 4000, "summary")),
     changedPaths: normalizeArtifactPaths(input.changed_paths, store.root),
     tests: Array.isArray(input.tests)
-      ? input.tests.map(redactObviousSecrets).slice(0, 100)
+      ? input.tests.map((item) => clipText(redactObviousSecrets(item), 500)).slice(0, 20)
       : [],
     nextSteps: Array.isArray(input.next_steps)
-      ? input.next_steps.map(redactObviousSecrets).slice(0, 100)
+      ? input.next_steps
+          .map((item) => clipText(redactObviousSecrets(item), 500))
+          .slice(0, 20)
       : [],
     needsUserInput: Boolean(input.needs_user_input),
   };
@@ -1661,7 +1852,7 @@ export function setRunPaths(store, runId, input = {}) {
 }
 
 export function taskInstructionsForRunner(store, taskId) {
-  const details = getDelegatedTask(store, taskId);
+  const details = getDelegatedTask(store, taskId, { detail: "full" });
   return details;
 }
 

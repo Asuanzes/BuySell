@@ -386,7 +386,9 @@
       "flight_fallback": "Flight",
       "transfer_fallback": "Transfer",
       "view_hotel": "View hotel",
-      "view_flight": "View flight"
+      "view_flight": "View flight",
+      "row_transport_return": "Return flight",
+      "view_return_flight": "Book return"
     },
     "job": {
       "row_company": "Company",
@@ -511,7 +513,20 @@
     "err_missing_destination": "Destination missing",
     "err_missing_hotel": "Accommodation missing",
     "err_missing_flight": "Flight missing",
-    "err_book": "Couldn't book the trip"
+    "err_book": "Couldn't book the trip",
+    "ai_search": "AI search · ±2 day flexibility",
+    "ai_search_note": "Explores nearby dates and separate tickets to find lower prices. If you pick different dates, accommodation is searched again.",
+    "ai_result_title": "AI search",
+    "ai_savings": "−{{pct}}% vs standard",
+    "ai_baseline": "Standard search: {{price}}",
+    "ai_new_dates": "Dates: {{dates}}",
+    "ai_lands": "Lands on {{date}} at {{time}}",
+    "ai_split_title": "2 separate bookings",
+    "ai_split_warning": "Two independent one-way tickets: no connection protection and no through baggage.",
+    "ai_dates_moved": "Trip moves to {{dates}}.",
+    "ai_hotel_gone": "The chosen accommodation is not available on the new dates. Pick another one.",
+    "ai_partial": "Partial search: the query budget ran out before exploring every date.",
+    "ai_degraded_quota": "No quota for AI search today; showing the standard search."
   },
   "travel": {
     "services": "Amenities",

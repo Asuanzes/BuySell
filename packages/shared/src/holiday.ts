@@ -136,8 +136,17 @@ export interface HolidayTripMeta {
   tripType?: string | null;
   /** Ocupación por habitación (alojamiento). */
   occupancy?: TravelOccupancy[] | null;
-  /** Desplazamiento elegido. */
+  /** Desplazamiento elegido (la IDA, o el billete i/v completo). */
   transport?: TransportLeg | null;
+  /**
+   * VUELTA de un billete "partido": cuando la búsqueda inteligente encuentra
+   * más barato comprar dos solo-idas independientes, la segunda vive aquí para
+   * no perder su enlace de reserva (son dos compras distintas).
+   *
+   * ⚠️ Su `priceCents` va a null a propósito: el importe conjunto ya está en
+   * `transport.priceCents`, y duplicarlo doblaría el total del viaje.
+   */
+  transportReturn?: TransportLeg | null;
   /** Traslado aeropuerto↔alojamiento (estimado; sin proveedor en vivo aún). */
   transfer?: TransportLeg | null;
   /** Alojamiento elegido. */

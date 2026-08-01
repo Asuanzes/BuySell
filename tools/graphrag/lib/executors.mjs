@@ -176,6 +176,13 @@ export function executorAvailability() {
   return result;
 }
 
+function promptExcerpt(value, maximum = 500) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length <= maximum
+    ? text
+    : `${text.slice(0, Math.max(0, maximum - 1))}…`;
+}
+
 export function buildTaskPrompt(task, dependencies = []) {
   const acceptance = Array.isArray(task.acceptanceCriteria)
     ? task.acceptanceCriteria
@@ -194,12 +201,18 @@ export function buildTaskPrompt(task, dependencies = []) {
     acceptance.length ? `\nCRITERIOS DE ACEPTACIÓN:\n- ${acceptance.join("\n- ")}` : "",
     dependencies.length
       ? `\nDEPENDENCIAS COMPLETADAS:\n- ${dependencies
-          .map((dependency) => `${dependency.id}: ${dependency.result?.summary ?? dependency.title}`)
+          .slice(0, 5)
+          .map(
+            (dependency) =>
+              `${dependency.id}: ${promptExcerpt(
+                dependency.result?.summary ?? dependency.title,
+              )}`,
+          )
           .join("\n- ")}`
       : "",
     "",
     "PROTOCOLO OBLIGATORIO:",
-    "1. Usa nidokey-graph y ejecuta session_context con el objetivo de esta tarea.",
+    `1. Usa nidokey-graph y ejecuta session_context con el objetivo de esta tarea y context_key="${task.id}".`,
     "2. El runner ya ha reservado el ámbito; no reclames de nuevo la misma ruta.",
     `3. No leas ni modifiques fuera de ${task.scope}, salvo archivos mínimos necesarios para comprender imports o ejecutar pruebas.`,
     "4. Verifica las citas del grafo en el código actual.",
@@ -306,13 +319,21 @@ function normalizeTaskOutput(candidate) {
       outcome: ["completed", "partial", "blocked", "failed"].includes(candidate.outcome)
         ? candidate.outcome
         : "partial",
-      summary: candidate.summary,
+      summary: promptExcerpt(candidate.summary, 4000),
       changedPaths: Array.isArray(candidate.changedPaths)
-        ? candidate.changedPaths.map(String)
+        ? candidate.changedPaths
+            .map((item) => promptExcerpt(item, 1000))
+            .slice(0, 50)
         : [],
-      tests: Array.isArray(candidate.tests) ? candidate.tests.map(String) : [],
+      tests: Array.isArray(candidate.tests)
+        ? candidate.tests
+            .map((item) => promptExcerpt(item, 500))
+            .slice(0, 20)
+        : [],
       nextSteps: Array.isArray(candidate.nextSteps)
-        ? candidate.nextSteps.map(String)
+        ? candidate.nextSteps
+            .map((item) => promptExcerpt(item, 500))
+            .slice(0, 20)
         : [],
       needsUserInput: Boolean(candidate.needsUserInput),
     };

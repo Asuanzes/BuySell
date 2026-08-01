@@ -10,7 +10,7 @@
     "summary": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 16000
+      "maxLength": 4000
     },
     "changedPaths": {
       "type": "array",
@@ -19,25 +19,25 @@
         "minLength": 1,
         "maxLength": 1000
       },
-      "maxItems": 100
+      "maxItems": 50
     },
     "tests": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 2000
+        "maxLength": 500
       },
-      "maxItems": 100
+      "maxItems": 20
     },
     "nextSteps": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 2000
+        "maxLength": 500
       },
-      "maxItems": 100
+      "maxItems": 20
     },
     "needsUserInput": {
       "type": "boolean"

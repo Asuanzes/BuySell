@@ -386,7 +386,9 @@
       "flight_fallback": "Vuelo",
       "transfer_fallback": "Traslado",
       "view_hotel": "Ver hotel",
-      "view_flight": "Ver vuelo"
+      "view_flight": "Ver vuelo",
+      "row_transport_return": "Vuelo de vuelta",
+      "view_return_flight": "Reservar vuelta"
     },
     "job": {
       "row_company": "Empresa",
@@ -511,7 +513,20 @@
     "err_missing_destination": "Falta el destino",
     "err_missing_hotel": "Falta el alojamiento",
     "err_missing_flight": "Falta el vuelo",
-    "err_book": "No se pudo reservar el viaje"
+    "err_book": "No se pudo reservar el viaje",
+    "ai_search": "Buscar con IA · fechas ±2 días",
+    "ai_search_note": "Explora fechas cercanas y billetes por separado para encontrar precios más bajos. Si eliges otras fechas, se vuelve a buscar alojamiento.",
+    "ai_result_title": "Búsqueda con IA",
+    "ai_savings": "−{{pct}}% vs normal",
+    "ai_baseline": "Búsqueda normal: {{price}}",
+    "ai_new_dates": "Fechas: {{dates}}",
+    "ai_lands": "Llega el {{date}} a las {{time}}",
+    "ai_split_title": "2 reservas separadas",
+    "ai_split_warning": "Dos billetes de ida independientes: sin protección de conexión ni equipaje unificado.",
+    "ai_dates_moved": "El viaje pasa a {{dates}}.",
+    "ai_hotel_gone": "El alojamiento elegido no está disponible en las fechas nuevas. Elige otro.",
+    "ai_partial": "Búsqueda parcial: se agotó el presupuesto de consultas antes de explorar todas las fechas.",
+    "ai_degraded_quota": "Sin cuota para la búsqueda con IA hoy; se muestra la búsqueda normal."
   },
   "travel": {
     "services": "Servicios",

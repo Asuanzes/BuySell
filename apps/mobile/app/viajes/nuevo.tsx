@@ -67,8 +67,23 @@ type FlightOption = {
   flightNumber: string | null;
   departISO: string | null;
   returnISO: string | null;
+  returnArriveISO: string | null;
   stops: number;
   bookUrl: string;
+  // ── solo con "Buscar con IA" (ver src/features/travel/flight-search.ts) ──
+  ticketType?: "single" | "split";
+  bookUrls?: string[];
+  dateShift?: { depart: number; return: number | null };
+  savingsPct?: number | null;
+  returnAirline?: string | null;
+};
+/** Bloque `ai` de la respuesta: baseline, presupuesto gastado y resumen. */
+type AiInfo = {
+  baselineCents: number | null;
+  duffelCalls: { max: number; used: number };
+  partial: boolean;
+  degraded: "quota" | "no_dates" | null;
+  summary: string | null;
 };
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -99,6 +114,11 @@ function todayISO(): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+/** Desplaza "YYYY-MM-DD" n días. UTC: inmune al horario de verano. */
+function shiftISO(iso: string, days: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 /** "2026-07-15" → "15 jul" / "15 Jul". TZ-safe (no usa new Date sobre el ISO);
  *  el mes corto sale del locale del calendario activo. */
 function fmtDay(iso: string, lang: CalendarLang): string {
@@ -125,7 +145,7 @@ function rangeMarks(start: string, end: string, color: string, textColor: string
 
 export default function NewTrip() {
   const { th } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Locale del calendario sincronizado con el idioma; también alimenta fmtDay y
   // se usa como `key` del <Calendar> (fuerza remount al cambiar idioma).
   const calLang = useCalendarLocale();
@@ -200,6 +220,17 @@ export default function NewTrip() {
   // Paso 3
   const [flights, setFlights] = useState<FlightOption[]>([]);
   const [flight, setFlight] = useState<FlightOption | null>(null);
+  // Búsqueda inteligente: apagada por defecto (gasta cuota diaria de Duffel).
+  const [aiSearch, setAiSearch] = useState(false);
+  const [aiInfo, setAiInfo] = useState<AiInfo | null>(null);
+  /** Aviso cuando un vuelo desplaza las fechas y hay que rehacer el alojamiento. */
+  const [datesMoved, setDatesMoved] = useState<string | null>(null);
+  /**
+   * Fechas con las que se lanzó la búsqueda. Los `dateShift` que devuelve el
+   * servidor son relativos a ESTAS, no a las del viaje: sin esta referencia,
+   * elegir dos vuelos desplazados seguidos acumularía los saltos.
+   */
+  const [searchDates, setSearchDates] = useState<{ start: string; end: string } | null>(null);
 
   // Resultado de reserva (modal app-styled, sustituye al Alert nativo).
   const [booked, setBooked] = useState<{ id: string | null; hotelRef: string; flightRef: string | null } | null>(null);
@@ -238,6 +269,20 @@ export default function NewTrip() {
     }
   }
 
+  /** Consulta de alojamiento para unas fechas concretas (sin tocar estado). */
+  async function fetchHotels(start: string, end: string) {
+    // Coordenadas preferente (independiente del idioma del nombre).
+    const qs = new URLSearchParams({ checkin: start, checkout: end });
+    qs.set("occupancies", JSON.stringify(rooms.map((r) => ({ adults: r.adults, children: r.children }))));
+    if (dest?.lat != null && dest?.lng != null) {
+      qs.set("lat", String(dest.lat));
+      qs.set("lng", String(dest.lng));
+    }
+    if (dest?.countryCode) qs.set("countryCode", dest.countryCode);
+    if (dest?.cityName) qs.set("cityName", dest.cityName);
+    return api<{ items: HotelItem[]; reason?: string }>(`/api/travel/hotels?${qs.toString()}`);
+  }
+
   async function loadHotels() {
     if (!dest) {
       setError(t("trip.err_destination"));
@@ -250,18 +295,7 @@ export default function NewTrip() {
     setLoading(true);
     setError(null);
     try {
-      // Coordenadas preferente (independiente del idioma del nombre).
-      const qs = new URLSearchParams({ checkin: startISO, checkout: endISO });
-      qs.set("occupancies", JSON.stringify(rooms.map((r) => ({ adults: r.adults, children: r.children }))));
-      if (dest.lat != null && dest.lng != null) {
-        qs.set("lat", String(dest.lat));
-        qs.set("lng", String(dest.lng));
-      }
-      if (dest.countryCode) qs.set("countryCode", dest.countryCode);
-      if (dest.cityName) qs.set("cityName", dest.cityName);
-      const { items, reason } = await api<{ items: HotelItem[]; reason?: string }>(
-        `/api/travel/hotels?${qs.toString()}`
-      );
+      const { items, reason } = await fetchHotels(startISO, endISO);
       setHotels(items);
       setHotelsReason(reason ?? null);
       setHotel(null);
@@ -276,6 +310,9 @@ export default function NewTrip() {
   async function loadFlight() {
     setLoading(true);
     setError(null);
+    setAiInfo(null);
+    setDatesMoved(null);
+    setSearchDates({ start: startISO, end: endISO });
     try {
       if (origin.trim().length === 3 && dest?.iata) {
         const fq = new URLSearchParams({
@@ -286,9 +323,16 @@ export default function NewTrip() {
           adults: String(totalAdults),
         });
         if (allChildAges.length) fq.set("children", allChildAges.join(","));
-        const { items } = await api<{ items: FlightOption[] }>(`/api/travel/flights?${fq.toString()}`);
+        if (aiSearch) {
+          fq.set("aiSearch", "1");
+          fq.set("lang", i18n.language.startsWith("en") ? "en" : "es");
+        }
+        const { items, ai } = await api<{ items: FlightOption[]; ai?: AiInfo }>(`/api/travel/flights?${fq.toString()}`);
         setFlights(items);
-        setFlight(items[0] ?? null); // pre-selecciona el más barato; el usuario cambia
+        setAiInfo(ai ?? null);
+        // Sin IA se preselecciona el más barato. Con IA NO: el primero puede
+        // mover las fechas del viaje, y eso lo decide el usuario a propósito.
+        setFlight(aiSearch ? null : items[0] ?? null);
       } else {
         setFlights([]);
         setFlight(null);
@@ -300,6 +344,55 @@ export default function NewTrip() {
       setLoading(false);
       setStep(3);
     }
+  }
+
+  /** Fechas de referencia de los `dateShift` (las de la última búsqueda). */
+  const baseDates = searchDates ?? { start: startISO, end: endISO };
+
+  /**
+   * Mueve el VIAJE ENTERO a unas fechas: vuelve a consultar alojamiento y trata
+   * de conservar el hotel elegido. Si ese hotel ya no está disponible en las
+   * fechas nuevas, se vuelve al paso 2 en vez de dejar una reserva incoherente.
+   */
+  async function applyTripDates(start: string, end: string) {
+    setDatesMoved(start !== baseDates.start || end !== baseDates.end ? `${fmtDay(start, calLang)} → ${fmtDay(end, calLang)}` : null);
+    if (start === startISO && end === endISO) return; // nada que rehacer
+    setStartISO(start);
+    setEndISO(end);
+    if (!wantHotel) return;
+
+    setLoading(true);
+    try {
+      const { items, reason } = await fetchHotels(start, end);
+      setHotels(items);
+      setHotelsReason(reason ?? null);
+      const same = hotel ? items.find((h) => h.hotelId === hotel.hotelId) : null;
+      if (same) {
+        setHotel(same); // mismo hotel, precio de las fechas nuevas
+        setRoomLabel(null); // la habitación elegida se re-elige en el modal
+      } else if (hotel) {
+        setHotel(null);
+        setError(t("trip.ai_hotel_gone"));
+        setStep(2);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("trip.err_load_hotels"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /** Elige un vuelo; si la IA lo encontró en otras fechas, el viaje se mueve. */
+  async function chooseFlight(f: FlightOption) {
+    setFlight(f);
+    const s = f.dateShift;
+    await applyTripDates(shiftISO(baseDates.start, s?.depart ?? 0), shiftISO(baseDates.end, s?.return ?? s?.depart ?? 0));
+  }
+
+  /** Quitar la selección devuelve el viaje a las fechas que pidió el usuario. */
+  async function clearFlight() {
+    setFlight(null);
+    await applyTripDates(baseDates.start, baseDates.end);
   }
 
   // Navegación dependiente del paquete: salta los pasos que no aplican.
@@ -370,6 +463,22 @@ export default function NewTrip() {
           affiliateUrl: flight.bookUrl,
         }
       : null;
+    // Billete partido: la vuelta es OTRA compra. Se guarda con su enlace propio
+    // y SIN precio (el importe conjunto ya está en `transport`, no se duplica).
+    const transportReturn: TransportLeg | null =
+      flight?.ticketType === "split" && flight.bookUrls?.[1]
+        ? {
+            mode: "flight",
+            provider: flight.returnAirline ?? flight.airline,
+            from: dest.iata,
+            to: origin.trim().toUpperCase(),
+            departISO: flight.returnISO,
+            arriveISO: flight.returnArriveISO,
+            priceCents: null,
+            currency: flight.currency,
+            affiliateUrl: flight.bookUrls[1],
+          }
+        : null;
     const transfer: TransportLeg | null = wantTransfer
       ? {
           mode: "car",
@@ -392,6 +501,7 @@ export default function NewTrip() {
       tripType,
       occupancy: rooms.map((r) => ({ adults: r.adults, children: r.children })),
       transport,
+      transportReturn,
       transfer,
       accommodation,
       imageUrl: hotel?.thumbnail ?? null,
@@ -453,18 +563,64 @@ export default function NewTrip() {
     const sel = sameFlight(flight, f);
     const stopsLabel = f.stops === 0 ? t("trip.direct") : t("trip.stops", { count: f.stops });
     const time = f.departISO ? f.departISO.slice(11, 16) : null;
+    const split = f.ticketType === "split";
+    const moved = f.dateShift && (f.dateShift.depart !== 0 || (f.dateShift.return ?? 0) !== 0);
+    // El desplazamiento es relativo a lo que pidió el usuario, así que se aplica
+    // sobre las fechas ORIGINALES, no sobre las ya movidas por otra selección.
+    const shownDates =
+      moved && f.dateShift
+        ? `${fmtDay(shiftISO(baseDates.start, f.dateShift.depart), calLang)} → ${fmtDay(
+            shiftISO(baseDates.end, f.dateShift.return ?? f.dateShift.depart),
+            calLang
+          )}`
+        : null;
+    // Un nocturno aterriza al día siguiente: se enseña la fecha real de llegada.
+    const landsLater =
+      f.returnISO && f.returnArriveISO && f.returnArriveISO.slice(0, 10) !== f.returnISO.slice(0, 10)
+        ? f.returnArriveISO
+        : null;
     return (
       <Pressable
         key={f.offerId ?? `${f.airline}|${f.departISO}|${f.priceCents}`}
-        onPress={() => setFlight(sel ? null : f)}
-        style={[styles.flightRow, { backgroundColor: th.surface, borderColor: sel ? th.accent : th.border, borderWidth: sel ? 2 : 1 }]}
+        onPress={() => void (sel ? clearFlight() : chooseFlight(f))}
+        style={[styles.flightCard, { backgroundColor: th.surface, borderColor: sel ? th.accent : th.border, borderWidth: sel ? 2 : 1 }]}
       >
-        <Ionicons name="airplane" size={18} color={th.textSubtle} />
-        <View style={styles.flex}>
-          <Text style={{ color: th.text, fontFamily: fonts.bodySemibold }} numberOfLines={1}>{f.airline ?? t("detail.holiday.flight_fallback")}</Text>
-          <Text style={{ color: th.textSubtle, fontSize: 12 }}>{[time, stopsLabel].filter(Boolean).join(" · ")}</Text>
+        <View style={styles.flightTop}>
+          <Ionicons name="airplane" size={18} color={th.textSubtle} />
+          <View style={styles.flex}>
+            <Text style={{ color: th.text, fontFamily: fonts.bodySemibold }} numberOfLines={1}>
+              {[f.airline ?? t("detail.holiday.flight_fallback"), split && f.returnAirline && f.returnAirline !== f.airline ? f.returnAirline : null]
+                .filter(Boolean)
+                .join(" + ")}
+            </Text>
+            <Text style={{ color: th.textSubtle, fontSize: 12 }}>{[time, stopsLabel].filter(Boolean).join(" · ")}</Text>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={{ color: th.accent, fontFamily: fonts.bodyBold }}>{formatMoney(f.priceCents, f.currency)}</Text>
+            {f.savingsPct != null && f.savingsPct > 0 ? (
+              <View style={[styles.savingsBadge, { backgroundColor: th.accentSoft }]}>
+                <Text style={{ color: th.accent, fontSize: 11, fontFamily: fonts.bodyBold }}>
+                  {t("trip.ai_savings", { pct: f.savingsPct })}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </View>
-        <Text style={{ color: th.accent, fontFamily: fonts.bodyBold }}>{formatMoney(f.priceCents, f.currency)}</Text>
+        {shownDates ? (
+          <Text style={{ color: th.textMuted, fontSize: 12 }}>
+            <Ionicons name="calendar-outline" size={12} color={th.textMuted} /> {t("trip.ai_new_dates", { dates: shownDates })}
+          </Text>
+        ) : null}
+        {landsLater ? (
+          <Text style={{ color: th.textSubtle, fontSize: 11 }}>
+            {t("trip.ai_lands", { date: fmtDay(landsLater.slice(0, 10), calLang), time: landsLater.slice(11, 16) })}
+          </Text>
+        ) : null}
+        {split ? (
+          <Text style={{ color: th.dangerFg, fontSize: 11 }}>
+            <Ionicons name="warning-outline" size={11} color={th.dangerFg} /> {t("trip.ai_split_warning")}
+          </Text>
+        ) : null}
       </Pressable>
     );
   }
@@ -629,6 +785,25 @@ export default function NewTrip() {
               />
             </View>
 
+            {wantFlight && (
+              <Pressable
+                onPress={() => setAiSearch((v) => !v)}
+                style={[styles.aiToggle, { borderColor: aiSearch ? th.accent : th.border, backgroundColor: aiSearch ? th.accentSoft : th.surface }]}
+              >
+                <Ionicons
+                  name={aiSearch ? "checkbox" : "square-outline"}
+                  size={20}
+                  color={aiSearch ? th.accent : th.textMuted}
+                />
+                <View style={styles.flex}>
+                  <Text style={{ color: aiSearch ? th.accent : th.text, fontFamily: fonts.bodySemibold, fontSize: 13 }}>
+                    {t("trip.ai_search")}
+                  </Text>
+                  <Text style={{ color: th.textSubtle, fontSize: 11 }}>{t("trip.ai_search_note")}</Text>
+                </View>
+              </Pressable>
+            )}
+
             <Text style={[styles.label, { color: th.textMuted, marginTop: 6 }]}>{t("trip.travelers_rooms")}</Text>
             <Text style={{ color: th.textSubtle, fontSize: 12 }}>{occSummary}</Text>
             {rooms.map((r, i) => (
@@ -702,6 +877,30 @@ export default function NewTrip() {
         {/* ── Paso 3: desplazamiento (lista seleccionable) ── */}
         {step === 3 && (
           <View style={{ gap: 8 }}>
+            {aiInfo ? (
+              <View style={[styles.card, { backgroundColor: th.surface, borderColor: th.border, gap: 6 }]}>
+                <View style={styles.aiHeader}>
+                  <Ionicons name="sparkles-outline" size={15} color={th.accent} />
+                  <Text style={{ color: th.accent, fontSize: 12, fontFamily: fonts.bodyBold }}>{t("trip.ai_result_title")}</Text>
+                </View>
+                {aiInfo.summary ? <Text style={{ color: th.text, fontSize: 13 }}>{aiInfo.summary}</Text> : null}
+                {aiInfo.baselineCents != null ? (
+                  <Text style={{ color: th.textSubtle, fontSize: 11 }}>
+                    {t("trip.ai_baseline", { price: formatMoney(aiInfo.baselineCents, "EUR") })}
+                  </Text>
+                ) : null}
+                {aiInfo.degraded === "quota" ? (
+                  <Text style={{ color: th.dangerFg, fontSize: 11 }}>{t("trip.ai_degraded_quota")}</Text>
+                ) : aiInfo.partial ? (
+                  <Text style={{ color: th.textSubtle, fontSize: 11 }}>{t("trip.ai_partial")}</Text>
+                ) : null}
+              </View>
+            ) : null}
+            {datesMoved ? (
+              <Text style={{ color: th.accent, fontSize: 12, fontFamily: fonts.bodySemibold }}>
+                {t("trip.ai_dates_moved", { dates: datesMoved })}
+              </Text>
+            ) : null}
             {flights.length === 0 ? (
               <Text style={{ color: th.textSubtle }}>
                 {t("trip.no_flights")}
@@ -710,7 +909,7 @@ export default function NewTrip() {
               <>
                 {flightCard(flight)}
                 {flights.length > 1 ? (
-                  <Pressable onPress={() => setFlight(null)} style={styles.linkRow}>
+                  <Pressable onPress={() => void clearFlight()} style={styles.linkRow}>
                     <Ionicons name="swap-horizontal" size={16} color={th.accent} />
                     <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("trip.view_other_flights", { count: flights.length })}</Text>
                   </Pressable>
@@ -784,9 +983,15 @@ export default function NewTrip() {
                       flight.stops === 0 ? t("trip.direct") : t("trip.stops", { count: flight.stops }),
                     ].filter(Boolean).join(" · ")}
                   </Text>
+                  {flight.ticketType === "split" ? (
+                    <Text style={{ color: th.dangerFg, fontSize: 11 }}>{t("trip.ai_split_title")}</Text>
+                  ) : null}
                 </View>
                 <Text style={{ color: th.accent, fontFamily: fonts.bodyBold }}>{formatMoney(flight.priceCents, flight.currency)}</Text>
               </View>
+            ) : null}
+            {flight?.ticketType === "split" ? (
+              <Text style={{ color: th.textSubtle, fontSize: 11 }}>{t("trip.ai_split_warning")}</Text>
             ) : null}
 
             {/* Traslado (estimado) */}
@@ -970,7 +1175,11 @@ const styles = StyleSheet.create({
   row: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 2 },
   chip: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, alignSelf: "flex-start" },
   hotelRow: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 10, padding: 8 },
-  flightRow: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 10, padding: 12 },
+  flightCard: { borderRadius: 10, padding: 12, gap: 6 },
+  flightTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  savingsBadge: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, marginTop: 3 },
+  aiToggle: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 6 },
+  aiHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
   linkRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 6 },
   hotelThumb: { width: 56, height: 56, borderRadius: 8 },
   card: { borderWidth: 1, borderRadius: 10, padding: 14, gap: 4 },

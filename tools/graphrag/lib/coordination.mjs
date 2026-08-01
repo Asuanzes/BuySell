@@ -337,9 +337,14 @@ export function releaseSessionClaims(store, context) {
   }
 }
 
-export function activeWork(store) {
+export function activeWork(store, options = {}) {
   store.withImmediateTransaction(() => expireClaims(store));
   const activeSince = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const includeHistory = options.includeHistory === true;
+  const historyLimit = Math.min(
+    Math.max(Number(options.historyLimit ?? 1), 1),
+    10,
+  );
   return {
     agents: store.db
       .prepare(`
@@ -347,7 +352,7 @@ export function activeWork(store) {
                current_task, delegated_task_id, parent_session_id,
                status, last_seen_at, metadata_json
         FROM agent_sessions
-        WHERE last_seen_at > ?
+        WHERE last_seen_at > ? AND status != 'disconnected'
         ORDER BY last_seen_at DESC
       `)
       .all(activeSince)
@@ -371,26 +376,30 @@ export function activeWork(store) {
         ORDER BY created_at
       `)
       .all(nowIso()),
-    decisions: store.db
-      .prepare(`
-        SELECT id, agent, session_id, title, rationale, paths_json, created_at
-        FROM decisions ORDER BY created_at DESC LIMIT 10
-      `)
-      .all()
-      .map((row) => ({ ...row, paths: safeJsonParse(row.paths_json, []) })),
-    handoffs: store.db
-      .prepare(`
-        SELECT id, agent, session_id, summary, paths_json, tests_json,
-               next_steps_json, created_at
-        FROM handoffs ORDER BY created_at DESC LIMIT 10
-      `)
-      .all()
-      .map((row) => ({
-        ...row,
-        paths: safeJsonParse(row.paths_json, []),
-        tests: safeJsonParse(row.tests_json, []),
-        nextSteps: safeJsonParse(row.next_steps_json, []),
-      })),
+    decisions: includeHistory
+      ? store.db
+          .prepare(`
+            SELECT id, agent, session_id, title, rationale, paths_json, created_at
+            FROM decisions ORDER BY created_at DESC LIMIT ?
+          `)
+          .all(historyLimit)
+          .map((row) => ({ ...row, paths: safeJsonParse(row.paths_json, []) }))
+      : [],
+    handoffs: includeHistory
+      ? store.db
+          .prepare(`
+            SELECT id, agent, session_id, summary, paths_json, tests_json,
+                   next_steps_json, created_at
+            FROM handoffs ORDER BY created_at DESC LIMIT ?
+          `)
+          .all(historyLimit)
+          .map((row) => ({
+            ...row,
+            paths: safeJsonParse(row.paths_json, []),
+            tests: safeJsonParse(row.tests_json, []),
+            nextSteps: safeJsonParse(row.next_steps_json, []),
+          }))
+      : [],
   };
 }
 

@@ -43,21 +43,40 @@ verificación.
 
 ## Presupuesto de contexto
 
-`session_context` usa un modo compacto con un máximo estricto de 6.000
-caracteres (aproximadamente 1.500 tokens):
+Todas las herramientas de lectura tienen un presupuesto propio y siempre
+devuelven JSON válido. Los valores predeterminados son:
 
-- cuatro resultados relevantes por defecto y como máximo seis;
+| Respuesta | Presupuesto |
+| --- | ---: |
+| `session_context` | 4.000 caracteres |
+| `list_delegated_tasks` | 4.000 |
+| `get_delegated_task` (`status` / `summary`) | 3.000 / 6.000 |
+| `active_work` | 5.000 |
+| `graph_search` | 10.000 |
+
+`session_context` usa un modo incremental:
+
+- dos resultados relevantes por defecto y como máximo seis;
 - sesiones agrupadas por agente, sin metadatos repetidos;
 - una decisión y un handoff recientes, ambos resumidos;
-- hasta cinco tareas de bandeja y tres ejecuciones activas;
+- únicamente tareas no terminales asignadas al agente;
 - sin listados de tipos de nodo, tests históricos ni instrucciones completas;
-- una segunda llamada para la misma tarea devuelve solo un aviso breve.
+- la primera llamada hace el bootstrap; las siguientes entregan cambios;
+- `context_key` permite reconocer una tarea aunque cambie su redacción;
+- `force_context: true` fuerza excepcionalmente un bootstrap completo.
 
 Los detalles no desaparecen: se recuperan bajo demanda mediante `graph_search`,
 `get_node`, `trace_relationships`, `impact_analysis`, `active_work` o
-`get_delegated_task`. El índice se refresca al abrir la sesión; `session_context`
-no repite ese recorrido salvo que se pase `refresh: true` o haya fallado el
-refresco inicial.
+`get_delegated_task`. Las tareas usan `detail: "status"` por defecto,
+`detail: "summary"` para una entrega acotada y `detail: "full"` solo para una
+auditoría explícita. `graph_search` devuelve exactamente `max_results`, omite
+metadatos por defecto y limita las relaciones. `get_node` devuelve cuatro
+coincidencias por defecto (o hasta ocho) y permite recuperar metadatos con
+`include_metadata: true`; `trace_relationships` e `impact_analysis` limitan
+nodos y relaciones estructuralmente y marcan `truncated` cuando hay más
+contexto disponible. El índice se refresca al abrir la sesión;
+`session_context` no repite ese recorrido salvo que se pase `refresh: true` o
+haya fallado el refresco inicial.
 
 ## Comandos
 
@@ -84,8 +103,8 @@ También hay scripts `npm run graphrag:*`.
 | --- | --- |
 | `session_context` | Bootstrap de tarea: actualiza y recupera contexto, trabajo, decisiones y handoffs |
 | `delegate_task` | Delega al otro agente con ámbito, dependencias y límites |
-| `list_delegated_tasks` | Bandeja y tablero de tareas |
-| `get_delegated_task` | Detalle, hijos, eventos, ejecuciones y resultado |
+| `list_delegated_tasks` | Bandeja compacta; detalle completo solo bajo demanda |
+| `get_delegated_task` | Estado, resumen o auditoría completa mediante `detail` |
 | `claim_delegated_task` | Acepta una tarea en la sesión actual |
 | `complete_delegated_task` | Persiste TaskOutput y handoff, y libera el ámbito |
 | `cancel_delegated_task` | Cancela cola o solicita parar el PID registrado |
@@ -93,11 +112,11 @@ También hay scripts `npm run graphrag:*`.
 | `orchestration_status` | Capacidad, procesos y disponibilidad de ejecutores |
 | `graph_status` | Cobertura y antigüedad del índice |
 | `refresh_index` | Actualización incremental por hash |
-| `graph_search` | Recuperación y expansión del grafo |
+| `graph_search` | Recuperación acotada; metadatos y relaciones son optativos |
 | `get_node` | Símbolo, archivo o entidad concreta |
 | `trace_relationships` | Recorrido estructural |
 | `impact_analysis` | Consumidores afectados por un cambio |
-| `active_work` | Agentes, claims, decisiones y handoffs |
+| `active_work` | Trabajo activo; historial solo con `include_history: true` |
 | `claim_scope` | Reserva temporal de archivo/directorio |
 | `release_claim` | Liberación de reserva |
 | `record_decision` | Decisión técnica enlazada al código |
@@ -127,7 +146,8 @@ También hay scripts `npm run graphrag:*`.
 4. El runner reserva el ámbito y lanza el CLI permitido mediante argumentos
    separados, nunca mediante un comando de shell construido con el prompt.
 5. El proceso renueva su lease, registra PID y eventos y produce un resultado
-   validado por `task-output.schema.json`.
+   validado por `task-output.schema.json`; el resumen está limitado a 4.000
+   caracteres y los artefactos extensos se referencian mediante rutas.
 6. La finalización crea un handoff y relaciones `DELEGATED`, `ASSIGNED_TO`,
    `CHILD_OF`, `DEPENDS_ON`, `SCOPES` y `PRODUCED`.
 7. Si el proceso falla, se reintenta dentro del presupuesto. Si necesita
@@ -142,6 +162,10 @@ Límites por defecto:
 - idempotencia y huella de duplicados;
 - cancelación dirigida únicamente al proceso registrado.
 - máximo de 3 raíces activas autorizadas en segundo plano.
+
+Para seguimiento frecuente usa `orchestration_status`. Consulta
+`get_delegated_task` con `detail: "status"` solo cuando necesites el estado de
+una tarea concreta; evita sondear repetidamente `summary` o `full`.
 
 Las tareas de análisis usan sandbox de solo lectura. En tareas `edit`, Codex
 limita su raíz escribible al directorio delegado; Claude arranca desde ese mismo

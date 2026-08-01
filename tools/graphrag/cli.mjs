@@ -70,7 +70,13 @@ try {
     case "query":
     case "search":
       if (!store.metadata("last_indexed_at")) refreshIndex(store);
-      result = graphSearch(store, { query: args.join(" "), max_results: 10, max_hops: 1 });
+      result = graphSearch(store, {
+        query: args.join(" "),
+        max_results: 10,
+        max_hops: 1,
+        max_relations: 20,
+        include_metadata: true,
+      });
       break;
     case "get":
     case "trace":
@@ -82,13 +88,13 @@ try {
       result = impactAnalysis(store, { reference: args.join(" "), depth: 3 });
       break;
     case "active":
-      result = activeWork(store);
+      result = activeWork(store, { includeHistory: true, historyLimit: 10 });
       break;
     case "tasks":
-      result = listDelegatedTasks(store, { limit: 100 });
+      result = listDelegatedTasks(store, { limit: 100, detail: "full" });
       break;
     case "task":
-      result = getDelegatedTask(store, args[0]);
+      result = getDelegatedTask(store, args[0], { detail: "full" });
       break;
     case "orchestrator":
       result = { ...orchestrationStatus(store), executors: executorAvailability() };
