@@ -21,7 +21,7 @@ con chat integrado. Un "registro" es cualquier cosa que el usuario sigue:
 | `crypto` / `market` | Cripto y mercado (precios vía cron GitHub Actions + `CRON_SECRET`) |
 | `book` | Libros (ISBN: Open Library primero, Google respaldo; nunca scraping Amazon) |
 | `job` | Empleos multiportal gratis y sin clave: InfoJobs + Tecnoempleo vía Jina + 6 APIs de remoto con «solo remoto» (`docs/jobs-ingestion.md`) |
-| `holiday` | Viajes (Travelpayouts: vuelos OK, hoteles pendientes; marker 536869) |
+| `holiday` | Viajes: vuelos con motor de **coste total verificable** (Duffel en vivo + SSE; ver `docs/VUELOS-IA.md`), hoteles LiteAPI; marker 536869 |
 | `food` | Comida a domicilio (diseño cerrado en `docs/diseno-vertical-comida.md`; menús vía Crawl4AI+Groq) |
 | `trends` | Tendencias RSS (keyless: trends24+Jina, Google News, HN, Twitch; ver `docs/TRENDS.md`) |
 | `workout` | Entrenos |
@@ -162,6 +162,7 @@ push los limpian con `stripRecordLinks`. Nombre protegido contra suplantación
 - `docs/OPERACIONES.md` — deploy, pagos test→live, backups, rollback, checklist de lanzamiento
 - `docs/ANALITICA.md` — catálogo de eventos, embudo, métricas
 - `docs/ALERTAS.md` — alertas de precio (cripto/mercados/inmuebles): tipos, rearme, cuotas
+- `docs/VUELOS-IA.md` — **motor de vuelos**: candidatos, presupuesto, coste total, streaming SSE
 - `docs/diseno-vertical-comida.md` — diseño cerrado del vertical comida
 - `docs/TRENDS.md` — vertical tendencias
 - `docs/auditoria-riesgos-mejoras.html` — auditoría técnica P0–P3 (jun-2026; P0/P1 resueltos jul-2026)

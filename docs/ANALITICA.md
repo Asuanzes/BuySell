@@ -36,6 +36,45 @@ Reglas para añadir eventos: nombre `snake_case` (`^[a-z0-9_.]{2,60}$`), props
 solo escalares (string ≤120 / number / boolean), documentarlo AQUÍ en el mismo
 PR que lo emite.
 
+## Búsqueda de vuelos
+
+El motor de vuelos ([docs/VUELOS-IA.md](VUELOS-IA.md)) se mide en **dos sitios
+distintos**, y conviene no confundirlos.
+
+### Ya instrumentado: `SearchDiagnostics`
+
+Viaja dentro de la respuesta de cada búsqueda (`search.completed`) y **no se
+persiste**: sirve para depurar una búsqueda concreta, no para agregar.
+
+| Campo | Qué mide |
+| --- | --- |
+| `candidatesGenerated` / `AfterConstraints` / `Truncated` | cobertura de candidatos y cuánto se recortó |
+| `candidatesVerified` | cuántos llegaron a la fase de pago |
+| `providerCalls.duffel` | llamadas, errores, latencia p50 y máxima |
+| `timeToFirstOfferMs` | latencia hasta el primer resultado en pantalla |
+| `timeToBestOfferMs` | latencia hasta el mejor resultado |
+| `expiredOffers` | ofertas caducadas al cerrar |
+| `explorationSlots` + `seed` | huecos de exploración y semilla (hace reproducible la búsqueda) |
+| `algoVersion` | versión del algoritmo que produjo el resultado |
+
+### Pendiente (fase 5): eventos agregables
+
+Nada de esto se emite todavía. Requiere la tabla `FlightObservation` y eventos
+en `lib/analytics.ts`:
+
+| Evento previsto | Props | Para qué |
+| --- | --- | --- |
+| `flight_search_start` | `ai` (bool), `hasReturn`, `travelers` | denominador del embudo |
+| `flight_search_result` | `ai`, `offers`, `partial`, `degraded`, `msToFirst`, `msToBest`, `calls` | rendimiento y cobertura |
+| `flight_saving_found` | `pct`, `absCents`, `structure` (round_trip/split/open_jaw), `movedDays` | **cuánto ahorra el motor de verdad** |
+| `flight_book_click` | `structure`, `confidence`, `selfTransfer` | tasa de clic en reserva |
+| `flight_offer_expired` | `secondsAlive` | tasa de ofertas caducadas |
+| `flight_revalidated` | `changed` (bool), `deltaCents` | % de revalidaciones exitosas |
+
+Sin PII, como el resto: ni ruta ni fechas concretas del viaje en las props — el
+itinerario es un dato personal y para analizar basta con la forma (estructura,
+días movidos, ahorro).
+
 ## Embudo
 
 1. **Adquisición** → visitas landing (Vercel Analytics) + instalaciones (consolas de las tiendas)

@@ -14,8 +14,12 @@
  * la búsqueda sigue con el orden determinista y sin resumen.
  */
 import { duffelSearchOffers } from "@/features/sources/providers/duffel";
-import { flightPriceCalendar, type TpResponse } from "@/features/sources/providers/travelpayouts";
+import { flightPriceCalendar } from "@/features/sources/providers/travelpayouts";
 import { extractJsonArray, llmText } from "@/lib/llm";
+// Una sola implementación del parseo de calendarios, la del motor nuevo. Antes
+// había una copia privada aquí y otra en normalize.ts: dos sitios donde
+// arreglar el mismo formato raro de Travelpayouts.
+import { parseCalendar } from "./normalize";
 import {
   AI_CANDIDATES,
   MIN_DAYS_STAY,
@@ -62,21 +66,6 @@ export type AiSearchResult = {
 /** "YYYY-MM-DD" de hoy (UTC). */
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Calendario de Travelpayouts → mínimo por día en CÉNTIMOS. La API ha devuelto
- * históricamente tanto `{fecha: 123.4}` como `{fecha: {price: 123.4}}`; se
- * aceptan ambas y se ignora lo que no sea un número.
- */
-function parseCalendar(resp: TpResponse): DayPrices {
-  const out: DayPrices = {};
-  const data = resp.data as Record<string, unknown> | undefined;
-  for (const [date, raw] of Object.entries(data ?? {})) {
-    const price = typeof raw === "number" ? raw : (raw as { price?: unknown } | null)?.price;
-    if (typeof price === "number" && Number.isFinite(price) && price > 0) out[date] = Math.round(price * 100);
-  }
-  return out;
 }
 
 const EMPTY_CALENDARS = { depart: {} as DayPrices, return: {} as DayPrices };
