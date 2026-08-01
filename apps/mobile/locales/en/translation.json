@@ -515,7 +515,6 @@
     "err_missing_flight": "Flight missing",
     "err_book": "Couldn't book the trip",
     "ai_search": "AI search · ±2 day flexibility",
-    "ai_search_note": "Explores nearby dates and separate tickets to find lower prices. If you pick different dates, accommodation is searched again.",
     "ai_result_title": "AI search",
     "ai_savings": "−{{pct}}% vs standard",
     "ai_baseline": "Standard search: {{price}}",
@@ -530,7 +529,16 @@
     "leg_out": "Out {{time}}",
     "leg_back": "Return {{date}} {{time}}",
     "err_flights": "The flight search could not be completed. Try again.",
-    "travelers": "Travelers"
+    "travelers": "Travelers",
+    "breakdown": "Breakdown",
+    "prices_are_total_one": "Total price for {{count}} traveller.",
+    "prices_are_total_other": "TOTAL prices for {{count}} travellers, not per person.",
+    "per_traveler_short": "≈ {{price}}/traveller",
+    "per_traveler_avg": "≈ {{price}} per traveller (average)",
+    "nights_one": "{{count}} night",
+    "nights_other": "{{count}} nights",
+    "round_trip": "Round trip",
+    "one_way": "One way"
   },
   "travel": {
     "services": "Amenities",

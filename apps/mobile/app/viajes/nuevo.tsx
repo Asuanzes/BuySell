@@ -127,6 +127,11 @@ function shiftISO(iso: string, days: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** Días de `a` a `b` (= noches de una estancia). */
+function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+
 /** "2026-07-15" → "15 jul" / "15 Jul". TZ-safe (no usa new Date sobre el ISO);
  *  el mes corto sale del locale del calendario activo. */
 function fmtDay(iso: string, lang: CalendarLang): string {
@@ -246,6 +251,19 @@ export default function NewTrip() {
 
   const transferCents = wantTransfer ? TRANSFER_ESTIMATE_CENTS : 0;
   const totalCents = (hotel?.priceCents ?? 0) + (flight?.priceCents ?? 0) + transferCents;
+  /**
+   * Todos los precios que enseñamos son TOTALES, no por persona: Duffel cobra
+   * `total_amount` por la oferta entera (mandamos un pasajero por viajero) y
+   * LiteAPI da el total de la estancia para la ocupación pedida.
+   * Por eso el reparto por viajero es una MEDIA y se etiqueta como tal: ninguno
+   * de los dos proveedores desglosa el precio pasajero a pasajero, y un niño no
+   * paga lo mismo que un adulto.
+   */
+  const travelers = Math.max(1, totalAdults + allChildAges.length);
+  const perTraveler = (cents: number) => Math.round(cents / travelers);
+  const perTravelerLabel = (cents: number) =>
+    t("trip.per_traveler_short", { price: formatMoney(perTraveler(cents), "EUR") });
+  const nights = startISO && endISO ? Math.max(0, daysBetween(startISO, endISO)) : 0;
 
   // Pasos activos según el paquete → para la etiqueta "Paso X de N".
   const activeSteps: number[] = [1, ...(wantHotel ? [2] : []), ...(wantFlight ? [3] : []), 4];
@@ -567,7 +585,10 @@ export default function NewTrip() {
             {sel && roomLabel ? <Text style={{ color: th.accent, fontSize: 12 }} numberOfLines={1}>{roomLabel}</Text> : null}
           </View>
           {sel ? <Ionicons name="checkmark-circle" size={18} color={th.accent} /> : null}
-          <Text style={{ color: th.accent, fontFamily: fonts.bodyBold }}>{formatMoney(h.priceCents, h.currency)}</Text>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={{ color: th.accent, fontFamily: fonts.bodyBold }}>{formatMoney(h.priceCents, h.currency)}</Text>
+            <Text style={{ color: th.textSubtle, fontSize: 10 }}>{perTravelerLabel(h.priceCents)}</Text>
+          </View>
         </Pressable>
         <Pressable onPress={() => setExploreHotel(h)} style={styles.linkRow} hitSlop={4}>
           <Ionicons name="information-circle-outline" size={15} color={th.accent} />
@@ -622,6 +643,7 @@ export default function NewTrip() {
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Text style={{ color: th.accent, fontFamily: fonts.bodyBold }}>{formatMoney(f.priceCents, f.currency)}</Text>
+            <Text style={{ color: th.textSubtle, fontSize: 10 }}>{perTravelerLabel(f.priceCents)}</Text>
             {f.savingsPct != null && f.savingsPct > 0 ? (
               <View style={[styles.savingsBadge, { backgroundColor: th.accentSoft }]}>
                 <Text style={{ color: th.accent, fontSize: 11, fontFamily: fonts.bodyBold }}>
@@ -691,6 +713,19 @@ export default function NewTrip() {
                 );
               })}
             </View>
+
+            {wantFlight && (
+              <Pressable
+                onPress={() => setAiSearch((v) => !v)}
+                style={[styles.aiToggle, { borderColor: aiSearch ? th.accent : th.border, backgroundColor: aiSearch ? th.accentSoft : th.surface }]}
+              >
+                <Ionicons name={aiSearch ? "checkbox" : "square-outline"} size={18} color={aiSearch ? th.accent : th.textMuted} />
+                <Text style={{ color: aiSearch ? th.accent : th.text, fontFamily: fonts.bodySemibold, fontSize: 12, flex: 1 }} numberOfLines={1}>
+                  {t("trip.ai_search")}
+                </Text>
+                <Ionicons name="sparkles-outline" size={14} color={aiSearch ? th.accent : th.textSubtle} />
+              </Pressable>
+            )}
 
             <Text style={[styles.label, { color: th.textMuted, marginTop: 6 }]}>{t("trip.destination")}</Text>
             {dest ? (
@@ -814,25 +849,6 @@ export default function NewTrip() {
                 }}
               />
             </View>
-
-            {wantFlight && (
-              <Pressable
-                onPress={() => setAiSearch((v) => !v)}
-                style={[styles.aiToggle, { borderColor: aiSearch ? th.accent : th.border, backgroundColor: aiSearch ? th.accentSoft : th.surface }]}
-              >
-                <Ionicons
-                  name={aiSearch ? "checkbox" : "square-outline"}
-                  size={20}
-                  color={aiSearch ? th.accent : th.textMuted}
-                />
-                <View style={styles.flex}>
-                  <Text style={{ color: aiSearch ? th.accent : th.text, fontFamily: fonts.bodySemibold, fontSize: 13 }}>
-                    {t("trip.ai_search")}
-                  </Text>
-                  <Text style={{ color: th.textSubtle, fontSize: 11 }}>{t("trip.ai_search_note")}</Text>
-                </View>
-              </Pressable>
-            )}
 
             <Text style={[styles.label, { color: th.textMuted, marginTop: 6 }]}>
               {wantHotel ? t("trip.travelers_rooms") : t("trip.travelers")}
@@ -1044,15 +1060,59 @@ export default function NewTrip() {
               </View>
             ) : null}
 
-            {/* Total (⚠️ NUNCA comisión aquí) */}
+            {/* Desglose + Total (⚠️ NUNCA comisión aquí) */}
             <View style={[styles.card, { backgroundColor: th.surface, borderColor: th.border }]}>
-              <View style={styles.totalRowTop}>
+              <Text style={[styles.label, { color: th.textMuted, marginBottom: 2 }]}>{t("trip.breakdown")}</Text>
+              <Text style={{ color: th.textSubtle, fontSize: 11, marginBottom: 6 }}>
+                {t("trip.prices_are_total", { count: travelers })}
+              </Text>
+
+              {hotel ? (
+                <BreakdownRow
+                  label={t("trip.summary_accommodation")}
+                  detail={[
+                    nights ? t("trip.nights", { count: nights }) : null,
+                    t("detail.holiday.rooms", { count: rooms.length }),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  cents={hotel.priceCents}
+                  perTravelerLabel={perTravelerLabel(hotel.priceCents)}
+                  th={th}
+                />
+              ) : null}
+              {flight ? (
+                <BreakdownRow
+                  label={t("trip.summary_flight")}
+                  detail={[
+                    flight.returnISO ? t("trip.round_trip") : t("trip.one_way"),
+                    flight.ticketType === "split" ? t("trip.ai_split_title") : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  cents={flight.priceCents}
+                  perTravelerLabel={perTravelerLabel(flight.priceCents)}
+                  th={th}
+                />
+              ) : null}
+              {wantTransfer ? (
+                <BreakdownRow
+                  label={t("trip.summary_transfer")}
+                  detail={t("trip.transfer_note")}
+                  cents={TRANSFER_ESTIMATE_CENTS}
+                  perTravelerLabel={perTravelerLabel(TRANSFER_ESTIMATE_CENTS)}
+                  th={th}
+                />
+              ) : null}
+
+              <View style={[styles.totalRow, { borderTopColor: th.border }]}>
                 <Text style={{ color: th.text, fontFamily: fonts.bodyBold }}>{t("trip.total")}</Text>
                 <Text style={{ color: th.accent, fontFamily: fonts.bodyBold, fontSize: 19 }}>{formatMoney(totalCents, "EUR")}</Text>
               </View>
-              <Text style={{ color: th.textSubtle, fontSize: 11 }}>
-                {t("trip.test_booking")}
+              <Text style={{ color: th.textMuted, fontSize: 12, textAlign: "right", fontFamily: fonts.bodySemibold }}>
+                {t("trip.per_traveler_avg", { price: formatMoney(perTraveler(totalCents), "EUR") })}
               </Text>
+              <Text style={{ color: th.textSubtle, fontSize: 11, marginTop: 6 }}>{t("trip.test_booking")}</Text>
             </View>
 
             <View style={styles.navRow}>
@@ -1119,6 +1179,34 @@ export default function NewTrip() {
 }
 
 type Th = ReturnType<typeof useTheme>["th"];
+
+/** Una línea del desglose: concepto + detalle · total · media por viajero. */
+function BreakdownRow({
+  label,
+  detail,
+  cents,
+  perTravelerLabel,
+  th,
+}: {
+  label: string;
+  detail?: string | null;
+  cents: number;
+  perTravelerLabel: string;
+  th: Th;
+}) {
+  return (
+    <View style={styles.breakdownRow}>
+      <View style={styles.flex}>
+        <Text style={{ color: th.text, fontSize: 13, fontFamily: fonts.bodySemibold }}>{label}</Text>
+        {detail ? <Text style={{ color: th.textSubtle, fontSize: 11 }}>{detail}</Text> : null}
+      </View>
+      <View style={{ alignItems: "flex-end" }}>
+        <Text style={{ color: th.text, fontSize: 13, fontFamily: fonts.bodySemibold }}>{formatMoney(cents, "EUR")}</Text>
+        <Text style={{ color: th.textSubtle, fontSize: 11 }}>{perTravelerLabel}</Text>
+      </View>
+    </View>
+  );
+}
 
 function Row({ k, v, th, accent }: { k: string; v: string; th: Th; accent?: boolean }) {
   return (
@@ -1213,13 +1301,14 @@ const styles = StyleSheet.create({
   flightCard: { borderRadius: 10, padding: 12, gap: 6 },
   flightTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   savingsBadge: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, marginTop: 3 },
-  aiToggle: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 6 },
+  aiToggle: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   aiHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
   linkRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 6 },
   hotelThumb: { width: 56, height: 56, borderRadius: 8 },
   card: { borderWidth: 1, borderRadius: 10, padding: 14, gap: 4 },
   kvRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 4 },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, paddingTop: 8, marginTop: 4 },
+  breakdownRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 5 },
   primaryBtn: { flex: 1, height: 48, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   ghostBtn: { height: 48, paddingHorizontal: 18, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   outlineBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 46, borderRadius: 10, borderWidth: 1 },

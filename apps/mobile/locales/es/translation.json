@@ -515,7 +515,6 @@
     "err_missing_flight": "Falta el vuelo",
     "err_book": "No se pudo reservar el viaje",
     "ai_search": "Buscar con IA · fechas ±2 días",
-    "ai_search_note": "Explora fechas cercanas y billetes por separado para encontrar precios más bajos. Si eliges otras fechas, se vuelve a buscar alojamiento.",
     "ai_result_title": "Búsqueda con IA",
     "ai_savings": "−{{pct}}% vs normal",
     "ai_baseline": "Búsqueda normal: {{price}}",
@@ -530,7 +529,16 @@
     "leg_out": "Ida {{time}}",
     "leg_back": "Vuelta {{date}} {{time}}",
     "err_flights": "No se pudo completar la búsqueda de vuelos. Inténtalo de nuevo.",
-    "travelers": "Viajeros"
+    "travelers": "Viajeros",
+    "breakdown": "Desglose",
+    "prices_are_total_one": "Precio total para {{count}} viajero.",
+    "prices_are_total_other": "Precios TOTALES para {{count}} viajeros, no por persona.",
+    "per_traveler_short": "≈ {{price}}/viajero",
+    "per_traveler_avg": "≈ {{price}} por viajero (media)",
+    "nights_one": "{{count}} noche",
+    "nights_other": "{{count}} noches",
+    "round_trip": "Ida y vuelta",
+    "one_way": "Solo ida"
   },
   "travel": {
     "services": "Servicios",
