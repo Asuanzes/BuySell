@@ -27,9 +27,8 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
-  withSequence,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
@@ -41,8 +40,10 @@ import { useReducedMotion } from "@/components/ui/ScreenBackground";
 /** Fases con barra de avance. Las finales cierran la barra entera. */
 const PHASE_ORDER: SearchPhase[] = ["planning", "scanning", "verifying"];
 
-/** Puntos de la dispersión. Suficientes para que parezca polvo, pocos para que vuele. */
-const DOTS = 18;
+/** Cuánto se retrasa cada carácter respecto al anterior, en fracción de la animación. */
+const STAGGER = 0.02;
+/** Retraso acumulado máximo: por encima, una frase larga tardaría una eternidad. */
+const MAX_STAGGER = 0.45;
 
 type Props = {
   state: SearchProgressState;
@@ -51,98 +52,130 @@ type Props = {
 };
 
 /* -------------------------------------------------------------------------- */
-/* Dispersión: los puntos salen despedidos y vuelven a su sitio.               */
+/* Desintegración: la propia frase se rompe en partículas y se rehace.         */
 /* -------------------------------------------------------------------------- */
 
-function Dot({ index, generation, color, reduceMotion }: { index: number; generation: number; color: string; reduceMotion: boolean }) {
-  // Dirección fija por punto: si cambiara en cada animación, la nube parecería
-  // hervir en vez de dispersarse.
-  const dir = useMemo(() => {
-    const angle = (index / DOTS) * Math.PI * 2 + index * 0.7;
-    const reach = 10 + ((index * 37) % 14);
-    return { x: Math.cos(angle) * reach, y: Math.sin(angle) * reach * 0.6 };
-  }, [index]);
+/** Constantes fijas por carácter: dirección, alcance y giro de su partícula. */
+type Particle = { char: string; dx: number; dy: number; rot: number; delay: number };
 
-  const t = useSharedValue(0);
-  const first = useRef(true);
-
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    if (reduceMotion) return;
-    // Escalonado por punto: salen y vuelven en oleada, no todos a la vez.
-    t.value = withDelay(
-      index * 12,
-      withSequence(
-        withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) }),
-        withTiming(0, { duration: 340, easing: Easing.out(Easing.cubic) })
-      )
-    );
-  }, [generation, reduceMotion, index, t]);
-
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: dir.x * t.value }, { translateY: dir.y * t.value }],
-    opacity: 0.25 + 0.75 * (1 - t.value),
-  }));
-
-  return <Animated.View style={[styles.dot, { backgroundColor: color }, style]} />;
+/**
+ * Reparte la frase en partículas. Cada carácter sale hacia un sitio distinto,
+ * pero SIEMPRE el mismo para ese carácter: si la dirección se sorteara en cada
+ * transición, la frase parecería temblar en vez de desintegrarse.
+ */
+function particlesOf(text: string): Particle[] {
+  const chars = [...text];
+  return chars.map((char, i) => {
+    // Dispersión pseudoaleatoria pero determinista: números primos sobre el
+    // índice dan un reparto que no se ve "en abanico" ni alineado.
+    const a = (i * 137.508 * Math.PI) / 180;
+    const reach = 18 + ((i * 61) % 26);
+    const stagger = Math.min(MAX_STAGGER, i * STAGGER);
+    return {
+      char,
+      dx: Math.cos(a) * reach,
+      dy: Math.sin(a) * reach - 6, // sesgo hacia arriba: se desvanece subiendo
+      rot: ((i % 7) - 3) * 14,
+      delay: stagger,
+    };
+  });
 }
 
-function DotBurst({ generation, color, reduceMotion }: { generation: number; color: string; reduceMotion: boolean }) {
+/**
+ * Un carácter. Todos leen el MISMO `progress` compartido y derivan su estado de
+ * él: una sola animación mueve la frase entera, en vez de una por letra.
+ * `progress` 0 = frase entera; 1 = polvo.
+ */
+function Char({ p, progress, color }: { p: Particle; progress: SharedValue<number>; color: string }) {
+  const style = useAnimatedStyle(() => {
+    // Cada letra consume su propio tramo de la animación → la frase se deshace
+    // en oleada, de izquierda a derecha, no de golpe.
+    const raw = (progress.value - p.delay) / (1 - MAX_STAGGER);
+    const t = Math.min(1, Math.max(0, raw));
+    return {
+      opacity: 1 - t,
+      transform: [
+        { translateX: p.dx * t },
+        { translateY: p.dy * t },
+        { rotate: `${p.rot * t}deg` },
+        // Encoge hasta ser una mota antes de desaparecer: es lo que convierte
+        // "la letra se va" en "la letra se deshace en un punto".
+        { scale: 1 - 0.82 * t },
+      ],
+    };
+  });
+  // El espacio necesita ancho propio: sin él las palabras se pegarían al
+  // renderizar carácter a carácter.
   return (
-    <View style={styles.dotRow} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {Array.from({ length: DOTS }, (_, i) => (
-        <Dot key={i} index={i} generation={generation} color={color} reduceMotion={reduceMotion} />
-      ))}
-    </View>
+    <Animated.Text style={[styles.char, { color }, p.char === " " && styles.space, style]} allowFontScaling={false}>
+      {p.char === " " ? " " : p.char}
+    </Animated.Text>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Una línea a la vez: la anterior se va, la siguiente entra.                  */
-/* -------------------------------------------------------------------------- */
-
-function SwappingLine({ text, color, reduceMotion }: { text: string; color: string; reduceMotion: boolean }) {
+function DisintegratingLine({
+  text,
+  generation,
+  color,
+  reduceMotion,
+}: {
+  text: string;
+  /** Cambia una vez por PROCESO. Es lo que dispara la desintegración. */
+  generation: number;
+  color: string;
+  reduceMotion: boolean;
+}) {
   const [shown, setShown] = useState(text);
-  const opacity = useSharedValue(1);
-  const offset = useSharedValue(0);
+  const progress = useSharedValue(0);
+  const particles = useMemo(() => particlesOf(shown), [shown]);
+  const gen = useRef(generation);
+  const rebuilding = useRef(false);
 
   useEffect(() => {
-    if (text === shown) return;
+    // MISMO proceso: lo único que cambia son los números ("34 alternativas" →
+    // "35 alternativas"). Se actualiza en silencio. Desintegrar la frase cada
+    // vez que sube un contador sería un parpadeo continuo, no un efecto.
+    if (generation === gen.current) {
+      if (text !== shown && !rebuilding.current) setShown(text);
+      return;
+    }
+    gen.current = generation;
     if (reduceMotion) {
       setShown(text);
       return;
     }
-    // Se desvanece hacia arriba y solo cuando ha terminado se cambia el texto:
-    // así nunca se ve el salto de una frase a otra a mitad de la transición.
-    opacity.value = withTiming(0, { duration: 180, easing: Easing.in(Easing.quad) }, (finished) => {
+    rebuilding.current = true;
+    // Se desintegra del todo y solo entonces se cambia el texto: así nunca se
+    // ve el salto de una frase a otra a mitad de la transición.
+    progress.value = withTiming(1, { duration: 420, easing: Easing.in(Easing.cubic) }, (finished) => {
       if (finished) runOnJS(setShown)(text);
     });
-    offset.value = withTiming(-6, { duration: 180 });
-  }, [text, shown, reduceMotion, opacity, offset]);
+  }, [text, generation, shown, reduceMotion, progress]);
 
   useEffect(() => {
+    if (!rebuilding.current) return;
+    rebuilding.current = false;
     if (reduceMotion) {
-      opacity.value = 1;
-      offset.value = 0;
+      progress.value = 0;
       return;
     }
-    offset.value = 8;
-    opacity.value = withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) });
-    offset.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.quad) });
-  }, [shown, reduceMotion, opacity, offset]);
-
-  const style = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: offset.value }] }));
+    // La frase nueva se rehace desde el polvo.
+    progress.value = 1;
+    progress.value = withTiming(0, { duration: 520, easing: Easing.out(Easing.cubic) });
+  }, [shown, reduceMotion, progress]);
 
   return (
-    <Animated.Text
-      style={[{ color, fontSize: 13, fontFamily: fonts.bodySemibold }, style]}
-      numberOfLines={2}
+    <View
+      style={styles.line}
+      // El lector de pantalla lee la frase entera de una vez; leer letra a letra
+      // sería inutilizable.
+      accessible
+      accessibilityLabel={shown}
     >
-      {shown}
-    </Animated.Text>
+      {particles.map((p, i) => (
+        <Char key={`${i}-${p.char}`} p={p} progress={progress} color={color} />
+      ))}
+    </View>
   );
 }
 
@@ -213,8 +246,15 @@ function FlightSearchProgressBase({ state, running, onStop }: Props) {
       </View>
 
       {/* ── La acción en curso, una a la vez ── */}
-      <SwappingLine text={phrase} color={done ? th.text : th.accent} reduceMotion={reduceMotion} />
-      {!done ? <DotBurst generation={activeIndex} color={th.accent} reduceMotion={reduceMotion} /> : null}
+      <DisintegratingLine
+        text={phrase}
+        // La generación es la FASE: cambia tres veces por búsqueda (planificar →
+        // comparar → verificar) y una cuarta al terminar. Un contador que sube
+        // no desintegra nada.
+        generation={done ? PHASE_ORDER.length : activeIndex}
+        color={done ? th.text : th.accent}
+        reduceMotion={reduceMotion}
+      />
 
       {/* ── Contadores reales ── */}
       <Text style={{ color: th.textMuted, fontSize: 12 }}>
@@ -303,8 +343,9 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 8 },
   bar: { flexDirection: "row", gap: 4 },
   barSegment: { flex: 1, height: 3, borderRadius: 2 },
-  dotRow: { flexDirection: "row", alignItems: "center", gap: 4, height: 8, marginTop: -2 },
-  dot: { width: 3, height: 3, borderRadius: 1.5 },
+  line: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", minHeight: 18 },
+  char: { fontSize: 13, fontFamily: fonts.bodySemibold },
+  space: { width: 4 },
   bestRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   stop: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
