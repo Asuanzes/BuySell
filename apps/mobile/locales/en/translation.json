@@ -526,7 +526,11 @@
     "ai_dates_moved": "Trip moves to {{dates}}.",
     "ai_hotel_gone": "The chosen accommodation is not available on the new dates. Pick another one.",
     "ai_partial": "Partial search: the query budget ran out before exploring every date.",
-    "ai_degraded_quota": "No quota for AI search today; showing the standard search."
+    "ai_degraded_quota": "No quota for AI search today; showing the standard search.",
+    "leg_out": "Out {{time}}",
+    "leg_back": "Return {{date}} {{time}}",
+    "err_flights": "The flight search could not be completed. Try again.",
+    "travelers": "Travelers"
   },
   "travel": {
     "services": "Amenities",

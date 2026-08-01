@@ -133,7 +133,9 @@ async function prioritize(shortlist: DatePair[], scoreOf: (p: DatePair) => numbe
       `Ten en cuenta el precio orientativo y el día de la semana (salir/volver en fin de semana suele encarecer). ` +
       `Devuelve SOLO un array JSON con TODOS los índices, p. ej. [2,0,1]. Idioma irrelevante: solo números. (${lang})`,
     maxTokens: 120,
-    timeoutMs: 8_000,
+    // Corto: esto va ANTES de Duffel en el camino crítico y solo reordena una
+    // lista que ya viene ordenada por precio. Si no contesta a tiempo, no pasa nada.
+    timeoutMs: 4_000,
   });
   const parsed = extractJsonArray(text);
   if (!parsed) return shortlist;
@@ -182,7 +184,7 @@ async function summarize(
         ? "In 2 short sentences, say what the cheapest option is and WHY it is cheaper (date shift, split ticket, airline). If a split ticket wins, warn that they are two separate bookings."
         : "En 2 frases cortas, di cuál es la opción más barata y POR QUÉ lo es (cambio de fechas, billete partido, aerolínea). Si gana un billete partido, avisa de que son dos reservas separadas."),
     maxTokens: 200,
-    timeoutMs: 10_000,
+    timeoutMs: 6_000,
   });
 }
 
@@ -232,51 +234,66 @@ export async function aiFlightSearch(
   });
 
   // ── Fase cara ──
+  // EN PARALELO, no en cadena. El presupuesto de DINERO ya lo fijó planDuffelJobs
+  // (los trabajos vienen recortados), así que lanzarlos a la vez no gasta ni una
+  // llamada de más — pero el de TIEMPO también manda: en serie, 6 búsquedas en
+  // vivo suman >20 s y el cliente móvil aborta antes de ver un solo vuelo.
   const { jobs, skipped } = planDuffelJobs(candidates, p.maxDuffelCalls);
   const singles: FlightOption[] = [];
   const outLegs: LegQuote[] = [];
   const backLegs: LegQuote[] = [];
   let baselineCents: number | null = null;
-  let used = 0;
+  const used = jobs.length; // la petición se cobra aunque falle: se cuentan todas
 
-  for (const job of jobs) {
-    used++; // la petición se cobra aunque falle: contarla ANTES es lo honesto
-    try {
-      if (job.kind === "single") {
-        const offers = await deps.searchOffers({
-          origin: p.origin,
-          destination: p.destination,
-          departDate: job.pair.depart,
-          returnDate: job.pair.return ?? undefined,
-          adults: p.adults,
-          childAges: p.childAges,
-        });
-        const bookUrl = aviasalesUrl(p.origin, p.destination, job.pair.depart, job.pair.return, pax);
-        const opts = duffelToOptions(offers, { origin: p.origin, destination: p.destination, bookUrl }).map((o) => ({
-          ...o,
-          ticketType: "single" as const,
-          bookUrls: [bookUrl],
-          dateShift: shiftOf(job.pair, exact),
-        }));
-        singles.push(...opts);
-        if (job.pair.depart === exact.depart && job.pair.return === exact.return && opts.length) {
-          baselineCents = Math.min(...opts.map((o) => o.priceCents));
-        }
-      } else {
-        const isOut = job.direction === "out";
-        const offers = await deps.searchOffers({
-          origin: isOut ? p.origin : p.destination,
-          destination: isOut ? p.destination : p.origin,
-          departDate: job.date,
-          adults: p.adults,
-          childAges: p.childAges,
-        });
-        const leg = offersToLeg(offers, job.date);
-        if (leg) (isOut ? outLegs : backLegs).push(leg);
+  const results = await Promise.all(
+    jobs.map(async (job) => {
+      try {
+        const offers =
+          job.kind === "single"
+            ? await deps.searchOffers({
+                origin: p.origin,
+                destination: p.destination,
+                departDate: job.pair.depart,
+                returnDate: job.pair.return ?? undefined,
+                adults: p.adults,
+                childAges: p.childAges,
+              })
+            : await deps.searchOffers({
+                origin: job.direction === "out" ? p.origin : p.destination,
+                destination: job.direction === "out" ? p.destination : p.origin,
+                departDate: job.date,
+                adults: p.adults,
+                childAges: p.childAges,
+              });
+        return { job, offers };
+      } catch (err) {
+        // Un candidato caído no tumba la búsqueda: se pierde esa variante y ya.
+        console.error("[ai-flights] duffel job:", JSON.stringify(job), err instanceof Error ? err.message : err);
+        return null;
       }
-    } catch (err) {
-      // Un candidato caído no tumba la búsqueda: se pierde esa variante y ya.
-      console.error("[ai-flights] duffel job:", JSON.stringify(job), err instanceof Error ? err.message : err);
+    })
+  );
+
+  // El reparto va aparte y EN ORDEN: así el resultado no depende de cuál de las
+  // peticiones concurrentes conteste antes.
+  for (const r of results) {
+    if (!r) continue;
+    const { job, offers } = r;
+    if (job.kind === "single") {
+      const bookUrl = aviasalesUrl(p.origin, p.destination, job.pair.depart, job.pair.return, pax);
+      const opts = duffelToOptions(offers, { origin: p.origin, destination: p.destination, bookUrl }).map((o) => ({
+        ...o,
+        ticketType: "single" as const,
+        bookUrls: [bookUrl],
+        dateShift: shiftOf(job.pair, exact),
+      }));
+      singles.push(...opts);
+      if (job.pair.depart === exact.depart && job.pair.return === exact.return && opts.length) {
+        baselineCents = Math.min(...opts.map((o) => o.priceCents));
+      }
+    } else {
+      const leg = offersToLeg(offers, job.date);
+      if (leg) (job.direction === "out" ? outLegs : backLegs).push(leg);
     }
   }
 

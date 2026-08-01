@@ -27,6 +27,12 @@ import {
  * src/features/travel/ai-search.ts. Sin él, el comportamiento es el de siempre.
  */
 
+/**
+ * La búsqueda IA lanza varias peticiones en vivo: sin esto la función se corta
+ * al límite por defecto y el cliente recibe un error donde había vuelos.
+ */
+export const maxDuration = 60;
+
 /** Tope diario de búsquedas EN VIVO por usuario (Duffel cobra por petición). */
 const DAILY_SEARCH_LIMIT = 50;
 const DAY_MS = 86_400_000;

@@ -55,6 +55,23 @@ const params = {
 };
 
 describe("aiFlightSearch", () => {
+  it("lanza las búsquedas de Duffel EN PARALELO, no en cadena", async () => {
+    // Regresión real (2026-08-01): en serie, 6 búsquedas en vivo sumaban más de
+    // los 20 s de timeout del cliente móvil y el usuario veía "sin vuelos".
+    let inFlight = 0;
+    let peak = 0;
+    const deps: AiSearchDeps = {
+      searchOffers: async (opts) => {
+        peak = Math.max(peak, ++inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return [offer("o", "200", opts.returnDate ? roundTrip(opts.departDate, opts.returnDate) : oneWay(opts.departDate))];
+      },
+    };
+    await aiFlightSearch(params, deps);
+    assert.ok(peak > 1, `las llamadas se encadenaron (concurrencia máxima ${peak})`);
+  });
+
   it("NUNCA supera el presupuesto de llamadas a Duffel", async () => {
     for (const maxDuffelCalls of [2, 3, 6, 12]) {
       const { calls, deps } = fakeDuffel(() => 200);

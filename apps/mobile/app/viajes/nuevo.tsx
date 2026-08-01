@@ -114,6 +114,14 @@ function todayISO(): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+/** Varias habitaciones → una sola lista de pasajeros (tope del buscador: 9 y 4). */
+function mergeRooms(rs: Room[]): Room {
+  return {
+    adults: Math.min(9, rs.reduce((s, r) => s + r.adults, 0)),
+    children: rs.flatMap((r) => r.children).slice(0, 4),
+  };
+}
+
 /** Desplaza "YYYY-MM-DD" n días. UTC: inmune al horario de verano. */
 function shiftISO(iso: string, days: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
@@ -173,9 +181,10 @@ export default function NewTrip() {
 
   const totalAdults = rooms.reduce((s, r) => s + r.adults, 0);
   const allChildAges = rooms.flatMap((r) => r.children);
-  // Mismos plurales que la ficha de viaje (detail.holiday.*).
+  // Mismos plurales que la ficha de viaje (detail.holiday.*). Sin alojamiento no
+  // se habla de habitaciones: en "Solo vuelo" solo hay pasajeros.
   const occSummary = [
-    t("detail.holiday.rooms", { count: rooms.length }),
+    wantHotel ? t("detail.holiday.rooms", { count: rooms.length }) : null,
     t("detail.holiday.adults", { count: totalAdults }),
     allChildAges.length ? t("detail.holiday.children", { count: allChildAges.length }) : null,
   ]
@@ -327,7 +336,13 @@ export default function NewTrip() {
           fq.set("aiSearch", "1");
           fq.set("lang", i18n.language.startsWith("en") ? "en" : "es");
         }
-        const { items, ai } = await api<{ items: FlightOption[]; ai?: AiInfo }>(`/api/travel/flights?${fq.toString()}`);
+        // La búsqueda IA lanza varias consultas en vivo: no cabe en los 20 s
+        // por defecto del cliente. Sin este margen el usuario ve "sin vuelos"
+        // cuando lo que hubo fue un corte por tiempo.
+        const { items, ai } = await api<{ items: FlightOption[]; ai?: AiInfo }>(
+          `/api/travel/flights?${fq.toString()}`,
+          aiSearch ? { timeoutMs: 55_000 } : undefined
+        );
         setFlights(items);
         setAiInfo(ai ?? null);
         // Sin IA se preselecciona el más barato. Con IA NO: el primero puede
@@ -337,9 +352,12 @@ export default function NewTrip() {
         setFlights([]);
         setFlight(null);
       }
-    } catch {
+    } catch (e) {
       setFlights([]);
-      setFlight(null); // sin vuelo, no bloquea
+      setFlight(null); // sin vuelo, no bloquea el viaje
+      // NO se muestra "no hay vuelos": la búsqueda FALLÓ, que es otra cosa.
+      // Confundirlas costó una tarde de depuración.
+      setError(e instanceof Error ? e.message : t("trip.err_flights"));
     } finally {
       setLoading(false);
       setStep(3);
@@ -593,7 +611,14 @@ export default function NewTrip() {
                 .filter(Boolean)
                 .join(" + ")}
             </Text>
-            <Text style={{ color: th.textSubtle, fontSize: 12 }}>{[time, stopsLabel].filter(Boolean).join(" · ")}</Text>
+            <Text style={{ color: th.textSubtle, fontSize: 12 }}>
+              {[t("trip.leg_out", { time: time ?? "—" }), stopsLabel].filter(Boolean).join(" · ")}
+            </Text>
+            {f.returnISO ? (
+              <Text style={{ color: th.textSubtle, fontSize: 12 }}>
+                {t("trip.leg_back", { date: fmtDay(f.returnISO.slice(0, 10), calLang), time: f.returnISO.slice(11, 16) })}
+              </Text>
+            ) : null}
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Text style={{ color: th.accent, fontFamily: fonts.bodyBold }}>{formatMoney(f.priceCents, f.currency)}</Text>
@@ -652,7 +677,12 @@ export default function NewTrip() {
                 return (
                   <Pressable
                     key={p.id}
-                    onPress={() => setPkg(p.id)}
+                    onPress={() => {
+                      setPkg(p.id);
+                      // Al quedarse sin alojamiento, las habitaciones dejan de
+                      // existir: se funden en una única lista de pasajeros.
+                      if (p.id === "flight") setRooms((rs) => (rs.length > 1 ? [mergeRooms(rs)] : rs));
+                    }}
                     style={[styles.pkgChip, { borderColor: on ? th.accent : th.border, backgroundColor: on ? th.accentSoft : th.surface }]}
                   >
                     <Ionicons name={p.icon} size={15} color={on ? th.accent : th.textMuted} />
@@ -804,18 +834,23 @@ export default function NewTrip() {
               </Pressable>
             )}
 
-            <Text style={[styles.label, { color: th.textMuted, marginTop: 6 }]}>{t("trip.travelers_rooms")}</Text>
+            <Text style={[styles.label, { color: th.textMuted, marginTop: 6 }]}>
+              {wantHotel ? t("trip.travelers_rooms") : t("trip.travelers")}
+            </Text>
             <Text style={{ color: th.textSubtle, fontSize: 12 }}>{occSummary}</Text>
             {rooms.map((r, i) => (
               <View key={i} style={[styles.roomCard, { backgroundColor: th.surface, borderColor: th.border }]}>
-                <View style={styles.roomHeader}>
-                  <Text style={{ color: th.text, fontFamily: fonts.bodyBold }}>{t("trip.room_n", { n: i + 1 })}</Text>
-                  {rooms.length > 1 ? (
-                    <Pressable onPress={() => removeRoom(i)} hitSlop={8}>
-                      <Ionicons name="trash-outline" size={18} color={th.dangerFg} />
-                    </Pressable>
-                  ) : null}
-                </View>
+                {/* Sin alojamiento no hay habitaciones: solo pasajeros del vuelo. */}
+                {wantHotel ? (
+                  <View style={styles.roomHeader}>
+                    <Text style={{ color: th.text, fontFamily: fonts.bodyBold }}>{t("trip.room_n", { n: i + 1 })}</Text>
+                    {rooms.length > 1 ? (
+                      <Pressable onPress={() => removeRoom(i)} hitSlop={8}>
+                        <Ionicons name="trash-outline" size={18} color={th.dangerFg} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Stepper label={t("trip.adults")} value={r.adults} onMinus={() => setAdults(i, -1)} onPlus={() => setAdults(i, 1)} th={th} />
                 <Stepper label={t("trip.children")} value={r.children.length} onMinus={() => setChildrenCount(i, -1)} onPlus={() => setChildrenCount(i, 1)} th={th} />
                 {r.children.length > 0 ? (
@@ -836,7 +871,7 @@ export default function NewTrip() {
                 ) : null}
               </View>
             ))}
-            {rooms.length < 4 ? (
+            {wantHotel && rooms.length < 4 ? (
               <Pressable onPress={addRoom} style={[styles.addRoomBtn, { borderColor: th.border }]}>
                 <Ionicons name="add" size={16} color={th.accent} />
                 <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("trip.add_room")}</Text>

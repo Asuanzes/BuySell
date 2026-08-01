@@ -526,7 +526,11 @@
     "ai_dates_moved": "El viaje pasa a {{dates}}.",
     "ai_hotel_gone": "El alojamiento elegido no está disponible en las fechas nuevas. Elige otro.",
     "ai_partial": "Búsqueda parcial: se agotó el presupuesto de consultas antes de explorar todas las fechas.",
-    "ai_degraded_quota": "Sin cuota para la búsqueda con IA hoy; se muestra la búsqueda normal."
+    "ai_degraded_quota": "Sin cuota para la búsqueda con IA hoy; se muestra la búsqueda normal.",
+    "leg_out": "Ida {{time}}",
+    "leg_back": "Vuelta {{date}} {{time}}",
+    "err_flights": "No se pudo completar la búsqueda de vuelos. Inténtalo de nuevo.",
+    "travelers": "Viajeros"
   },
   "travel": {
     "services": "Servicios",
