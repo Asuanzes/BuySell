@@ -34,19 +34,48 @@ async function throttle(ms = 300): Promise<void> {
   lastCall = Date.now();
 }
 
+/** Equipaje INCLUIDO en la tarifa (viene en la propia oferta, sin llamada extra). */
+export type DuffelBaggage = { type?: "checked" | "carry_on" | string; quantity?: number };
+
 export type DuffelSegment = {
   departing_at?: string;
   arriving_at?: string;
+  /** Duración ISO-8601 ("PT2H15M"). */
+  duration?: string;
+  origin?: { iata_code?: string };
+  destination?: { iata_code?: string };
   marketing_carrier?: { name?: string; iata_code?: string };
   marketing_carrier_flight_number?: string;
+  /** Equipaje por pasajero en ESTE segmento. */
+  passengers?: Array<{ baggages?: DuffelBaggage[] }>;
 };
+
+export type DuffelSlice = {
+  duration?: string;
+  origin?: { iata_code?: string };
+  destination?: { iata_code?: string };
+  segments?: DuffelSegment[];
+};
+
 export type DuffelOffer = {
   id: string;
   total_amount: string; // "144.91"
   total_currency: string; // "EUR"
+  /**
+   * Tarifa antes de tasas y tasas obligatorias. Duffel garantiza
+   * base + tax = total; el desglose del coste total los usa por separado y, si
+   * no vienen, los deriva del total (lo que se paga manda).
+   */
+  base_amount?: string | null;
+  tax_amount?: string | null;
+  /** Caducidad REAL de la oferta. Es lo que distingue "verificado" de "caducado". */
+  expires_at?: string | null;
   owner?: { name?: string; iata_code?: string };
-  slices?: Array<{ segments?: DuffelSegment[] }>;
+  slices?: DuffelSlice[];
 };
+
+/** Un trayecto de la búsqueda. Varios = ida y vuelta, u open-jaw. */
+export type DuffelSliceRequest = { origin: string; destination: string; departure_date: string };
 
 /**
  * POST /air/offer_requests?return_offers=true — búsqueda EN VIVO. `slices` =
@@ -61,13 +90,29 @@ export async function duffelSearchOffers(opts: {
   /** Edades de los niños (Duffel exige edad por pasajero infantil). */
   childAges?: number[];
   cabin?: "economy" | "premium_economy" | "business" | "first";
+  /**
+   * Trayectos explícitos. Si vienen, MANDAN sobre origin/destination/fechas: es
+   * la única forma de pedir un open-jaw (volver desde otro aeropuerto), que no
+   * se puede expresar con un par origen/destino.
+   */
+  slices?: DuffelSliceRequest[];
+  /** Escalas máximas por trayecto. Filtra en la aerolínea: no cuesta una llamada extra. */
+  maxConnections?: number;
+  /** Cancelación desde fuera (el usuario detiene la búsqueda). */
+  signal?: AbortSignal;
 }): Promise<DuffelOffer[]> {
   const o = opts.origin.toUpperCase();
   const d = opts.destination.toUpperCase();
-  const slices: Array<{ origin: string; destination: string; departure_date: string }> = [
-    { origin: o, destination: d, departure_date: opts.departDate },
-  ];
-  if (opts.returnDate) slices.push({ origin: d, destination: o, departure_date: opts.returnDate });
+  const slices: DuffelSliceRequest[] = opts.slices?.length
+    ? opts.slices.map((s) => ({
+        origin: s.origin.toUpperCase(),
+        destination: s.destination.toUpperCase(),
+        departure_date: s.departure_date,
+      }))
+    : [{ origin: o, destination: d, departure_date: opts.departDate }];
+  if (!opts.slices?.length && opts.returnDate) {
+    slices.push({ origin: d, destination: o, departure_date: opts.returnDate });
+  }
   // Duffel: adulto = {type:"adult"}; niño/bebé = {age: N}.
   const passengers: Array<{ type: "adult" } | { age: number }> = [
     ...Array.from({ length: Math.max(1, opts.adults ?? 1) }, () => ({ type: "adult" as const })),
@@ -83,9 +128,18 @@ export async function duffelSearchOffers(opts: {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ data: { slices, passengers, cabin_class: opts.cabin ?? "economy" } }),
+    body: JSON.stringify({
+      data: {
+        slices,
+        passengers,
+        cabin_class: opts.cabin ?? "economy",
+        ...(opts.maxConnections != null ? { max_connections: opts.maxConnections } : {}),
+      },
+    }),
     cache: "no-store",
-    signal: AbortSignal.timeout(25000),
+    // El timeout propio SIEMPRE está; la señal externa solo se suma. Si se
+    // cancelara únicamente por fuera, una búsqueda abandonada seguiría pagando.
+    signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(25000)]) : AbortSignal.timeout(25000),
   });
   const text = await res.text();
   if (!res.ok) {

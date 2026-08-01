@@ -1,0 +1,43 @@
+{
+  "calendarDeparture": {
+    "success": true,
+    "currency": "eur",
+    "data": {
+      "2026-09-08": 62.4,
+      "2026-09-09": 71.0,
+      "2026-09-10": 84.5,
+      "2026-09-11": 96.2,
+      "2026-09-12": 118.0,
+      "2026-09-13": 88.3,
+      "2026-09-14": 65.9
+    }
+  },
+
+  "calendarReturnNested": {
+    "success": true,
+    "currency": "eur",
+    "data": {
+      "2026-09-15": { "price": 74.0, "airline": "VY", "flight_number": 2810, "expires_at": "2026-09-03T00:00:00Z" },
+      "2026-09-16": { "price": 81.5, "airline": "IB", "flight_number": 1257, "expires_at": "2026-09-03T00:00:00Z" },
+      "2026-09-17": { "price": 92.0, "airline": "IB", "flight_number": 1257, "expires_at": "2026-09-03T00:00:00Z" },
+      "2026-09-18": { "price": 69.9, "airline": "FR", "flight_number": 6002, "expires_at": "2026-09-03T00:00:00Z" },
+      "2026-09-19": { "price": 105.0, "airline": "IB", "flight_number": 1299, "expires_at": "2026-09-03T00:00:00Z" }
+    }
+  },
+
+  "calendarEmpty": { "success": true, "currency": "eur", "data": {} },
+
+  "calendarDirty": {
+    "success": true,
+    "currency": "eur",
+    "data": {
+      "2026-09-08": 62.4,
+      "2026-09-09": null,
+      "2026-09-10": "no-es-un-numero",
+      "2026-09-11": 0,
+      "2026-09-12": -15,
+      "2026-09-13": { "airline": "VY" },
+      "2026-09-14": { "price": 65.9 }
+    }
+  }
+}

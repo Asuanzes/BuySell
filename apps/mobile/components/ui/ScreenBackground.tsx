@@ -92,7 +92,7 @@ export function ScreenBackground({ category, color }: Props) {
  *  y se suscribe a cambios. La pantalla puede saltar la animación de entrada
  *  cuando el sistema lo pide (iOS "Reduce Motion", Android "Remove animations").
  */
-function useReducedMotion(): boolean {
+export function useReducedMotion(): boolean {
   const [reduce, setReduce] = useState(false);
   useEffect(() => {
     let cancel = false;

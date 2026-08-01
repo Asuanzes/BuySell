@@ -1,0 +1,419 @@
+{
+  "roundTripDirect": {
+    "id": "off_fixture_rt_direct",
+    "total_amount": "144.91",
+    "total_currency": "EUR",
+    "base_amount": "120.00",
+    "tax_amount": "24.91",
+    "expires_at": "2026-09-01T10:20:00.000Z",
+    "owner": { "name": "Iberia", "iata_code": "IB" },
+    "slices": [
+      {
+        "duration": "PT1H20M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "BCN" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T08:00:00",
+            "arriving_at": "2026-09-10T09:20:00",
+            "duration": "PT1H20M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "BCN" },
+            "marketing_carrier": { "name": "Iberia", "iata_code": "IB" },
+            "marketing_carrier_flight_number": "1234",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      },
+      {
+        "duration": "PT1H25M",
+        "origin": { "iata_code": "BCN" },
+        "destination": { "iata_code": "MAD" },
+        "segments": [
+          {
+            "departing_at": "2026-09-17T19:00:00",
+            "arriving_at": "2026-09-17T20:25:00",
+            "duration": "PT1H25M",
+            "origin": { "iata_code": "BCN" },
+            "destination": { "iata_code": "MAD" },
+            "marketing_carrier": { "name": "Iberia", "iata_code": "IB" },
+            "marketing_carrier_flight_number": "1257",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "roundTripOneStop": {
+    "id": "off_fixture_rt_onestop",
+    "total_amount": "98.40",
+    "total_currency": "EUR",
+    "base_amount": "80.00",
+    "tax_amount": "18.40",
+    "expires_at": "2026-09-01T10:20:00.000Z",
+    "owner": { "name": "Vueling", "iata_code": "VY" },
+    "slices": [
+      {
+        "duration": "PT3H30M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "BCN" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T07:00:00",
+            "arriving_at": "2026-09-10T08:00:00",
+            "duration": "PT1H0M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "VLC" },
+            "marketing_carrier": { "name": "Vueling", "iata_code": "VY" },
+            "marketing_carrier_flight_number": "2101",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          },
+          {
+            "departing_at": "2026-09-10T09:30:00",
+            "arriving_at": "2026-09-10T10:30:00",
+            "duration": "PT1H0M",
+            "origin": { "iata_code": "VLC" },
+            "destination": { "iata_code": "BCN" },
+            "marketing_carrier": { "name": "Vueling", "iata_code": "VY" },
+            "marketing_carrier_flight_number": "2244",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      },
+      {
+        "duration": "PT1H25M",
+        "origin": { "iata_code": "BCN" },
+        "destination": { "iata_code": "MAD" },
+        "segments": [
+          {
+            "departing_at": "2026-09-17T18:00:00",
+            "arriving_at": "2026-09-17T19:25:00",
+            "duration": "PT1H25M",
+            "origin": { "iata_code": "BCN" },
+            "destination": { "iata_code": "MAD" },
+            "marketing_carrier": { "name": "Vueling", "iata_code": "VY" },
+            "marketing_carrier_flight_number": "2810",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "oneWayOut": {
+    "id": "off_fixture_ow_out",
+    "total_amount": "45.00",
+    "total_currency": "EUR",
+    "base_amount": "36.00",
+    "tax_amount": "9.00",
+    "expires_at": "2026-09-01T10:15:00.000Z",
+    "owner": { "name": "Ryanair", "iata_code": "FR" },
+    "slices": [
+      {
+        "duration": "PT1H15M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "BCN" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T06:30:00",
+            "arriving_at": "2026-09-10T07:45:00",
+            "duration": "PT1H15M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "BCN" },
+            "marketing_carrier": { "name": "Ryanair", "iata_code": "FR" },
+            "marketing_carrier_flight_number": "5412",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "oneWayBack": {
+    "id": "off_fixture_ow_back",
+    "total_amount": "52.30",
+    "total_currency": "EUR",
+    "base_amount": "42.00",
+    "tax_amount": "10.30",
+    "expires_at": "2026-09-01T10:40:00.000Z",
+    "owner": { "name": "Vueling", "iata_code": "VY" },
+    "slices": [
+      {
+        "duration": "PT1H20M",
+        "origin": { "iata_code": "BCN" },
+        "destination": { "iata_code": "MAD" },
+        "segments": [
+          {
+            "departing_at": "2026-09-17T21:10:00",
+            "arriving_at": "2026-09-17T22:30:00",
+            "duration": "PT1H20M",
+            "origin": { "iata_code": "BCN" },
+            "destination": { "iata_code": "MAD" },
+            "marketing_carrier": { "name": "Vueling", "iata_code": "VY" },
+            "marketing_carrier_flight_number": "2822",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "withCheckedBaggage": {
+    "id": "off_fixture_checked_bag",
+    "total_amount": "180.00",
+    "total_currency": "EUR",
+    "base_amount": "150.00",
+    "tax_amount": "30.00",
+    "expires_at": "2026-09-01T10:30:00.000Z",
+    "owner": { "name": "Iberia", "iata_code": "IB" },
+    "slices": [
+      {
+        "duration": "PT1H20M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "BCN" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T08:00:00",
+            "arriving_at": "2026-09-10T09:20:00",
+            "duration": "PT1H20M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "BCN" },
+            "marketing_carrier": { "name": "Iberia", "iata_code": "IB" },
+            "marketing_carrier_flight_number": "1234",
+            "passengers": [
+              { "baggages": [{ "type": "carry_on", "quantity": 1 }, { "type": "checked", "quantity": 1 }] }
+            ]
+          }
+        ]
+      },
+      {
+        "duration": "PT1H25M",
+        "origin": { "iata_code": "BCN" },
+        "destination": { "iata_code": "MAD" },
+        "segments": [
+          {
+            "departing_at": "2026-09-17T19:00:00",
+            "arriving_at": "2026-09-17T20:25:00",
+            "duration": "PT1H25M",
+            "origin": { "iata_code": "BCN" },
+            "destination": { "iata_code": "MAD" },
+            "marketing_carrier": { "name": "Iberia", "iata_code": "IB" },
+            "marketing_carrier_flight_number": "1257",
+            "passengers": [
+              { "baggages": [{ "type": "carry_on", "quantity": 1 }, { "type": "checked", "quantity": 1 }] }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+
+  "expiredOffer": {
+    "id": "off_fixture_expired",
+    "total_amount": "99.00",
+    "total_currency": "EUR",
+    "base_amount": "82.00",
+    "tax_amount": "17.00",
+    "expires_at": "2020-01-01T00:00:00.000Z",
+    "owner": { "name": "Iberia", "iata_code": "IB" },
+    "slices": [
+      {
+        "duration": "PT1H20M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "BCN" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T08:00:00",
+            "arriving_at": "2026-09-10T09:20:00",
+            "duration": "PT1H20M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "BCN" },
+            "marketing_carrier": { "name": "Iberia", "iata_code": "IB" },
+            "marketing_carrier_flight_number": "1234",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "foreignCurrency": {
+    "id": "off_fixture_gbp",
+    "total_amount": "120.00",
+    "total_currency": "GBP",
+    "base_amount": "100.00",
+    "tax_amount": "20.00",
+    "expires_at": "2026-09-01T10:20:00.000Z",
+    "owner": { "name": "British Airways", "iata_code": "BA" },
+    "slices": [
+      {
+        "duration": "PT2H10M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "BCN" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T08:00:00",
+            "arriving_at": "2026-09-10T10:10:00",
+            "duration": "PT2H10M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "BCN" },
+            "marketing_carrier": { "name": "British Airways", "iata_code": "BA" },
+            "marketing_carrier_flight_number": "7788",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "overnightReturn": {
+    "id": "off_fixture_overnight",
+    "total_amount": "110.00",
+    "total_currency": "EUR",
+    "base_amount": "90.00",
+    "tax_amount": "20.00",
+    "expires_at": "2026-09-01T10:20:00.000Z",
+    "owner": { "name": "Vueling", "iata_code": "VY" },
+    "slices": [
+      {
+        "duration": "PT1H20M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "BCN" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T08:00:00",
+            "arriving_at": "2026-09-10T09:20:00",
+            "duration": "PT1H20M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "BCN" },
+            "marketing_carrier": { "name": "Vueling", "iata_code": "VY" },
+            "marketing_carrier_flight_number": "2101",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      },
+      {
+        "duration": "PT1H35M",
+        "origin": { "iata_code": "BCN" },
+        "destination": { "iata_code": "MAD" },
+        "segments": [
+          {
+            "departing_at": "2026-09-17T23:30:00",
+            "arriving_at": "2026-09-18T01:05:00",
+            "duration": "PT1H35M",
+            "origin": { "iata_code": "BCN" },
+            "destination": { "iata_code": "MAD" },
+            "marketing_carrier": { "name": "Vueling", "iata_code": "VY" },
+            "marketing_carrier_flight_number": "2999",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "alternateAirport": {
+    "id": "off_fixture_reus",
+    "total_amount": "70.00",
+    "total_currency": "EUR",
+    "base_amount": "58.00",
+    "tax_amount": "12.00",
+    "expires_at": "2026-09-01T10:20:00.000Z",
+    "owner": { "name": "Ryanair", "iata_code": "FR" },
+    "slices": [
+      {
+        "duration": "PT1H15M",
+        "origin": { "iata_code": "MAD" },
+        "destination": { "iata_code": "REU" },
+        "segments": [
+          {
+            "departing_at": "2026-09-10T08:00:00",
+            "arriving_at": "2026-09-10T09:15:00",
+            "duration": "PT1H15M",
+            "origin": { "iata_code": "MAD" },
+            "destination": { "iata_code": "REU" },
+            "marketing_carrier": { "name": "Ryanair", "iata_code": "FR" },
+            "marketing_carrier_flight_number": "6001",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      },
+      {
+        "duration": "PT1H15M",
+        "origin": { "iata_code": "REU" },
+        "destination": { "iata_code": "MAD" },
+        "segments": [
+          {
+            "departing_at": "2026-09-17T20:00:00",
+            "arriving_at": "2026-09-17T21:15:00",
+            "duration": "PT1H15M",
+            "origin": { "iata_code": "REU" },
+            "destination": { "iata_code": "MAD" },
+            "marketing_carrier": { "name": "Ryanair", "iata_code": "FR" },
+            "marketing_carrier_flight_number": "6002",
+            "passengers": [{ "baggages": [{ "type": "carry_on", "quantity": 1 }] }]
+          }
+        ]
+      }
+    ]
+  },
+
+  "malformed": [
+    {
+      "id": "off_broken_amount",
+      "total_amount": "abc",
+      "total_currency": "EUR",
+      "slices": [
+        {
+          "segments": [
+            {
+              "departing_at": "2026-09-10T08:00:00",
+              "arriving_at": "2026-09-10T09:20:00",
+              "origin": { "iata_code": "MAD" },
+              "destination": { "iata_code": "BCN" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "off_no_amount",
+      "total_currency": "EUR",
+      "slices": [
+        {
+          "segments": [
+            {
+              "departing_at": "2026-09-10T08:00:00",
+              "arriving_at": "2026-09-10T09:20:00",
+              "origin": { "iata_code": "MAD" },
+              "destination": { "iata_code": "BCN" }
+            }
+          ]
+        }
+      ]
+    },
+    { "id": "off_no_slices", "total_amount": "80.00", "total_currency": "EUR", "slices": [] },
+    { "id": "off_empty_segments", "total_amount": "80.00", "total_currency": "EUR", "slices": [{ "segments": [] }] },
+    {
+      "id": "off_tax_over_total",
+      "total_amount": "50.00",
+      "total_currency": "EUR",
+      "base_amount": "10.00",
+      "tax_amount": "999.00",
+      "slices": [
+        {
+          "segments": [
+            {
+              "departing_at": "2026-09-10T08:00:00",
+              "arriving_at": "2026-09-10T09:20:00",
+              "origin": { "iata_code": "MAD" },
+              "destination": { "iata_code": "BCN" },
+              "marketing_carrier": { "name": "Iberia", "iata_code": "IB" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

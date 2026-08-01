@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -17,15 +17,18 @@ import { useTranslation } from "react-i18next";
 import {
   buildHolidayImport,
   formatMoney,
+  type NormalizedOffer,
   type TransportLeg,
   type AccommodationChoice,
 } from "@nidokey/shared";
 import { api, ApiError } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
+import { useFlightSearchStream } from "@/lib/flight-stream";
 import { useCalendarLocale, shortMonth, type CalendarLang } from "@/lib/i18n/calendar-locales";
 import { ResultModal } from "@/components/ui";
 import { HotelDetailModal } from "@/components/travel/HotelDetailModal";
+import { FlightSearchProgress } from "@/components/travel/FlightSearchProgress";
 
 /**
  * Asistente de VIAJES (record interno `holiday`). 4 pasos:
@@ -76,7 +79,51 @@ type FlightOption = {
   dateShift?: { depart: number; return: number | null };
   savingsPct?: number | null;
   returnAirline?: string | null;
+  // ── solo en la búsqueda en directo (SSE) ──
+  /** Firmeza del precio: solo `verified` puede presentarse como disponible. */
+  confidence?: NormalizedOffer["confidence"];
+  /** Partes del total que son estimación NUESTRA, no precio del proveedor. */
+  estimatedComponents?: NormalizedOffer["estimatedComponents"];
+  /** La conexión corre por cuenta del viajero (dos billetes independientes). */
+  selfTransfer?: boolean;
 };
+
+/**
+ * Oferta del motor nuevo → forma que ya sabe pintar `flightCard`.
+ *
+ * El `dateShift` se recalcula aquí contra las fechas con las que se lanzó la
+ * búsqueda, porque el motor devuelve fechas absolutas y la tarjeta razona en
+ * desplazamientos relativos a lo que pidió el usuario.
+ */
+function offerToFlightOption(o: NormalizedOffer, base: { start: string; end: string }): FlightOption {
+  const out = o.legs[0]!;
+  const back = o.legs[1] ?? null;
+  return {
+    offerId: o.offerIds[0] ?? o.candidateKey,
+    origin: out.origin,
+    destination: out.destination,
+    priceCents: o.totalTripCost,
+    currency: o.currency,
+    airline: out.airline,
+    flightNumber: out.flightNumber,
+    departISO: out.departISO,
+    returnISO: back?.departISO ?? null,
+    returnArriveISO: back?.arriveISO ?? null,
+    stops: out.stops,
+    bookUrl: o.bookUrls[0]!,
+    ticketType: o.ticketType,
+    bookUrls: o.bookUrls,
+    dateShift: {
+      depart: daysBetween(base.start, out.departISO.slice(0, 10)),
+      return: back ? daysBetween(base.end, back.departISO.slice(0, 10)) : null,
+    },
+    savingsPct: o.savingsPct,
+    returnAirline: back?.airline ?? null,
+    confidence: o.confidence,
+    estimatedComponents: o.estimatedComponents,
+    selfTransfer: o.selfTransfer,
+  };
+}
 /** Bloque `ai` de la respuesta: baseline, presupuesto gastado y resumen. */
 type AiInfo = {
   baselineCents: number | null;
@@ -245,6 +292,13 @@ export default function NewTrip() {
    * elegir dos vuelos desplazados seguidos acumularía los saltos.
    */
   const [searchDates, setSearchDates] = useState<{ start: string; end: string } | null>(null);
+  /**
+   * Búsqueda IA EN DIRECTO. Sustituye a los 55 s de espera opaca: se entra al
+   * paso 3 al instante y las opciones aparecen según se verifican.
+   */
+  const stream = useFlightSearchStream();
+  /** Evita reintentar el camino clásico en bucle si el stream falla. */
+  const streamFellBack = useRef(false);
 
   // Resultado de reserva (modal app-styled, sustituye al Alert nativo).
   const [booked, setBooked] = useState<{ id: string | null; hotelRef: string; flightRef: string | null } | null>(null);
@@ -334,7 +388,48 @@ export default function NewTrip() {
     }
   }
 
+  /** Query común a los dos caminos (clásico y en directo). */
+  function flightQuery(): URLSearchParams | null {
+    if (origin.trim().length !== 3 || !dest?.iata) return null;
+    const fq = new URLSearchParams({
+      origin: origin.trim().toUpperCase(),
+      destination: dest.iata,
+      departDate: startISO,
+      returnDate: endISO,
+      adults: String(totalAdults),
+    });
+    if (allChildAges.length) fq.set("children", allChildAges.join(","));
+    fq.set("lang", i18n.language.startsWith("en") ? "en" : "es");
+    return fq;
+  }
+
+  /**
+   * Punto de entrada del paso 3. Con IA se abre el stream y se entra al paso 3
+   * DE INMEDIATO: la gracia es ver el proceso y poder elegir una opción sin
+   * esperar al final. Sin IA, el camino de siempre, intacto.
+   */
   async function loadFlight() {
+    const fq = flightQuery();
+    if (aiSearch && fq) {
+      setError(null);
+      setAiInfo(null);
+      setDatesMoved(null);
+      setSearchDates({ start: startISO, end: endISO });
+      setFlights([]);
+      setFlight(null);
+      streamFellBack.current = false;
+      stream.start(Object.fromEntries(fq));
+      setStep(3);
+      return;
+    }
+    await loadFlightClassic();
+  }
+
+  /** Búsqueda de siempre: una petición, se espera y se pinta. */
+  async function loadFlightClassic() {
+    // Sin esto, apagar la IA y volver a buscar seguiría enseñando los resultados
+    // de la búsqueda en directo anterior.
+    stream.reset();
     setLoading(true);
     setError(null);
     setAiInfo(null);
@@ -384,6 +479,34 @@ export default function NewTrip() {
 
   /** Fechas de referencia de los `dateShift` (las de la última búsqueda). */
   const baseDates = searchDates ?? { start: startISO, end: endISO };
+
+  /** ¿Hay una búsqueda en directo en marcha o recién terminada? */
+  const streaming = stream.state.phase !== "idle";
+
+  /** Ofertas del motor nuevo, ya en la forma que pinta la tarjeta. */
+  const streamedFlights = useMemo(
+    () => stream.state.offers.map((o) => offerToFlightOption(o, baseDates)),
+    [stream.state.offers, baseDates.start, baseDates.end]
+  );
+
+  /** Lo que se pinta: en directo mientras dure, si no lo de la búsqueda clásica. */
+  const shownFlights = streaming ? streamedFlights : flights;
+
+  /**
+   * Si el stream no llega a abrirse (proxy que no deja SSE, versión antigua del
+   * backend), se cae al camino clásico UNA vez. Sin el candado se reintentaría
+   * en bucle y cada intento gasta cuota de Duffel.
+   */
+  useEffect(() => {
+    if (!stream.error || streamFellBack.current) return;
+    streamFellBack.current = true;
+    stream.reset();
+    setError(t("trip.stream_unavailable"));
+    void loadFlightClassic();
+    // loadFlightClassic depende de todo el formulario; el candado ya garantiza
+    // que esto corre una sola vez por búsqueda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream.error]);
 
   /**
    * Mueve el VIAJE ENTERO a unas fechas: vuelve a consultar alojamiento y trata
@@ -668,6 +791,50 @@ export default function NewTrip() {
             <Ionicons name="warning-outline" size={11} color={th.dangerFg} /> {t("trip.ai_split_warning")}
           </Text>
         ) : null}
+        {/* Etiquetas de CONFIANZA. Distinguen lo que dice la aerolínea de lo que
+            estimamos nosotros: sin esto, un traslado estimado se leería como
+            parte del precio del billete. */}
+        {f.confidence ? (
+          <View style={styles.tagRow}>
+            <View style={[styles.tag, { backgroundColor: f.confidence === "verified" ? th.accentSoft : th.bg, borderColor: th.border }]}>
+              <Ionicons
+                name={f.confidence === "verified" ? "checkmark-circle-outline" : f.confidence === "expired" ? "time-outline" : "help-circle-outline"}
+                size={11}
+                color={f.confidence === "verified" ? th.accent : th.textMuted}
+              />
+              <Text style={{ color: f.confidence === "verified" ? th.accent : th.textMuted, fontSize: 10, fontFamily: fonts.bodySemibold }}>
+                {f.confidence === "verified"
+                  ? t("trip.verified")
+                  : f.confidence === "expired"
+                    ? t("trip.tag_expired")
+                    : t("trip.estimated")}
+              </Text>
+            </View>
+            {f.selfTransfer ? (
+              <View style={[styles.tag, { backgroundColor: th.bg, borderColor: th.border }]}>
+                <Ionicons name="git-branch-outline" size={11} color={th.textMuted} />
+                <Text style={{ color: th.textMuted, fontSize: 10, fontFamily: fonts.bodySemibold }}>
+                  {t("trip.tag_self_transfer")}
+                </Text>
+              </View>
+            ) : null}
+            {f.bookUrls && f.bookUrls.length > 1 ? (
+              <View style={[styles.tag, { backgroundColor: th.bg, borderColor: th.border }]}>
+                <Ionicons name="copy-outline" size={11} color={th.textMuted} />
+                <Text style={{ color: th.textMuted, fontSize: 10, fontFamily: fonts.bodySemibold }}>
+                  {t("trip.tag_separate_tickets")}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+        {f.estimatedComponents?.length ? (
+          <Text style={{ color: th.textSubtle, fontSize: 10 }}>
+            {t("trip.estimated_includes", {
+              parts: f.estimatedComponents.map((p) => t(`trip.estimated_part_${p}` as never)).join(" + "),
+            })}
+          </Text>
+        ) : null}
       </Pressable>
     );
   }
@@ -947,28 +1114,38 @@ export default function NewTrip() {
                 ) : null}
               </View>
             ) : null}
+            {/* Progreso REAL de la búsqueda en directo. No es un spinner: es lo
+                que el motor está haciendo, con contadores y botón de parar. */}
+            {streaming ? (
+              <FlightSearchProgress state={stream.state} running={stream.running} onStop={stream.stop} />
+            ) : null}
+            {streaming && stream.state.summary ? (
+              <Text style={{ color: th.text, fontSize: 13 }}>{stream.state.summary}</Text>
+            ) : null}
             {datesMoved ? (
               <Text style={{ color: th.accent, fontSize: 12, fontFamily: fonts.bodySemibold }}>
                 {t("trip.ai_dates_moved", { dates: datesMoved })}
               </Text>
             ) : null}
-            {flights.length === 0 ? (
-              <Text style={{ color: th.textSubtle }}>
-                {t("trip.no_flights")}
-              </Text>
+            {shownFlights.length === 0 ? (
+              // Mientras el stream busca no se dice "no hay vuelos": todavía no
+              // se sabe. Ese mensaje solo vale cuando la búsqueda ha terminado.
+              stream.running ? null : (
+                <Text style={{ color: th.textSubtle }}>{t("trip.no_flights")}</Text>
+              )
             ) : flight ? (
               <>
                 {flightCard(flight)}
-                {flights.length > 1 ? (
+                {shownFlights.length > 1 ? (
                   <Pressable onPress={() => void clearFlight()} style={styles.linkRow}>
                     <Ionicons name="swap-horizontal" size={16} color={th.accent} />
-                    <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("trip.view_other_flights", { count: flights.length })}</Text>
+                    <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("trip.view_other_flights", { count: shownFlights.length })}</Text>
                   </Pressable>
                 ) : null}
               </>
             ) : (
               <>
-                {flights.map((f) => flightCard(f))}
+                {shownFlights.map((f) => flightCard(f))}
                 <Text style={{ color: th.textSubtle, fontSize: 12 }}>
                   {t("trip.choose_flight_hint")}
                 </Text>
@@ -1301,6 +1478,8 @@ const styles = StyleSheet.create({
   flightCard: { borderRadius: 10, padding: 12, gap: 6 },
   flightTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   savingsBadge: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, marginTop: 3 },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+  tag: { flexDirection: "row", alignItems: "center", gap: 3, borderWidth: 1, borderRadius: 7, paddingHorizontal: 6, paddingVertical: 2 },
   aiToggle: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   aiHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
   linkRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 6 },
