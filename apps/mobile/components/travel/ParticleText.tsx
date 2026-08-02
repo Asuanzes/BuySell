@@ -17,6 +17,25 @@
  * binary") en todas las instalaciones anteriores. Por eso la carga va envuelta
  * en try/catch y hay una frontera de error: si Skia falta o falla al pintar, se
  * usa el efecto por caracteres y no se entera nadie.
+ *
+ * ¿Por qué el try/catch basta? Porque el fallo es un `throw` de JavaScript
+ * corriente, no un crash nativo. En
+ * `node_modules/@shopify/react-native-skia/lib/module/skia/NativeSetup.js`, que
+ * se importa en la primera línea del paquete:
+ *
+ *     if (SkiaModule == null || typeof SkiaModule.install !== "function") {
+ *       throw new Error("Native RNSkia Module cannot be found! ...");
+ *     }
+ *
+ * Consecuencia operativa IMPORTANTE: como esta dependencia es de verdad
+ * opcional, NO hace falta subir `runtimeVersion`. Un mismo runtime (0.1.1)
+ * puede cubrir binarios con y sin Skia — los viejos usan el efecto por
+ * caracteres y los nuevos las partículas. Eso mantiene el build de iOS ya
+ * aprobado en TestFlight recibiendo actualizaciones.
+ *
+ * ⚠️ Ese permiso vale SOLO mientras Skia se use así, en modo opcional. En
+ * cuanto algo la importe de forma estática, los dos binarios dejan de ser
+ * compatibles y habrá que separar el runtime.
  */
 import { Component, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
