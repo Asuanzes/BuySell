@@ -6,7 +6,12 @@ import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
-import { getSearchExtractorScript, type PortalHit, type PortalKey } from "@/lib/portal-search";
+import {
+  getSearchExtractorScript,
+  type PortalDebug,
+  type PortalHit,
+  type PortalKey,
+} from "@/lib/portal-search";
 
 /**
  * Ejecuta una búsqueda EN UN PORTAL dentro del WebView del usuario y devuelve
@@ -20,17 +25,21 @@ import { getSearchExtractorScript, type PortalHit, type PortalKey } from "@/lib/
 const ANDROID_CHROME_UA =
   "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
 
-type Msg = { type: "results"; data: PortalHit[] } | { type: "challenge" };
+type Msg =
+  | { type: "results"; data: PortalHit[]; debug?: PortalDebug }
+  | { type: "challenge" };
 
 export function PortalSearchWebView({
   url,
   portal,
+  operation,
   onResults,
   onCancel,
 }: {
   url: string;
   portal: PortalKey;
-  onResults: (hits: PortalHit[]) => void;
+  operation: "RENT" | "SALE";
+  onResults: (hits: PortalHit[], debug?: PortalDebug) => void;
   onCancel: () => void;
 }) {
   const { th } = useTheme();
@@ -48,7 +57,7 @@ export function PortalSearchWebView({
         setChallenge(true);
       } else if (msg.type === "results") {
         setChallenge(false);
-        onResults(msg.data ?? []);
+        onResults(msg.data ?? [], msg.debug);
       }
     } catch {
       onResults([]);
@@ -73,7 +82,9 @@ export function PortalSearchWebView({
       <WebView
         ref={ref}
         source={{ uri: url }}
-        onLoadEnd={() => ref.current?.injectJavaScript(getSearchExtractorScript(portal, url))}
+        onLoadEnd={() =>
+          ref.current?.injectJavaScript(getSearchExtractorScript(portal, url, operation))
+        }
         onMessage={handleMessage}
         style={styles.webview}
         pointerEvents={challenge ? "auto" : "none"}

@@ -193,6 +193,7 @@
     "results_count_other": "{{count}} inmuebles",
     "scope_portals": "Portales",
     "portal_search": "Buscar en {{portal}}",
+    "portal_set_zone": "Elige municipio para buscar",
     "portal_searching": "Buscando en {{portal}}…",
     "portal_zone": "Zona: {{city}} ({{province}}). Cámbiala en Filtros.",
     "portal_zone_required": "Pon el municipio en Filtros → Zona para buscar en los portales.",

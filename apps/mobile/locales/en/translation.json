@@ -193,6 +193,7 @@
     "results_count_other": "{{count}} properties",
     "scope_portals": "Portals",
     "portal_search": "Search on {{portal}}",
+    "portal_set_zone": "Choose a municipality to search",
     "portal_searching": "Searching on {{portal}}…",
     "portal_zone": "Area: {{city}} ({{province}}). Change it in Filters.",
     "portal_zone_required": "Set the municipality in Filters → Area to search the portals.",

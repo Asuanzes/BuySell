@@ -15,6 +15,8 @@
  * filtros y adivinarlas sería lo primero que se rompiera.
  */
 
+import { isValidMonthlyRentEur, isValidPriceEur } from "@nidokey/shared";
+
 export type PortalKey = "IDEALISTA" | "FOTOCASA" | "PISOS_COM" | "HABITACLIA" | "MILANUNCIOS";
 
 export type PortalHit = {
@@ -99,14 +101,23 @@ export function buildSearchUrl(
  * que no pueden cambiar sin romper el propio portal— y lee el precio, las
  * habitaciones y los metros del bloque que contiene cada enlace.
  */
-export function getSearchExtractorScript(portal: PortalKey, url: string): string {
+export function getSearchExtractorScript(
+  portal: PortalKey,
+  url: string,
+  operation: "RENT" | "SALE"
+): string {
   const pattern = PORTALS[portal].detailPattern.source;
+  // Bandas de `packages/shared/src/sanity.ts`. Van inline porque esto es un
+  // string que se inyecta en la página del portal: no hay imports ahí dentro.
+  const min = operation === "SALE" ? 10000 : 100;
+  const max = operation === "SALE" ? 50000000 : 50000;
   return `
 (function() {
   if (window.__nkSearchRunning) return;
   window.__nkSearchRunning = true;
 
   var RE = new RegExp(${JSON.stringify(pattern)});
+  var MIN = ${min}, MAX = ${max};
   var post = function(m) { window.ReactNativeWebView.postMessage(JSON.stringify(m)); };
 
   var isChallenge = function() {
@@ -117,20 +128,57 @@ export function getSearchExtractorScript(portal: PortalKey, url: string): string
     return b.indexOf('no eres un robot') >= 0 || b.indexOf('verify you are human') >= 0;
   };
 
-  var num = function(s) {
-    if (!s) return null;
-    var m = String(s).replace(/\\./g, '').match(/\\d+/);
-    return m ? parseInt(m[0], 10) : null;
+  /**
+   * Precio del anuncio dentro del texto de su tarjeta. Dos trampas reales:
+   *  - "1.450 €/m²" es el precio POR METRO, no el del piso.
+   *  - Hay cifras sueltas (gastos, "desde 45 €", publicidad) que no son precio.
+   * Por eso se recogen TODOS los candidatos y se devuelve el primero que cae
+   * dentro de la banda de cordura de la operación.
+   */
+  var priceOf = function(text) {
+    var re = /([\\d][\\d.\\s]{0,12}?)\\s*€(\\s*\\/\\s*m[²2])?/g;
+    var m, best = null;
+    while ((m = re.exec(text)) !== null) {
+      if (m[2]) continue; // €/m² → fuera
+      var n = parseInt(String(m[1]).replace(/[.\\s]/g, ''), 10);
+      if (isFinite(n) && n >= MIN && n <= MAX) { best = n; break; }
+    }
+    return best;
   };
+
+  /**
+   * Muro de cookies: en la primera visita tapa el listado y el DOM se queda sin
+   * tarjetas. Se acepta igual que lo haría el usuario a mano. Sin esto,
+   * Idealista devolvía cero anuncios en el primer intento.
+   */
+  var acceptConsent = function() {
+    var sels = [
+      '#didomi-notice-agree-button',
+      '#onetrust-accept-btn-handler',
+      'button[id*="accept"]',
+      'button[class*="accept"]',
+      '[data-testid*="accept"]'
+    ];
+    for (var i = 0; i < sels.length; i++) {
+      var el = document.querySelector(sels[i]);
+      if (el && el.offsetParent !== null) { try { el.click(); return true; } catch (e) {} }
+    }
+    return false;
+  };
+
+  var stats = { anchors: 0, matched: 0, cards: 0, noPrice: 0 };
 
   var collect = function() {
     var anchors = document.querySelectorAll('a[href]');
+    stats.anchors = anchors.length;
     var out = [];
     var seen = {};
     for (var i = 0; i < anchors.length && out.length < 40; i++) {
       var a = anchors[i];
       var href = a.href;
       if (!href || !RE.test(href) || seen[href]) continue;
+      stats.matched++;
+      seen[href] = 1;
 
       // Contenedor del anuncio: el ancestro más cercano que ya incluye un precio.
       var box = a;
@@ -139,23 +187,25 @@ export function getSearchExtractorScript(portal: PortalKey, url: string): string
         box = box.parentElement;
       }
       var text = (box.innerText || '').replace(/\\s+/g, ' ');
-      var priceM = text.match(/([\\d][\\d.\\s]{2,})\\s*€/);
-      if (!priceM) continue; // sin precio no es una tarjeta de anuncio
-
-      seen[href] = 1;
-      var img = box.querySelector('img');
+      var price = priceOf(text);
       var roomsM = text.match(/(\\d+)\\s*(?:hab|dorm)/i);
-      var areaM = text.match(/(\\d+)\\s*m²/);
+      var areaM = text.match(/(\\d+)\\s*m[²2]\\b/);
+      // Sin precio válido, sólo vale si tiene pinta de anuncio (m² o hab): así
+      // Idealista aparece aunque su tarjeta no traiga el precio en texto plano.
+      if (price == null && !roomsM && !areaM) { stats.noPrice++; continue; }
+
+      var img = box.querySelector('img');
       var title = (a.innerText || '').trim() || (a.getAttribute('title') || '').trim();
       if (!title) {
         var h = box.querySelector('h2, h3, [class*="title"]');
         title = h ? (h.innerText || '').trim() : '';
       }
 
+      stats.cards++;
       out.push({
         url: href,
         title: (title || 'Anuncio').slice(0, 140),
-        price: num(priceM[1]),
+        price: price,
         rooms: roomsM ? parseInt(roomsM[1], 10) : null,
         area: areaM ? parseInt(areaM[1], 10) : null,
         imageUrl: img ? (img.currentSrc || img.src || null) : null,
@@ -168,11 +218,14 @@ export function getSearchExtractorScript(portal: PortalKey, url: string): string
   var tries = 0;
   var run = function() {
     if (isChallenge()) { post({ type: 'challenge' }); setTimeout(run, 2500); return; }
+    if (tries < 2) acceptConsent();
+    // Los listados cargan por scroll (Fotocasa carga tandas al bajar): sin esto
+    // sólo se ve la primera pantalla y salen cuatro resultados.
+    try { window.scrollTo(0, document.body.scrollHeight * Math.min(1, tries / 3)); } catch (e) {}
     var hits = collect();
-    // Los listados cargan tarde (scroll infinito, hidratación): reintenta antes
-    // de dar por vacía una página que sí tiene anuncios.
-    if (hits.length === 0 && tries++ < 5) { setTimeout(run, 1200); return; }
-    post({ type: 'results', data: hits });
+    if (tries++ < 6 && (hits.length === 0 || hits.length < 20)) { setTimeout(run, 1000); return; }
+    try { window.scrollTo(0, 0); } catch (e) {}
+    post({ type: 'results', data: hits, debug: stats });
   };
   run();
 })();
@@ -180,12 +233,34 @@ true;
 `;
 }
 
-/** Filtros nuestros aplicados a lo extraído (el portal sólo filtró la zona). */
+/** Diagnóstico del extractor: sin esto, "0 resultados" no dice dónde falla. */
+export type PortalDebug = { anchors: number; matched: number; cards: number; noPrice: number };
+
+/**
+ * Filtros nuestros aplicados a lo extraído (el portal sólo filtró la zona) y
+ * segunda pasada de cordura sobre el precio.
+ *
+ * La cordura se repite AQUÍ, con las funciones compartidas, aunque el script ya
+ * filtre por banda: lo que llega del WebView es texto de una página de terceros
+ * y no se confía en él. Un "45 €/mes" es un precio por metro o un gasto de
+ * comunidad mal leído, nunca el alquiler de un piso.
+ */
 export function applyLocalFilters(
   hits: PortalHit[],
-  f: { minPrice?: number; maxPrice?: number; minRooms?: number; minArea?: number; maxArea?: number }
+  f: {
+    operation?: "RENT" | "SALE" | "ANY";
+    minPrice?: number;
+    maxPrice?: number;
+    minRooms?: number;
+    minArea?: number;
+    maxArea?: number;
+  }
 ): PortalHit[] {
+  const sane = f.operation === "SALE" ? isValidPriceEur : isValidMonthlyRentEur;
   return hits.filter((h) => {
+    // Precio nulo se deja pasar (el anuncio existe, el precio se ve al abrirlo);
+    // un precio presente pero absurdo se descarta.
+    if (h.price != null && !sane(h.price)) return false;
     if (f.minPrice != null && (h.price ?? 0) < f.minPrice) return false;
     if (f.maxPrice != null && (h.price ?? Infinity) > f.maxPrice) return false;
     if (f.minRooms != null && (h.rooms ?? 0) < f.minRooms) return false;

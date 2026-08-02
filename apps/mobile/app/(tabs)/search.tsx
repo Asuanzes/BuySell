@@ -47,6 +47,7 @@ export default function SearchScreen() {
   const [portal, setPortal] = useState<PortalKey>("IDEALISTA");
   const [runningUrl, setRunningUrl] = useState<string | null>(null);
   const [portalHits, setPortalHits] = useState<PortalHit[] | null>(null);
+  const [portalDebug, setPortalDebug] = useState<string | null>(null);
   const { setUrl: setPendingImportUrl } = usePendingImport();
 
   // Debounce de 250ms sobre el texto.
@@ -76,8 +77,14 @@ export default function SearchScreen() {
   const province = filters.province?.trim() ?? "";
 
   function runPortalSearch() {
-    if (!city) return;
+    // Sin municipio no hay URL de portal que construir. En vez de dejar el botón
+    // muerto (parecía roto), se abre la hoja de filtros, que es donde se pone.
+    if (!city) {
+      setSheetOpen(true);
+      return;
+    }
     setPortalHits(null);
+    setPortalDebug(null);
     setRunningUrl(
       buildSearchUrl(portal, filters.operation === "SALE" ? "SALE" : "RENT", city, province)
     );
@@ -236,30 +243,29 @@ export default function SearchScreen() {
 
           <Pressable
             onPress={runPortalSearch}
-            disabled={!city || !!runningUrl}
+            disabled={!!runningUrl}
             accessibilityRole="button"
             style={[
               styles.portalCta,
-              {
-                backgroundColor: city && !runningUrl ? th.primary : th.surfaceRaised,
-                borderColor: th.border,
-              },
+              { backgroundColor: runningUrl ? th.surfaceRaised : th.primary, borderColor: th.border },
             ]}
           >
             {runningUrl ? (
               <ActivityIndicator size="small" color={th.primary} />
             ) : (
-              <Ionicons name="globe-outline" size={16} color={city ? th.primaryFg : th.textSubtle} />
+              <Ionicons name="globe-outline" size={16} color={th.primaryFg} />
             )}
             <Text
               style={[
                 styles.portalCtaText,
-                { color: city && !runningUrl ? th.primaryFg : th.textSubtle },
+                { color: runningUrl ? th.textSubtle : th.primaryFg },
               ]}
             >
               {runningUrl
                 ? t("search.portal_searching", { portal: PORTALS[portal].label })
-                : t("search.portal_search", { portal: PORTALS[portal].label })}
+                : city
+                  ? t("search.portal_search", { portal: PORTALS[portal].label })
+                  : t("search.portal_set_zone")}
             </Text>
           </Pressable>
 
@@ -268,6 +274,9 @@ export default function SearchScreen() {
               ? t("search.portal_zone", { city, province: province || "—" })
               : t("search.portal_zone_required")}
           </Text>
+          {portalDebug && (
+            <Text style={[styles.notice, { color: th.textSubtle }]}>{portalDebug}</Text>
+          )}
         </View>
       ) : (
         <View style={[styles.searchBar, { backgroundColor: th.surface, borderColor: th.border }]}>
@@ -378,9 +387,18 @@ export default function SearchScreen() {
           key={runningUrl}
           url={runningUrl}
           portal={portal}
-          onResults={(hits) => {
+          operation={filters.operation === "SALE" ? "SALE" : "RENT"}
+          onResults={(hits, debug) => {
             setRunningUrl(null);
-            setPortalHits(applyLocalFilters(hits, filters));
+            const kept = applyLocalFilters(hits, filters);
+            setPortalHits(kept);
+            // Traza legible: sin esto, "0 resultados" no distingue entre página
+            // no cargada, enlaces no reconocidos y filtros demasiado estrechos.
+            setPortalDebug(
+              debug
+                ? `${debug.anchors} enlaces · ${debug.matched} de anuncio · ${debug.cards} tarjetas · ${hits.length} leídas · ${kept.length} tras filtros`
+                : `${hits.length} leídas · ${kept.length} tras filtros`
+            );
           }}
           onCancel={() => setRunningUrl(null)}
         />
