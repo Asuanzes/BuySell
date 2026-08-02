@@ -404,7 +404,46 @@ búsqueda guardada notifica una sola vez por resultado nuevo; topes 3 gratis /
 Importar el índice estatal por municipio y mostrar "un 18 % por encima de la
 referencia de su zona". Alto valor diferencial, coste 0, cero riesgo legal.
 
-### Fase 6 — Fuentes externas ⚠️ requiere tu autorización
+### Fase 6 — Búsqueda en portales desde el WebView (decidida el 2026-08-02)
+
+**Decisión del propietario**, tomada tras leer §2 y §3: el buscador debe
+encontrar anuncios publicados en los portales, no sólo lo guardado. Se
+implementa **dentro del WebView del móvil**, no en el servidor.
+
+Por qué el WebView y no Vercel — medido, no supuesto (2026-08-02):
+
+| Portal | fetch de servidor |
+| --- | --- |
+| Fotocasa, pisos.com, Habitaclia, Milanuncios | HTTP 200, contenido real |
+| **Idealista**, yaencontre, Kyero | **HTTP 403 anti-bot** |
+
+Idealista es el portal que más importa en España y el servidor no puede
+alcanzarlo. El WebView sí: es el navegador del usuario, con su IP y sus
+cookies, y ya se usa así para importar un anuncio
+(`WebViewImporter` + `portal-extractors.ts`, con UA de Chrome y
+`sharedCookiesEnabled` para que un captcha resuelto persista).
+
+Implementación:
+
+- `apps/mobile/lib/portal-search.ts` — URL de resultados por portal y operación,
+  y un extractor **genérico**: parte de los ENLACES a fichas (que no pueden
+  cambiar sin romper el portal) en vez de nombres de clase CSS, y lee precio,
+  habitaciones y metros del bloque que contiene cada enlace.
+- La URL sólo lleva la ZONA. El resto de filtros se aplican sobre lo extraído:
+  cada portal tiene su propia gramática de filtros y adivinarlas sería lo
+  primero en romperse.
+- `apps/mobile/components/PortalSearchWebView.tsx` — ejecuta la búsqueda; si el
+  portal pide captcha, enseña el WebView para que el usuario lo resuelva.
+- Pulsar un resultado reutiliza el canal de importación que ya existe.
+
+Postura y límites que se mantienen: la búsqueda la inicia **el usuario**, en su
+dispositivo y bajo su sesión; los resultados **enlazan al portal** y se importan
+uno a uno; no hay rastreo masivo, ni caché de fotos, ni corpus agregado. Las
+condiciones de uso de los portales prohíben la extracción automatizada y el
+acceso puede cortarse en cualquier momento — el riesgo queda en el mismo plano
+que la importación por URL que la app ya hacía.
+
+### Fase 7 — Otras fuentes externas ⚠️ requiere tu autorización
 
 Solicitar la API de idealista; explorar feeds de agencias locales; conectar
 bolsas públicas de alquiler. Entra por el patrón `SourceAdapter.search()`.

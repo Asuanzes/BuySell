@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { useQuery } from "@/lib/hooks/useQuery";
 import { searchProperties, searchRecords, type PropertySearchFilters } from "@/lib/data/records-repository";
+import { usePendingImport } from "@/lib/pending-import";
+import {
+  PORTALS,
+  applyLocalFilters,
+  buildSearchUrl,
+  type PortalHit,
+  type PortalKey,
+} from "@/lib/portal-search";
+import { PortalSearchWebView } from "@/components/PortalSearchWebView";
 import { RecordCard } from "@/components/RecordCard";
 import {
   EMPTY_FILTERS,
@@ -28,11 +38,16 @@ import { EmptyState, Screen } from "@/components/ui";
 export default function SearchScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
-  const [scope, setScope] = useState<"all" | "property">("all");
+  const [scope, setScope] = useState<"all" | "property" | "portals">("all");
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   const [filters, setFilters] = useState<PropertySearchFilters>(EMPTY_FILTERS);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Portales: el WebView carga una URL de resultados y devuelve los anuncios.
+  const [portal, setPortal] = useState<PortalKey>("IDEALISTA");
+  const [runningUrl, setRunningUrl] = useState<string | null>(null);
+  const [portalHits, setPortalHits] = useState<PortalHit[] | null>(null);
+  const { setUrl: setPendingImportUrl } = usePendingImport();
 
   // Debounce de 250ms sobre el texto.
   useEffect(() => {
@@ -40,11 +55,45 @@ export default function SearchScreen() {
     return () => clearTimeout(handle);
   }, [q]);
 
+  // Corte por tiempo de la búsqueda en portal: si la página no carga, redirige
+  // en bucle o cambia de estructura, el script inyectado puede no contestar
+  // nunca. Sin esto el botón se queda girando para siempre.
+  useEffect(() => {
+    if (!runningUrl) return;
+    const handle = setTimeout(() => {
+      setRunningUrl(null);
+      setPortalHits((current) => current ?? []);
+    }, 30000);
+    return () => clearTimeout(handle);
+  }, [runningUrl]);
+
   const activeFilters = countActiveFilters(filters);
   const isProperty = scope === "property";
+  const isPortals = scope === "portals";
+  // Los portales organizan sus listados por municipio: sin municipio no hay URL
+  // que construir. La provincia sólo la usan algunos (Idealista, Milanuncios).
+  const city = filters.city?.trim() ?? "";
+  const province = filters.province?.trim() ?? "";
+
+  function runPortalSearch() {
+    if (!city) return;
+    setPortalHits(null);
+    setRunningUrl(
+      buildSearchUrl(portal, filters.operation === "SALE" ? "SALE" : "RENT", city, province)
+    );
+  }
+
+  function openPortalHit(hit: PortalHit) {
+    // Reutiliza el canal de importación que ya existe: la pestaña Importar abre
+    // el anuncio en el WebView, lo extrae y crea la ficha.
+    setPendingImportUrl(hit.url);
+    router.navigate("/importar");
+  }
   const textReady = debounced.trim().length >= 2;
-  // Inmuebles: los filtros solos ya son una búsqueda; en "Todo" hace falta texto.
-  const ready = isProperty ? textReady || activeFilters > 0 : textReady;
+  // Inmuebles busca SIEMPRE, incluso sin texto ni filtros: un buscador que no
+  // enseña nada hasta que escribes parece roto (y lo pareció). En "Todo" sí
+  // hace falta texto, porque ahí no hay nada que listar por defecto.
+  const ready = isProperty || textReady;
 
   const { data: general, loading: loadingGeneral } = useQuery(
     () => searchRecords(debounced),
@@ -70,7 +119,7 @@ export default function SearchScreen() {
   return (
     <Screen>
       <View style={styles.scopeRow}>
-        {(["all", "property"] as const).map((s) => {
+        {(["all", "property", "portals"] as const).map((s) => {
           const active = scope === s;
           return (
             <Pressable
@@ -87,13 +136,17 @@ export default function SearchScreen() {
               ]}
             >
               <Text style={[styles.scopeText, { color: active ? th.primary : th.textMuted }]}>
-                {s === "all" ? t("search.scope_all") : t("search.scope_property")}
+                {s === "all"
+                  ? t("search.scope_all")
+                  : s === "property"
+                    ? t("search.scope_property")
+                    : t("search.scope_portals")}
               </Text>
             </Pressable>
           );
         })}
 
-        {isProperty && (
+        {(isProperty || isPortals) && (
           <Pressable
             onPress={() => setSheetOpen(true)}
             accessibilityRole="button"
@@ -120,19 +173,117 @@ export default function SearchScreen() {
         )}
       </View>
 
-      <View style={[styles.searchBar, { backgroundColor: th.surface, borderColor: th.border }]}>
-        <Ionicons name="search" size={16} color={th.textSubtle} />
-        <TextInput
-          value={q}
-          onChangeText={setQ}
-          placeholder={t("search.placeholder")}
-          placeholderTextColor={th.textSubtle}
-          style={[styles.input, { color: th.text }]}
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
-        {loading && ready && <ActivityIndicator size="small" color={th.primary} />}
-      </View>
+      {/* Operación a un toque: el 88 % de las fichas guardadas son de venta, así
+          que esconder este selector dentro de la hoja de filtros hacía que
+          "Inmuebles" pareciera vacío cuando sólo estaba filtrando alquiler. */}
+      {(isProperty || isPortals) && (
+        <View style={styles.scopeRow}>
+          {(isPortals ? (["RENT", "SALE"] as const) : (["RENT", "SALE", "ANY"] as const)).map((op) => {
+            const active = filters.operation === op;
+            return (
+              <Pressable
+                key={op}
+                onPress={() => setFilters((f) => ({ ...f, operation: op }))}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.scopeChip,
+                  {
+                    borderColor: active ? th.accent : th.border,
+                    backgroundColor: active ? th.accentSoft : "transparent",
+                  },
+                ]}
+              >
+                <Text style={[styles.scopeText, { color: active ? th.accent : th.textMuted }]}>
+                  {op === "RENT"
+                    ? t("records.op_rent")
+                    : op === "SALE"
+                      ? t("records.op_sale")
+                      : t("records.op_all")}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      {isPortals ? (
+        <View style={styles.portalBlock}>
+          <View style={styles.scopeRow}>
+            {(Object.keys(PORTALS) as PortalKey[]).map((p) => {
+              const active = portal === p;
+              return (
+                <Pressable
+                  key={p}
+                  onPress={() => { setPortal(p); setPortalHits(null); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={[
+                    styles.scopeChip,
+                    {
+                      borderColor: active ? th.primary : th.border,
+                      backgroundColor: active ? th.primarySoft : "transparent",
+                    },
+                  ]}
+                >
+                  <Text style={[styles.scopeText, { color: active ? th.primary : th.textMuted }]}>
+                    {PORTALS[p].label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            onPress={runPortalSearch}
+            disabled={!city || !!runningUrl}
+            accessibilityRole="button"
+            style={[
+              styles.portalCta,
+              {
+                backgroundColor: city && !runningUrl ? th.primary : th.surfaceRaised,
+                borderColor: th.border,
+              },
+            ]}
+          >
+            {runningUrl ? (
+              <ActivityIndicator size="small" color={th.primary} />
+            ) : (
+              <Ionicons name="globe-outline" size={16} color={city ? th.primaryFg : th.textSubtle} />
+            )}
+            <Text
+              style={[
+                styles.portalCtaText,
+                { color: city && !runningUrl ? th.primaryFg : th.textSubtle },
+              ]}
+            >
+              {runningUrl
+                ? t("search.portal_searching", { portal: PORTALS[portal].label })
+                : t("search.portal_search", { portal: PORTALS[portal].label })}
+            </Text>
+          </Pressable>
+
+          <Text style={[styles.notice, { color: th.textSubtle }]}>
+            {city
+              ? t("search.portal_zone", { city, province: province || "—" })
+              : t("search.portal_zone_required")}
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.searchBar, { backgroundColor: th.surface, borderColor: th.border }]}>
+          <Ionicons name="search" size={16} color={th.textSubtle} />
+          <TextInput
+            value={q}
+            onChangeText={setQ}
+            placeholder={t("search.placeholder")}
+            placeholderTextColor={th.textSubtle}
+            style={[styles.input, { color: th.text }]}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {loading && ready && <ActivityIndicator size="small" color={th.primary} />}
+        </View>
+      )}
 
       {unknownProvince && (
         <Text style={[styles.notice, { color: th.textMuted }]}>
@@ -146,18 +297,72 @@ export default function SearchScreen() {
         </Text>
       )}
 
-      {ready && results && results.length === 0 && !loading && (
+      {isPortals && portalHits?.length === 0 && (
+        <EmptyState
+          icon="globe-outline"
+          title={t("search.portal_none_title", { portal: PORTALS[portal].label })}
+          description={t("search.portal_none_desc")}
+        />
+      )}
+
+      {!isPortals && ready && results && results.length === 0 && !loading && (
         isProperty ? (
           <EmptyState
             icon="funnel-outline"
             title={t("search.empty_filters_title")}
-            description={t("search.empty_filters_desc")}
+            // Sin filtros ni texto, "no hay resultados" significa que no tienes
+            // guardado nada de esa operación: decirlo evita que parezca averiado.
+            description={
+              activeFilters === 0 && !textReady
+                ? t("search.empty_operation_desc")
+                : t("search.empty_filters_desc")
+            }
           />
         ) : (
           <EmptyState icon="search-outline" title={t("search.no_results", { q: debounced })} />
         )
       )}
 
+      {isPortals ? (
+        <FlatList
+          data={portalHits ?? []}
+          keyExtractor={(h) => h.url}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => openPortalHit(item)}
+              style={[styles.hit, { backgroundColor: th.surface, borderColor: th.border }]}
+            >
+              {item.imageUrl ? (
+                <Image source={{ uri: item.imageUrl }} style={styles.hitImage} />
+              ) : (
+                <View style={[styles.hitImage, { backgroundColor: th.surfaceRaised }]} />
+              )}
+              <View style={styles.hitBody}>
+                <Text numberOfLines={2} style={[styles.hitTitle, { color: th.text }]}>
+                  {item.title}
+                </Text>
+                <Text style={[styles.hitMeta, { color: th.textMuted }]}>
+                  {[
+                    item.price != null
+                      ? `${item.price.toLocaleString("es-ES")} €${filters.operation === "SALE" ? "" : "/mes"}`
+                      : null,
+                    item.rooms != null ? `${item.rooms} hab` : null,
+                    item.area != null ? `${item.area} m²` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+                <Text style={[styles.hitPortal, { color: th.textSubtle }]}>
+                  {PORTALS[item.portal].label}
+                </Text>
+              </View>
+              <Ionicons name="add-circle-outline" size={20} color={th.primary} />
+            </Pressable>
+          )}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+        />
+      ) : (
       <FlatList
         data={results ?? []}
         keyExtractor={(r) => r.id}
@@ -165,6 +370,21 @@ export default function SearchScreen() {
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
       />
+      )}
+
+      {/* Motor de búsqueda en el portal: WebView oculto salvo que pidan captcha. */}
+      {runningUrl && (
+        <PortalSearchWebView
+          key={runningUrl}
+          url={runningUrl}
+          portal={portal}
+          onResults={(hits) => {
+            setRunningUrl(null);
+            setPortalHits(applyLocalFilters(hits, filters));
+          }}
+          onCancel={() => setRunningUrl(null)}
+        />
+      )}
 
       <PropertyFilterSheet
         visible={sheetOpen}
@@ -206,4 +426,31 @@ const styles = StyleSheet.create({
   input: { flex: 1, fontSize: 14 },
   notice: { fontSize: 12, fontFamily: fonts.bodyMedium, marginHorizontal: 16, marginBottom: 8 },
   list: { paddingHorizontal: 16 },
+  portalBlock: { marginBottom: 4 },
+  portalCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 46,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  portalCtaText: { fontSize: 14, fontFamily: fonts.bodySemibold },
+  hit: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  hitImage: { width: 64, height: 64, borderRadius: 10 },
+  hitBody: { flex: 1, gap: 2 },
+  hitTitle: { fontSize: 13, fontFamily: fonts.bodySemibold },
+  hitMeta: { fontSize: 12, fontFamily: fonts.bodyMedium },
+  hitPortal: { fontSize: 11, fontFamily: fonts.bodyMedium },
 });
