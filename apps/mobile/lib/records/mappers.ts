@@ -78,6 +78,74 @@ export function propertyToRecord(p: RawPropertyListItem): BaseRecord {
   };
 }
 
+/**
+ * Forma de resultado que devuelve GET /api/rentals/search (buscador con
+ * filtros). A diferencia de /api/properties, el backend ya ha elegido la
+ * columna de precio correcta según la operación buscada y la envía como
+ * `price` (céntimos), así que aquí no se decide nada de negocio.
+ */
+export type RawRentalSearchItem = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  operationType: string;
+  price: number | null;
+  city: string;
+  province: string;
+  neighborhood?: string | null;
+  rooms?: number | null;
+  bathrooms?: number | null;
+  builtArea?: number | null;
+  imageUrl?: string | null;
+  portal?: string | null;
+  listingUrl?: string | null;
+  lastSeenAt?: string | null;
+  approximateLocation?: boolean;
+};
+
+export function rentalSearchItemToRecord(r: RawRentalSearchItem): BaseRecord {
+  const isRent = r.operationType !== "SALE";
+  const footnote =
+    [
+      r.rooms != null ? i18n.t("card.rooms_count", { count: r.rooms }) : null,
+      r.bathrooms != null ? i18n.t("card.baths", { count: r.bathrooms }) : null,
+      r.builtArea != null ? `${r.builtArea} m²` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null;
+
+  return {
+    id: r.id,
+    type: "property",
+    title: r.title,
+    subtitle: [r.city, r.neighborhood].filter(Boolean).join(" · ") || null,
+    status: r.status,
+    primaryValue:
+      r.price == null
+        ? null
+        : isRent
+          ? i18n.t("card.per_month", { value: formatPrice(r.price) })
+          : formatPrice(r.price),
+    imageUrl: r.imageUrl ?? null,
+    meta: {
+      propertyType: r.type,
+      operationType: r.operationType,
+      city: r.city,
+      province: r.province,
+      neighborhood: r.neighborhood ?? null,
+      rooms: r.rooms ?? null,
+      bathrooms: r.bathrooms ?? null,
+      builtArea: r.builtArea ?? null,
+      footnote,
+      portal: r.portal ?? null,
+      listingUrl: r.listingUrl ?? null,
+      lastSeenAt: r.lastSeenAt ?? null,
+      approximateLocation: r.approximateLocation ?? false,
+    },
+  };
+}
+
 /** Forma de resultado que devuelve GET /api/search (proyección reducida). */
 export type RawSearchResult = {
   id: string;

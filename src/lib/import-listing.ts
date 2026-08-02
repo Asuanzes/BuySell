@@ -10,6 +10,8 @@ import { mergeProperties } from "@/features/matching/merge";
 import { autoMergeSafety } from "@/features/matching/auto-merge-guard";
 import { borrowFieldsFromSimilar } from "@/features/matching/borrow-fields";
 import { geocodeAddress } from "@/lib/geocode";
+import { cartociudadCandidates, pickBestMunicipality } from "@/lib/cartociudad";
+import { isBlankGeo, isProvinceOnlyQuery } from "@/lib/geo-es";
 import { logImportEvent } from "@/lib/import-log";
 import {
   isValidPriceEur,
@@ -738,6 +740,51 @@ async function postImportTasks(propertyId: string, opts: { skipAutoMerge?: boole
     }
   } catch (e) {
     await logImportEvent("HASH", { propertyId, ok: false, message: (e as Error).message });
+  }
+
+  // 1b. Municipio y provincia si el portal no los dio. Sin esto el corpus
+  //     acumula fichas con `province: ""` y `city: "Desconocida"` (ver el
+  //     upsert de más arriba), que dejan el filtro por zona del buscador
+  //     silenciosamente inútil: no falla, simplemente no encuentra nada.
+  //     La consulta al IGN va en el enriquecimiento posterior, no en la ruta de
+  //     importación, y su ritmo lo marca una importación de un usuario, no un
+  //     rastreador. Sólo rellena huecos: un dato del portal nunca se pisa.
+  try {
+    const p = await prisma.property.findUnique({ where: { id: propertyId } });
+    if (p && (isBlankGeo(p.city) || isBlankGeo(p.province))) {
+      const query = [
+        p.address,
+        p.postalCode,
+        isBlankGeo(p.city) ? null : p.city,
+        isBlankGeo(p.province) ? null : p.province,
+      ]
+        .map((s) => s?.trim())
+        .filter(Boolean)
+        .join(", ");
+      const match =
+        query.length >= 3
+          ? pickBestMunicipality(await cartociudadCandidates(query), {
+              province: p.province,
+              // Si lo único que sabemos es la provincia, un resultado de calle
+              // sería un homónimo de otro municipio (ver isProvinceOnlyQuery).
+              onlyMunicipalityLevel: isProvinceOnlyQuery(query),
+            })
+          : null;
+      const data: { city?: string; province?: string } = {};
+      if (match && isBlankGeo(p.city)) data.city = match.city;
+      if (match && isBlankGeo(p.province)) data.province = match.province;
+      if (Object.keys(data).length) {
+        await prisma.property.update({ where: { id: propertyId }, data });
+        await logImportEvent("GEOCODE", {
+          propertyId,
+          ok: true,
+          message: `zona: ${data.city ?? p.city} / ${data.province ?? p.province}`,
+          meta: { before: { city: p.city, province: p.province }, after: data, source: "cartociudad" },
+        });
+      }
+    }
+  } catch (e) {
+    await logImportEvent("GEOCODE", { propertyId, ok: false, message: (e as Error).message });
   }
 
   // 2. Geocode si seguimos sin coords pero tenemos dirección/ciudad.
