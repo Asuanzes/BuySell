@@ -33,12 +33,20 @@ export function PortalSearchWebView({
   url,
   portal,
   operation,
+  forceVisible = false,
   onResults,
   onCancel,
 }: {
   url: string;
   portal: PortalKey;
   operation: "RENT" | "SALE";
+  /**
+   * Enseña la página aunque no haya captcha detectado. Se usa cuando la
+   * extracción devuelve cero: si la máquina no sabe leer la página, lo honesto
+   * es enseñársela a la persona, que sí sabrá si es un captcha, un muro de
+   * cookies o que el municipio no existe en ese portal.
+   */
+  forceVisible?: boolean;
   onResults: (hits: PortalHit[], debug?: PortalDebug) => void;
   onCancel: () => void;
 }) {
@@ -64,13 +72,14 @@ export function PortalSearchWebView({
     }
   }
 
-  const containerStyle = challenge
+  const shown = challenge || forceVisible;
+  const containerStyle = shown
     ? [StyleSheet.absoluteFillObject, styles.visible, { paddingTop: insets.top }]
     : styles.hidden;
 
   return (
     <View style={containerStyle}>
-      {challenge && (
+      {shown && (
         <View style={[styles.bar, { backgroundColor: th.surface, borderBottomColor: th.border }]}>
           <Text style={[styles.barText, { color: th.text }]}>{t("importar.captcha_hint")}</Text>
           <Pressable onPress={onCancel} hitSlop={8}>
@@ -87,7 +96,7 @@ export function PortalSearchWebView({
         }
         onMessage={handleMessage}
         style={styles.webview}
-        pointerEvents={challenge ? "auto" : "none"}
+        pointerEvents={shown ? "auto" : "none"}
         javaScriptEnabled
         domStorageEnabled
         userAgent={Platform.OS === "android" ? ANDROID_CHROME_UA : undefined}

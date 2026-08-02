@@ -225,6 +225,11 @@ export function getSearchExtractorScript(
     var hits = collect();
     if (tries++ < 6 && (hits.length === 0 || hits.length < 20)) { setTimeout(run, 1000); return; }
     try { window.scrollTo(0, 0); } catch (e) {}
+    stats.title = (document.title || '').slice(0, 80);
+    stats.href = String(location.href).slice(0, 120);
+    stats.text = ((document.body && document.body.innerText) || '')
+      .replace(/\\s+/g, ' ')
+      .slice(0, 160);
     post({ type: 'results', data: hits, debug: stats });
   };
   run();
@@ -233,8 +238,21 @@ true;
 `;
 }
 
-/** Diagnóstico del extractor: sin esto, "0 resultados" no dice dónde falla. */
-export type PortalDebug = { anchors: number; matched: number; cards: number; noPrice: number };
+/**
+ * Diagnóstico del extractor: sin esto, "0 resultados" no dice dónde falla.
+ * `title`/`href`/`text` identifican QUÉ página cargó de verdad — un captcha, un
+ * muro de cookies o un 404 se distinguen al instante, y un recuento de enlaces
+ * ridículo (4 en una lista que debería tener cientos) delata la interstitial.
+ */
+export type PortalDebug = {
+  anchors: number;
+  matched: number;
+  cards: number;
+  noPrice: number;
+  title?: string;
+  href?: string;
+  text?: string;
+};
 
 /**
  * Filtros nuestros aplicados a lo extraído (el portal sólo filtró la zona) y

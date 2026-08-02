@@ -48,6 +48,9 @@ export default function SearchScreen() {
   const [runningUrl, setRunningUrl] = useState<string | null>(null);
   const [portalHits, setPortalHits] = useState<PortalHit[] | null>(null);
   const [portalDebug, setPortalDebug] = useState<string | null>(null);
+  // Extracción fallida: se enseña la página del portal para que el usuario vea
+  // qué está pasando (captcha, muro de cookies, municipio inexistente).
+  const [inspecting, setInspecting] = useState(false);
   const { setUrl: setPendingImportUrl } = usePendingImport();
 
   // Debounce de 250ms sobre el texto.
@@ -60,13 +63,15 @@ export default function SearchScreen() {
   // en bucle o cambia de estructura, el script inyectado puede no contestar
   // nunca. Sin esto el botón se queda girando para siempre.
   useEffect(() => {
-    if (!runningUrl) return;
+    // Mientras el usuario está mirando la página (inspecting) no se corta: el
+    // corte existe para páginas que no contestan, no para interrumpirle.
+    if (!runningUrl || inspecting) return;
     const handle = setTimeout(() => {
       setRunningUrl(null);
       setPortalHits((current) => current ?? []);
     }, 30000);
     return () => clearTimeout(handle);
-  }, [runningUrl]);
+  }, [runningUrl, inspecting]);
 
   const activeFilters = countActiveFilters(filters);
   const isProperty = scope === "property";
@@ -85,6 +90,7 @@ export default function SearchScreen() {
     }
     setPortalHits(null);
     setPortalDebug(null);
+    setInspecting(false);
     setRunningUrl(
       buildSearchUrl(portal, filters.operation === "SALE" ? "SALE" : "RENT", city, province)
     );
@@ -388,19 +394,36 @@ export default function SearchScreen() {
           url={runningUrl}
           portal={portal}
           operation={filters.operation === "SALE" ? "SALE" : "RENT"}
+          forceVisible={inspecting}
           onResults={(hits, debug) => {
-            setRunningUrl(null);
             const kept = applyLocalFilters(hits, filters);
             setPortalHits(kept);
             // Traza legible: sin esto, "0 resultados" no distingue entre página
             // no cargada, enlaces no reconocidos y filtros demasiado estrechos.
             setPortalDebug(
-              debug
-                ? `${debug.anchors} enlaces · ${debug.matched} de anuncio · ${debug.cards} tarjetas · ${hits.length} leídas · ${kept.length} tras filtros`
-                : `${hits.length} leídas · ${kept.length} tras filtros`
+              [
+                debug
+                  ? `${debug.anchors} enlaces · ${debug.matched} de anuncio · ${debug.cards} tarjetas · ${kept.length} tras filtros`
+                  : `${kept.length} tras filtros`,
+                debug?.title ? `Página: ${debug.title}` : null,
+                debug?.href ?? null,
+              ]
+                .filter(Boolean)
+                .join("\n")
             );
+            // Cero anuncios = la página no era el listado. Se deja montada y
+            // visible para que el usuario vea (y pueda resolver) qué la bloquea.
+            // Si el usuario resuelve el captcha, la página recarga y el script
+            // se reinyecta: esta misma rama recoge los anuncios y cierra el
+            // WebView sin que tenga que volver a pulsar nada.
+            if (hits.length === 0) {
+              setInspecting(true);
+            } else {
+              setRunningUrl(null);
+              setInspecting(false);
+            }
           }}
-          onCancel={() => setRunningUrl(null)}
+          onCancel={() => { setRunningUrl(null); setInspecting(false); }}
         />
       )}
 
