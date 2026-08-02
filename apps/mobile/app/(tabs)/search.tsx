@@ -403,7 +403,7 @@ export default function SearchScreen() {
             setPortalDebug(
               [
                 debug
-                  ? `${debug.anchors} enlaces · ${debug.matched} de anuncio · ${debug.cards} tarjetas · ${kept.length} tras filtros`
+                  ? `${debug.anchors} enlaces · ${debug.matched} de anuncio · ${debug.cards} tarjetas · ${debug.withPrice ?? 0} con precio · ${kept.length} tras filtros`
                   : `${kept.length} tras filtros`,
                 debug?.title ? `Página: ${debug.title}` : null,
                 debug?.href ?? null,

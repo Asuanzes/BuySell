@@ -136,14 +136,34 @@ export function getSearchExtractorScript(
    * dentro de la banda de cordura de la operación.
    */
   var priceOf = function(text) {
-    var re = /([\\d][\\d.\\s]{0,12}?)\\s*€(\\s*\\/\\s*m[²2])?/g;
+    // €  y  ²  van ESCAPADOS (\\u20AC, \\u00B2) a propósito: el WebView de
+    // Android puede mutilar los no-ASCII de un script inyectado, y si el símbolo
+    // llega roto ninguna expresión que dependa de él casa. Salían tarjetas sin
+    // precio justo por esto.
+    var re = /([\\d][\\d.\\s]{0,12}?)\\s*\\u20AC(\\s*\\/\\s*m[\\u00B22])?/g;
     var m, best = null;
     while ((m = re.exec(text)) !== null) {
-      if (m[2]) continue; // €/m² → fuera
+      if (m[2]) continue; // €/m² → precio por metro, no el del anuncio
       var n = parseInt(String(m[1]).replace(/[.\\s]/g, ''), 10);
       if (isFinite(n) && n >= MIN && n <= MAX) { best = n; break; }
     }
     return best;
+  };
+
+  /** Segunda vía: el nodo del precio suele llevar "price" en la clase (ASCII). */
+  var priceFromNode = function(box) {
+    var nodes = box.querySelectorAll('[class*="price" i], [class*="Price"], [data-testid*="price" i]');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = priceOf((nodes[i].innerText || nodes[i].textContent || '').replace(/\\s+/g, ' '));
+      if (n != null) return n;
+      // Ni con el símbolo: número suelto dentro de un nodo que se llama "precio".
+      var raw = (nodes[i].innerText || '').replace(/[.\\s]/g, '').match(/\\d{3,8}/);
+      if (raw) {
+        var v = parseInt(raw[0], 10);
+        if (v >= MIN && v <= MAX) return v;
+      }
+    }
+    return null;
   };
 
   /**
@@ -166,7 +186,7 @@ export function getSearchExtractorScript(
     return false;
   };
 
-  var stats = { anchors: 0, matched: 0, cards: 0, noPrice: 0 };
+  var stats = { anchors: 0, matched: 0, cards: 0, noPrice: 0, withPrice: 0 };
 
   var collect = function() {
     var anchors = document.querySelectorAll('a[href]');
@@ -182,14 +202,16 @@ export function getSearchExtractorScript(
 
       // Contenedor del anuncio: el ancestro más cercano que ya incluye un precio.
       var box = a;
-      for (var up = 0; up < 5 && box.parentElement; up++) {
-        if (/\\d[\\d.\\s]*\\s*€/.test(box.innerText || '')) break;
+      for (var up = 0; up < 6 && box.parentElement; up++) {
+        if (/\\d[\\d.\\s]*\\s*\\u20AC/.test(box.innerText || '')) break;
         box = box.parentElement;
       }
       var text = (box.innerText || '').replace(/\\s+/g, ' ');
       var price = priceOf(text);
+      if (price == null) price = priceFromNode(box);
+      if (price != null) stats.withPrice++;
       var roomsM = text.match(/(\\d+)\\s*(?:hab|dorm)/i);
-      var areaM = text.match(/(\\d+)\\s*m[²2]\\b/);
+      var areaM = text.match(/(\\d+)\\s*m[\\u00B22]\\b/);
       // Sin precio válido, sólo vale si tiene pinta de anuncio (m² o hab): así
       // Idealista aparece aunque su tarjeta no traiga el precio en texto plano.
       if (price == null && !roomsM && !areaM) { stats.noPrice++; continue; }
@@ -249,6 +271,8 @@ export type PortalDebug = {
   matched: number;
   cards: number;
   noPrice: number;
+  /** Tarjetas a las que SÍ se les pudo leer el precio. */
+  withPrice?: number;
   title?: string;
   href?: string;
   text?: string;
