@@ -23,6 +23,7 @@
     "scraper": "node scripts/scraper-service.mjs",
     "claim-orphans": "tsx scripts/claim-orphan-properties.ts",
     "normalize-geo": "node --env-file=.env --import tsx scripts/normalize-property-geo.ts",
+    "reset-quota": "node --env-file=.env --import tsx scripts/reset-quota.ts",
     "reset-food-menus": "node --env-file=.env --import tsx scripts/reset-food-menus.ts",
     "refresh": "tsx scripts/refresh-type.ts",
     "backfill-ratings": "node --env-file=.env --import tsx scripts/backfill-book-ratings.ts",

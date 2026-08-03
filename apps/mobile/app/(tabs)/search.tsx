@@ -402,7 +402,7 @@ export default function SearchScreen() {
           forceVisible={inspecting}
           onProgress={setProgress}
           onResults={(hits, debug) => {
-            const kept = applyLocalFilters(hits, filters);
+            const { kept, dropped } = applyLocalFilters(hits, filters);
             setPortalHits(kept);
             // Traza legible: sin esto, "0 resultados" no distingue entre página
             // no cargada, enlaces no reconocidos y filtros demasiado estrechos.
@@ -411,7 +411,14 @@ export default function SearchScreen() {
                 debug
                   ? `${debug.anchors} enlaces · ${debug.matched} de anuncio · ${debug.cards} tarjetas · ${debug.withPrice ?? 0} con precio · ${kept.length} tras filtros`
                   : `${kept.length} tras filtros`,
+                // Qué filtro se llevó por delante los que faltan.
+                dropped.sanity + dropped.price + dropped.rooms + dropped.area > 0
+                  ? `Descartados: ${dropped.sanity} precio absurdo · ${dropped.price} fuera de rango · ${dropped.rooms} habitaciones · ${dropped.area} superficie`
+                  : null,
                 debug?.mismatch ? t("search.portal_mismatch") : null,
+                // Formas de enlace reales de la página: con esto se corrige el
+                // patrón del portal en vez de adivinarlo.
+                debug?.shapes?.length ? `Enlaces: ${debug.shapes.join(" | ")}` : null,
                 debug?.title ? `Página: ${debug.title}` : null,
                 debug?.href ?? null,
               ]

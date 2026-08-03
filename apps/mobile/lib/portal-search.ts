@@ -310,6 +310,22 @@ export function getSearchExtractorScript(
     // una lista de otra ciudad o de venta cuando se pidió alquiler.
     stats.mismatch = !urlOk();
     if (stats.mismatch) hits = [];
+    // Formas de enlace dominantes: revela el patrón real cuando el nuestro no
+    // casa. Sólo se calcula al terminar, y sólo si hubo poca cosecha.
+    if (stats.matched < 8) {
+      var shapes = {};
+      var as = document.querySelectorAll('a[href]');
+      for (var s = 0; s < as.length; s++) {
+        var raw = as[s].getAttribute('href') || '';
+        if (!raw || raw.charAt(0) === '#' || raw.indexOf('javascript') === 0) continue;
+        var shape = raw.split('?')[0].replace(/\\d+/g, '#');
+        shapes[shape] = (shapes[shape] || 0) + 1;
+      }
+      stats.shapes = Object.keys(shapes)
+        .sort(function(a, b) { return shapes[b] - shapes[a]; })
+        .slice(0, 3)
+        .map(function(k) { return shapes[k] + 'x ' + k.slice(-58); });
+    }
     stats.title = (document.title || '').slice(0, 80);
     stats.href = String(location.href).slice(0, 120);
     stats.text = ((document.body && document.body.innerText) || '')
@@ -399,6 +415,13 @@ export type PortalDebug = {
   withPrice?: number;
   /** La página final no era la pedida (redirect silencioso). */
   mismatch?: boolean;
+  /**
+   * Formas de enlace más repetidas de la página, con los dígitos sustituidos
+   * por `#`. Es la única manera de averiguar el patrón real de un portal que
+   * monta el listado por JavaScript: desde un `fetch` de servidor su HTML sólo
+   * trae la cáscara (Milanuncios devuelve UN enlace).
+   */
+  shapes?: string[];
   title?: string;
   href?: string;
   text?: string;
@@ -413,6 +436,12 @@ export type PortalDebug = {
  * y no se confía en él. Un "45 €/mes" es un precio por metro o un gasto de
  * comunidad mal leído, nunca el alquiler de un piso.
  */
+export type FilterOutcome = {
+  kept: PortalHit[];
+  /** Cuántos cayó cada motivo. "N tras filtros" a secas no dice qué filtro fue. */
+  dropped: { sanity: number; price: number; rooms: number; area: number };
+};
+
 export function applyLocalFilters(
   hits: PortalHit[],
   f: {
@@ -423,17 +452,19 @@ export function applyLocalFilters(
     minArea?: number;
     maxArea?: number;
   }
-): PortalHit[] {
+): FilterOutcome {
   const sane = f.operation === "SALE" ? isValidPriceEur : isValidMonthlyRentEur;
-  return hits.filter((h) => {
+  const dropped = { sanity: 0, price: 0, rooms: 0, area: 0 };
+  const kept = hits.filter((h) => {
     // Precio nulo se deja pasar (el anuncio existe, el precio se ve al abrirlo);
     // un precio presente pero absurdo se descarta.
-    if (h.price != null && !sane(h.price)) return false;
-    if (f.minPrice != null && (h.price ?? 0) < f.minPrice) return false;
-    if (f.maxPrice != null && (h.price ?? Infinity) > f.maxPrice) return false;
-    if (f.minRooms != null && (h.rooms ?? 0) < f.minRooms) return false;
-    if (f.minArea != null && (h.area ?? 0) < f.minArea) return false;
-    if (f.maxArea != null && (h.area ?? Infinity) > f.maxArea) return false;
+    if (h.price != null && !sane(h.price)) return (dropped.sanity++, false);
+    if (f.minPrice != null && (h.price ?? 0) < f.minPrice) return (dropped.price++, false);
+    if (f.maxPrice != null && (h.price ?? Infinity) > f.maxPrice) return (dropped.price++, false);
+    if (f.minRooms != null && (h.rooms ?? 0) < f.minRooms) return (dropped.rooms++, false);
+    if (f.minArea != null && (h.area ?? 0) < f.minArea) return (dropped.area++, false);
+    if (f.maxArea != null && (h.area ?? Infinity) > f.maxArea) return (dropped.area++, false);
     return true;
   });
+  return { kept, dropped };
 }

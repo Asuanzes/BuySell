@@ -41,16 +41,31 @@ const ANDROID_CHROME_UA =
  */
 const FIT_TO_SCREEN = `
 (function() {
-  var head = document.head || document.getElementsByTagName('head')[0];
-  if (!head) return;
-  var m = document.querySelector('meta[name="viewport"]');
-  if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'viewport'); head.appendChild(m); }
-  m.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=5');
-  // Alguna interstitial fija un ancho en píxeles al body y desborda igual.
-  try {
-    var b = document.body;
-    if (b) { b.style.maxWidth = '100%'; b.style.overflowX = 'hidden'; }
-  } catch (e) {}
+  var apply = function() {
+    var head = document.head || document.getElementsByTagName('head')[0];
+    if (!head) return;
+    // Puede haber VARIOS meta viewport (la interstitial añade el suyo encima).
+    // Gana el último, así que sobra con dejar uno.
+    var metas = document.querySelectorAll('meta[name="viewport"]');
+    for (var i = metas.length - 1; i > 0; i--) {
+      try { metas[i].parentNode.removeChild(metas[i]); } catch (e) {}
+    }
+    var m = metas[0];
+    if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'viewport'); head.appendChild(m); }
+    m.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=5');
+    // Anchos fijos en píxeles: la página de DataDome trae un layout de
+    // escritorio y desborda aunque el viewport sea correcto.
+    try {
+      var de = document.documentElement, b = document.body;
+      if (de) { de.style.maxWidth = '100%'; de.style.overflowX = 'hidden'; }
+      if (b) { b.style.maxWidth = '100%'; b.style.overflowX = 'hidden'; b.style.width = 'auto'; }
+    } catch (e) {}
+  };
+  apply();
+  document.addEventListener('DOMContentLoaded', apply);
+  // La página puede reescribir su viewport al hidratar: se reafirma unos
+  // segundos en vez de confiar en una sola pasada.
+  var n = 0, id = setInterval(function() { apply(); if (++n > 12) clearInterval(id); }, 400);
 })();
 true;
 `;
@@ -166,7 +181,9 @@ export function PortalSearchWebView({
         pointerEvents={shown ? "auto" : "none"}
         javaScriptEnabled
         domStorageEnabled
-        // Ajuste al ancho del móvil en cada carga, incluidas las interstitials.
+        // Ajuste al ancho del móvil, ANTES de que pinte (si no, se ve un
+        // instante a tamaño de escritorio) y otra vez al terminar de cargar.
+        injectedJavaScriptBeforeContentLoaded={FIT_TO_SCREEN}
         injectedJavaScript={FIT_TO_SCREEN}
         // Android: escala la página al ancho del WebView cuando la web ignora
         // el viewport. En iOS lo resuelve WKWebView con el meta de arriba.
