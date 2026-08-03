@@ -8,6 +8,7 @@ import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import {
   getSearchExtractorScript,
+  portalDomain,
   type PortalDebug,
   type PortalHit,
   type PortalKey,
@@ -33,6 +34,7 @@ export function PortalSearchWebView({
   url,
   portal,
   operation,
+  city,
   forceVisible = false,
   onResults,
   onCancel,
@@ -40,6 +42,8 @@ export function PortalSearchWebView({
   url: string;
   portal: PortalKey;
   operation: "RENT" | "SALE";
+  /** Municipio pedido: sirve para detectar que el portal nos ha desviado. */
+  city: string;
   /**
    * Enseña la página aunque no haya captcha detectado. Se usa cuando la
    * extracción devuelve cero: si la máquina no sabe leer la página, lo honesto
@@ -55,6 +59,16 @@ export function PortalSearchWebView({
   const insets = useSafeAreaInsets();
   const ref = useRef<WebView>(null);
   const [challenge, setChallenge] = useState(false);
+  const [host, setHost] = useState(() => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return "";
+    }
+  });
+  const domain = portalDomain(portal);
+  /** Sólo se inyecta en el dominio del portal: nunca en un tercero al que nos lleve. */
+  const trusted = host === domain || host.endsWith(`.${domain}`);
 
   function handleMessage(event: { nativeEvent: { data: string } }) {
     try {
@@ -81,7 +95,17 @@ export function PortalSearchWebView({
     <View style={containerStyle}>
       {shown && (
         <View style={[styles.bar, { backgroundColor: th.surface, borderBottomColor: th.border }]}>
-          <Text style={[styles.barText, { color: th.text }]}>{t("importar.captcha_hint")}</Text>
+          <View style={styles.barBody}>
+            <Text style={[styles.barText, { color: th.text }]}>
+              {challenge ? t("importar.captcha_hint") : t("search.portal_inspect_hint")}
+            </Text>
+            {/* Qué web es ESTA: sin decirlo, una página ajena a pantalla completa
+                dentro de la app se confunde con la propia app. Nunca pidas aquí
+                usuario ni contraseña de nada. */}
+            <Text style={[styles.barHost, { color: th.textSubtle }]} numberOfLines={1}>
+              {t("search.portal_external_site", { host: host || domain })}
+            </Text>
+          </View>
           <Pressable onPress={onCancel} hitSlop={8}>
             <Text style={[styles.cancel, { color: th.primary }]}>{t("common.cancel")}</Text>
           </Pressable>
@@ -91,9 +115,17 @@ export function PortalSearchWebView({
       <WebView
         ref={ref}
         source={{ uri: url }}
-        onLoadEnd={() =>
-          ref.current?.injectJavaScript(getSearchExtractorScript(portal, url, operation))
-        }
+        onNavigationStateChange={(nav) => {
+          try {
+            setHost(new URL(nav.url).host);
+          } catch {
+            /* about:blank y similares */
+          }
+        }}
+        onLoadEnd={() => {
+          if (!trusted) return; // no se inyecta nada fuera del dominio del portal
+          ref.current?.injectJavaScript(getSearchExtractorScript(portal, url, operation, city));
+        }}
         onMessage={handleMessage}
         style={styles.webview}
         pointerEvents={shown ? "auto" : "none"}
@@ -118,7 +150,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  barText: { flex: 1, fontSize: 13, fontFamily: fonts.bodyMedium },
+  barBody: { flex: 1, gap: 2 },
+  barText: { fontSize: 13, fontFamily: fonts.bodyMedium },
+  barHost: { fontSize: 11, fontFamily: fonts.bodyMedium },
   cancel: { fontSize: 13, fontFamily: fonts.bodySemibold, paddingLeft: 12 },
   webview: { flex: 1 },
 });

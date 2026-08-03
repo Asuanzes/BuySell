@@ -436,6 +436,39 @@ Implementación:
   portal pide captcha, enseña el WebView para que el usuario lo resuelva.
 - Pulsar un resultado reutiliza el canal de importación que ya existe.
 
+#### Gramática de URL por portal (medida el 2026-08-03)
+
+Adivinar el slug del municipio fue el punto débil y reventó por ahí. Lo medido:
+
+| Portal | Formato que funciona | Trampa |
+| --- | --- | --- |
+| Idealista | `/alquiler-viviendas/{muni}-{provincia}/` | Sirve interstitial de DataDome en la primera carga |
+| Fotocasa | `/es/alquiler/viviendas/{muni}/todas-las-zonas/l` | Si el municipio se llama como su provincia hace falta `{muni}-capital`, o devuelve la PROVINCIA entera; y `-capital` en un municipio normal da 404 |
+| Pisos.com | `/alquiler/pisos-{muni}/` | Reescribe el slug solo (`pisos-gijon` → `pisos-gijon_concejo_xixon_conceyu_gijon`) |
+| Milanuncios | `/alquiler-de-pisos-en-{muni}/` | **Sin provincia**: con ella rebota al listado NACIONAL y devuelve anuncios de otra ciudad |
+| Habitaclia | `/alquiler-{muni}.htm` | Redirige a `m.habitaclia.com`; sirve verificación al WebView |
+
+Tres defectos propios que salieron de esa prueba:
+
+1. El aceptador de cookies usaba `button[class*="accept"]`, un selector tan
+   ancho que clicaba cualquier botón de la página: es lo que mandaba Fotocasa a
+   su portada y pisos.com de alquiler a venta. Ahora sólo actúa sobre ids
+   conocidos de gestores de consentimiento y con el texto verificado.
+2. No se comprobaba **dónde acabábamos**. Un redirect silencioso devolvía
+   tarjetas plausibles de otra zona u otra operación, que es peor que un error.
+   Hay guard de municipio + operación, que falla pronto y descarta los hits.
+3. El `€` viajaba literal en el script inyectado; el WebView de Android puede
+   mutilar los no-ASCII y sin el símbolo no se leía ningún precio. Va escapado
+   (`€`) y hay una segunda vía por nombre de clase, que es ASCII.
+
+**Siguiente paso (recomendación de Codex, aceptada): pilotar el buscador propio
+del portal** en vez de construir la URL. Con 8.100 municipios y una gramática
+distinta por portal, la tabla de arriba no escala; las URLs construidas quedan
+como atajo para los casos ya medidos. Fallos que esperar al pilotar formularios:
+inputs controlados por React que ignoran `input.value = x` sin el setter nativo,
+sugerencias con debounce, homónimos en la primera sugerencia y formularios que
+navegan por JS sin `submit`.
+
 Postura y límites que se mantienen: la búsqueda la inicia **el usuario**, en su
 dispositivo y bajo su sesión; los resultados **enlazan al portal** y se importan
 uno a uno; no hay rastreo masivo, ni caché de fotos, ni corpus agregado. Las

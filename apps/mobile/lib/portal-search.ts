@@ -59,8 +59,10 @@ export const PORTALS: Record<PortalKey, PortalDef> = {
   },
   FOTOCASA: {
     label: "Fotocasa",
-    rentUrl: (c) => `https://www.fotocasa.es/es/alquiler/viviendas/${slugify(c)}/todas-las-zonas/l`,
-    saleUrl: (c) => `https://www.fotocasa.es/es/comprar/viviendas/${slugify(c)}/todas-las-zonas/l`,
+    rentUrl: (c, p) =>
+      `https://www.fotocasa.es/es/alquiler/viviendas/${fotocasaSlug(c, p)}/todas-las-zonas/l`,
+    saleUrl: (c, p) =>
+      `https://www.fotocasa.es/es/comprar/viviendas/${fotocasaSlug(c, p)}/todas-las-zonas/l`,
     detailPattern: /\/(?:alquiler|comprar)\/vivienda\/[^"']+\/\d+\/d/,
   },
   PISOS_COM: {
@@ -77,12 +79,38 @@ export const PORTALS: Record<PortalKey, PortalDef> = {
   },
   MILANUNCIOS: {
     label: "Milanuncios",
-    rentUrl: (c, p) =>
-      `https://www.milanuncios.com/alquiler-de-pisos-en-${slugify(c)}-${slugify(p)}/`,
-    saleUrl: (c, p) => `https://www.milanuncios.com/venta-de-pisos-en-${slugify(c)}-${slugify(p)}/`,
+    // SIN provincia: medido el 2026-08-03 — ".../alquiler-de-pisos-en-barcelona/"
+    // devuelve el listado y ".../alquiler-de-pisos-en-barcelona-barcelona/"
+    // rebota al listado NACIONAL (de ahí el piso de Madrid en una búsqueda de
+    // Barcelona).
+    rentUrl: (c) => `https://www.milanuncios.com/alquiler-de-pisos-en-${slugify(c)}/`,
+    saleUrl: (c) => `https://www.milanuncios.com/venta-de-pisos-en-${slugify(c)}/`,
     detailPattern: /-\d{6,}\.htm/,
   },
 };
+
+/**
+ * Fotocasa distingue la CAPITAL de su provincia con el sufijo "-capital".
+ * Sin él, "barcelona" devuelve los 5.066 anuncios de la provincia entera en vez
+ * de los 3.970 de la ciudad; con él en un municipio normal ("gijon-capital")
+ * responde 404. Ambos comportamientos medidos el 2026-08-03.
+ */
+function fotocasaSlug(city: string, province: string): string {
+  const c = slugify(city);
+  const p = slugify(province);
+  return p && c === p ? `${c}-capital` : c;
+}
+
+/**
+ * Dominio registrable del portal ("idealista.com"). Se usa para dos cosas:
+ * no inyectar el script en un host que no esperamos, y enseñar al usuario en
+ * qué web está cuando el WebView ocupa la pantalla. Una página ajena a pantalla
+ * completa dentro de la app es una superficie de phishing si no se identifica.
+ */
+export function portalDomain(portal: PortalKey): string {
+  const host = new URL(PORTALS[portal].rentUrl("x", "y")).host;
+  return host.split(".").slice(-2).join(".");
+}
 
 export function buildSearchUrl(
   portal: PortalKey,
@@ -104,9 +132,18 @@ export function buildSearchUrl(
 export function getSearchExtractorScript(
   portal: PortalKey,
   url: string,
-  operation: "RENT" | "SALE"
+  operation: "RENT" | "SALE",
+  city: string
 ): string {
   const pattern = PORTALS[portal].detailPattern.source;
+  // Palabra más larga del municipio: "l-hospitalet" → "hospitalet". El portal
+  // puede reescribir el slug ("pisos-gijon" → "pisos-gijon_concejo_xixon…")
+  // pero el nombre del pueblo sigue dentro.
+  const cityToken =
+    slugify(city)
+      .split("-")
+      .sort((a, b) => b.length - a.length)[0] ?? "";
+  const opWords = operation === "SALE" ? ["venta", "comprar"] : ["alquiler", "alquilar"];
   // Bandas de `packages/shared/src/sanity.ts`. Van inline porque esto es un
   // string que se inyecta en la página del portal: no hay imports ahí dentro.
   const min = operation === "SALE" ? 10000 : 100;
@@ -118,7 +155,22 @@ export function getSearchExtractorScript(
 
   var RE = new RegExp(${JSON.stringify(pattern)});
   var MIN = ${min}, MAX = ${max};
+  var CITY = ${JSON.stringify(cityToken)};
+  var OPS = ${JSON.stringify(opWords)};
   var post = function(m) { window.ReactNativeWebView.postMessage(JSON.stringify(m)); };
+
+  /**
+   * ¿Seguimos donde pedimos? Los portales redirigen en silencio: Fotocasa a su
+   * portada, pisos.com de alquiler a VENTA, Milanuncios al listado nacional. Un
+   * redirect así devuelve tarjetas plausibles del sitio equivocado, que es peor
+   * que un error: el usuario se cree unos datos que no ha pedido.
+   */
+  var urlOk = function() {
+    var h = String(location.href).toLowerCase();
+    if (CITY && h.indexOf(CITY) < 0) return false;
+    for (var i = 0; i < OPS.length; i++) if (h.indexOf(OPS[i]) >= 0) return true;
+    return false;
+  };
 
   var isChallenge = function() {
     var t = (document.title || '').toLowerCase();
@@ -172,21 +224,29 @@ export function getSearchExtractorScript(
    * Idealista devolvía cero anuncios en el primer intento.
    */
   var acceptConsent = function() {
+    // SOLO ids conocidos de gestores de consentimiento, y además el texto del
+    // botón tiene que sonar a aceptar. Un selector ancho como
+    // 'button[class*="accept"]' clicaba cualquier cosa de la página: es lo que
+    // mandaba Fotocasa a su portada y pisos.com de alquiler a venta.
     var sels = [
       '#didomi-notice-agree-button',
       '#onetrust-accept-btn-handler',
-      'button[id*="accept"]',
-      'button[class*="accept"]',
-      '[data-testid*="accept"]'
+      '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+      '.sp_choice_type_11',
+      'button[mode="primary"][title*="cept"]'
     ];
+    var ok = /acept|accept|agree|consent|entendido|de acuerdo/i;
     for (var i = 0; i < sels.length; i++) {
       var el = document.querySelector(sels[i]);
-      if (el && el.offsetParent !== null) { try { el.click(); return true; } catch (e) {} }
+      if (!el || el.offsetParent === null) continue;
+      var label = (el.innerText || el.getAttribute('title') || el.getAttribute('aria-label') || '');
+      if (!ok.test(label)) continue;
+      try { el.click(); return true; } catch (e) {}
     }
     return false;
   };
 
-  var stats = { anchors: 0, matched: 0, cards: 0, noPrice: 0, withPrice: 0 };
+  var stats = { anchors: 0, matched: 0, cards: 0, noPrice: 0, withPrice: 0, mismatch: false };
 
   var collect = function() {
     var anchors = document.querySelectorAll('a[href]');
@@ -237,16 +297,12 @@ export function getSearchExtractorScript(
     return out;
   };
 
-  var tries = 0;
-  var run = function() {
-    if (isChallenge()) { post({ type: 'challenge' }); setTimeout(run, 2500); return; }
-    if (tries < 2) acceptConsent();
-    // Los listados cargan por scroll (Fotocasa carga tandas al bajar): sin esto
-    // sólo se ve la primera pantalla y salen cuatro resultados.
-    try { window.scrollTo(0, document.body.scrollHeight * Math.min(1, tries / 3)); } catch (e) {}
-    var hits = collect();
-    if (tries++ < 6 && (hits.length === 0 || hits.length < 20)) { setTimeout(run, 1000); return; }
+  var finish = function(hits) {
     try { window.scrollTo(0, 0); } catch (e) {}
+    // Página distinta a la pedida → no se entrega nada: mejor "no encontré" que
+    // una lista de otra ciudad o de venta cuando se pidió alquiler.
+    stats.mismatch = !urlOk();
+    if (stats.mismatch) hits = [];
     stats.title = (document.title || '').slice(0, 80);
     stats.href = String(location.href).slice(0, 120);
     stats.text = ((document.body && document.body.innerText) || '')
@@ -254,7 +310,43 @@ export function getSearchExtractorScript(
       .slice(0, 160);
     post({ type: 'results', data: hits, debug: stats });
   };
-  run();
+
+  /**
+   * VIGILA la página en vez de intentarlo una vez y rendirse.
+   *
+   * Antes se daba por fallida a los ~7 s y se le echaba la página encima al
+   * usuario, que tenía que buscar a mano; en cuanto él tocaba algo, las
+   * tarjetas ya estaban ahí. Ahora se sondea hasta 30 s y se entrega en cuanto
+   * aparecen anuncios — y si el usuario está mirando la página y navega o
+   * resuelve un captcha, este mismo bucle lo recoge sin que pulse nada.
+   */
+  var tries = 0;
+  var announcedChallenge = false;
+  var MAX_TRIES = 25;
+
+  var tick = function() {
+    if (isChallenge()) {
+      if (!announcedChallenge) { announcedChallenge = true; post({ type: 'challenge' }); }
+      if (tries++ < MAX_TRIES) { setTimeout(tick, 1500); return; }
+      return finish([]);
+    }
+    if (tries < 3) acceptConsent();
+    // Fallar PRONTO: si a la tercera vuelta seguimos en una página que no es la
+    // pedida, es un redirect, no una carga lenta. Esperar 30 s no lo arregla y
+    // deja al usuario mirando una ruedecita (objeción de Codex, aceptada).
+    if (tries >= 3 && !urlOk()) return finish([]);
+    // Los listados cargan por scroll (Fotocasa carga tandas al bajar): sin esto
+    // sólo se ve la primera pantalla y salen cuatro resultados.
+    try { window.scrollTo(0, document.body.scrollHeight * Math.min(1, tries / 4)); } catch (e) {}
+
+    var hits = collect();
+    // Entrega en cuanto hay material: dos vueltas más si aún entran pocos, por
+    // si el scroll está trayendo la siguiente tanda.
+    if (hits.length >= 8 || (hits.length > 0 && tries >= 4)) return finish(hits);
+    if (tries++ < MAX_TRIES) { setTimeout(tick, 1200); return; }
+    finish(hits);
+  };
+  tick();
 })();
 true;
 `;
@@ -273,6 +365,8 @@ export type PortalDebug = {
   noPrice: number;
   /** Tarjetas a las que SÍ se les pudo leer el precio. */
   withPrice?: number;
+  /** La página final no era la pedida (redirect silencioso). */
+  mismatch?: boolean;
   title?: string;
   href?: string;
   text?: string;

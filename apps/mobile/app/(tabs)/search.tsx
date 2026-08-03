@@ -66,10 +66,12 @@ export default function SearchScreen() {
     // Mientras el usuario está mirando la página (inspecting) no se corta: el
     // corte existe para páginas que no contestan, no para interrumpirle.
     if (!runningUrl || inspecting) return;
+    // 45 s: el script vigila la página hasta ~32 s antes de rendirse. Cortar
+    // antes lo mataría justo cuando estaba a punto de encontrar los anuncios.
     const handle = setTimeout(() => {
       setRunningUrl(null);
       setPortalHits((current) => current ?? []);
-    }, 30000);
+    }, 45000);
     return () => clearTimeout(handle);
   }, [runningUrl, inspecting]);
 
@@ -394,6 +396,7 @@ export default function SearchScreen() {
           url={runningUrl}
           portal={portal}
           operation={filters.operation === "SALE" ? "SALE" : "RENT"}
+          city={city}
           forceVisible={inspecting}
           onResults={(hits, debug) => {
             const kept = applyLocalFilters(hits, filters);
@@ -405,6 +408,7 @@ export default function SearchScreen() {
                 debug
                   ? `${debug.anchors} enlaces · ${debug.matched} de anuncio · ${debug.cards} tarjetas · ${debug.withPrice ?? 0} con precio · ${kept.length} tras filtros`
                   : `${kept.length} tras filtros`,
+                debug?.mismatch ? t("search.portal_mismatch") : null,
                 debug?.title ? `Página: ${debug.title}` : null,
                 debug?.href ?? null,
               ]
