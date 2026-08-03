@@ -36,6 +36,16 @@ const SHARED_HELPERS = `
 // Operación del anuncio: venta vs alquiler. Idealista/Fotocasa/etc. lo llevan en
 // la ruta (/alquiler-…, /comprar-…); fallback a __NEXT_DATA__ y, por último, a
 // señales de texto (€/mes). Devuelve 'SALE' | 'RENT'.
+// Texto de un nodo SIN depender del renderizado. innerText devuelve lo que se
+// ve pintado: en un WebView oculto o aún sin maquetar viene VACÍO, y con él se
+// iban en silencio el precio, la operación y las características. textContent
+// no mira el layout. (Sin acentos graves en este comentario: está dentro de una
+// plantilla y cerrarían la cadena.)
+var __text = function(el) {
+  if (!el) return '';
+  return String(el.innerText || el.textContent || '');
+};
+
 var __operation = function() {
   var path = (location.pathname + ' ' + location.search).toLowerCase();
   if (/alquil|lloguer|arrenda|\\brent\\b|\\brental\\b/.test(path)) return 'RENT';
@@ -45,8 +55,15 @@ var __operation = function() {
     if (/"transactiontypeid":\\s*3|"operation":"?rent|"isrental":true|"transactiontype":"?rent|"transaction":"?rent/.test(s)) return 'RENT';
     if (/"transactiontypeid":\\s*1|"operation":"?(sale|buy)|"transactiontype":"?(sale|buy)/.test(s)) return 'SALE';
   } catch(e) {}
-  var t = (document.body ? document.body.innerText.slice(0, 4000) : '').toLowerCase();
-  if (/€\\s*\\/\\s*mes|\\/mes\\b|al mes\\b|mensuales\\b/.test(t) && !/en venta|precio de venta/.test(t)) return 'RENT';
+  // innerText es texto RENDERIZADO: en un WebView oculto (o sin maquetar aún)
+  // viene vacío y la detección caía siempre a SALE — así se guardaron fichas
+  // tituladas "Alquiler de piso" como venta. textContent no depende del layout.
+  var t = __text(document.body).slice(0, 4000).toLowerCase();
+  if (/\\u20ac\\s*\\/\\s*mes|\\/mes\\b|al mes\\b|mensuales\\b/.test(t) && !/en venta|precio de venta/.test(t)) return 'RENT';
+  // El título del anuncio lo dice casi siempre, y sobrevive aunque el cuerpo no.
+  var h = ((document.title || '') + ' ' + __text(document.querySelector('h1'))).toLowerCase();
+  if (/alquil|lloguer|arrenda/.test(h)) return 'RENT';
+  if (/venta|se vende|comprar/.test(h)) return 'SALE';
   return 'SALE';
 };
 
@@ -189,11 +206,11 @@ var __priceDom = function() {
   for (var s = 0; s < sels.length; s++) {
     var els; try { els = document.querySelectorAll(sels[s]); } catch(e) { continue; }
     for (var i = 0; i < els.length; i++) {
-      var txt = (els[i].innerText || els[i].textContent || '');
-      if (txt.indexOf('€') === -1 && !/eur/i.test(txt)) continue;
-      if (/€\\s*\\/\\s*m²|€\\/m2|\\/\\s*m²|\\/m2\\b/i.test(txt)) continue; // €/m² nunca
+      var txt = __text(els[i]);
+      if (txt.indexOf('\\u20ac') === -1 && !/eur/i.test(txt)) continue;
+      if (/\\u20ac\\s*\\/\\s*m[\\u00b22]|\\/\\s*m[\\u00b22]\\b/i.test(txt)) continue; // €/m² nunca
       if (op !== 'RENT' && /\\/\\s*mes|\\/mes|mensual|al mes/i.test(txt)) continue; // €/mes solo en alquiler
-      var p = __price(txt.split('€')[0]); // solo la cifra ANTES del primer € (el nodo puede arrastrar más texto)
+      var p = __price(txt.split('\\u20ac')[0]); // solo la cifra ANTES del primer €
       if (p && p >= (op === 'RENT' ? 100 : 1000)) return p;
     }
   }
@@ -201,12 +218,14 @@ var __priceDom = function() {
   // relacionados van después en el DOM, el primero es el del anuncio). Bandas
   // por operación como en el server: venta >= 10.000, renta 100–50.000.
   try {
-    var body = (document.body && document.body.innerText || '').slice(0, 20000);
-    var re = /(\\d{1,3}(?:\\.\\d{3})+|\\d{3,7})\\s*€(\\s*\\/?\\s*m(es|²|2)\\b)?/g;
+    var body = __text(document.body).slice(0, 20000);
+    // € y ² ESCAPADOS: van dentro de un script que se inyecta como cadena y el
+    // WebView de Android puede mutilar los no-ASCII por el camino.
+    var re = /(\\d{1,3}(?:\\.\\d{3})+|\\d{3,7})\\s*\\u20ac(\\s*\\/?\\s*m(es|\\u00b2|2)\\b)?/g;
     var m;
     while ((m = re.exec(body)) !== null) {
       var unit = m[2] || '';
-      if (/m²|m2/.test(unit)) continue;
+      if (/m[\\u00b22]/.test(unit)) continue;
       var v = parseInt(m[1].replace(/\\./g, ''), 10);
       if (op === 'RENT') { if (v >= 100 && v <= 50000) return v; }
       else { if (!unit && v >= 10000) return v; }
@@ -417,8 +436,7 @@ var __specs = function() {
   var fromFeatures = pick(__features().join(' · '));
   if (fromFeatures.rooms && fromFeatures.bathrooms && fromFeatures.builtArea) return fromFeatures;
 
-  var body = document.body ? document.body.innerText.slice(0, 4000) : '';
-  var fromBody = pick(body);
+  var fromBody = pick(__text(document.body).slice(0, 4000));
   return {
     rooms: fromFeatures.rooms != null ? fromFeatures.rooms : fromBody.rooms,
     bathrooms: fromFeatures.bathrooms != null ? fromFeatures.bathrooms : fromBody.bathrooms,
