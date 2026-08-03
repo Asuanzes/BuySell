@@ -179,12 +179,26 @@ export function getSearchExtractorScript(
     return false;
   };
 
+  /**
+   * ¿Hay un captcha DE VERDAD delante?
+   *
+   * Ojo con DataDome: Idealista carga su script y a menudo un iframe suyo en
+   * páginas NORMALES, para huella digital. Detectarlo como captcha hacía que el
+   * bucle se pasara los 25 reintentos en la rama equivocada y toda búsqueda
+   * durase exactamente 30 s para acabar devolviendo cero.
+   *
+   * El captcha real se sirve desde captcha-delivery.com. Y por si acaso: si hay
+   * anuncios en la página, no hay captcha que valga — manda la evidencia.
+   */
   var isChallenge = function() {
     var t = (document.title || '').toLowerCase();
     if (t.indexOf('just a moment') >= 0 || t.indexOf('un momento') >= 0) return true;
-    if (document.querySelector('iframe[src*="datadome"], iframe[src*="captcha"], #px-captcha')) return true;
-    var b = (document.body && document.body.innerText || '').slice(0, 400).toLowerCase();
-    return b.indexOf('no eres un robot') >= 0 || b.indexOf('verify you are human') >= 0;
+    if (t.indexOf('pardon our interruption') >= 0) return true;
+    if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"], #px-captcha, .g-recaptcha')) return true;
+    var b = (document.body && (document.body.innerText || document.body.textContent) || '')
+      .slice(0, 400).toLowerCase();
+    return b.indexOf('no eres un robot') >= 0 || b.indexOf('verify you are human') >= 0 ||
+           b.indexOf('made us think you were a bot') >= 0;
   };
 
   /**
@@ -360,22 +374,27 @@ export function getSearchExtractorScript(
   };
 
   var tick = function() {
-    if (isChallenge()) {
+    if (tries < 3 && acceptConsent()) say('consent', 0);
+    // Los listados cargan por scroll (Fotocasa carga tandas al bajar): sin esto
+    // sólo se ve la primera pantalla y salen cuatro resultados.
+    try { window.scrollTo(0, document.body.scrollHeight * Math.min(1, tries / 4)); } catch (e) {}
+
+    // PRIMERO se mira si hay anuncios. Antes se preguntaba por el captcha antes
+    // de recoger, y como Idealista trae DataDome en páginas normales, el bucle
+    // se iba por la rama del captcha y agotaba los 25 reintentos: 30 segundos
+    // clavados en cada búsqueda, siempre iguales, para devolver cero.
+    var hits = collect();
+
+    if (hits.length === 0 && isChallenge()) {
       if (!announcedChallenge) { announcedChallenge = true; post({ type: 'challenge' }); }
       say('challenge', 0);
       if (tries++ < MAX_TRIES) { setTimeout(tick, 1500); return; }
       return finish([]);
     }
-    if (tries < 3 && acceptConsent()) say('consent', 0);
     // Fallar PRONTO: si a la tercera vuelta seguimos en una página que no es la
     // pedida, es un redirect, no una carga lenta. Esperar 30 s no lo arregla y
     // deja al usuario mirando una ruedecita (objeción de Codex, aceptada).
     if (tries >= 3 && !urlOk()) return finish([]);
-    // Los listados cargan por scroll (Fotocasa carga tandas al bajar): sin esto
-    // sólo se ve la primera pantalla y salen cuatro resultados.
-    try { window.scrollTo(0, document.body.scrollHeight * Math.min(1, tries / 4)); } catch (e) {}
-
-    var hits = collect();
     // "slow" a partir de ~10 s: si el portal tarda, decirlo es más honesto que
     // repetir "leyendo anuncios" veinte veces.
     say(tries === 0 ? 'opening' : (Date.now() - t0 > 10000 ? 'slow' : 'scanning'), hits.length);
