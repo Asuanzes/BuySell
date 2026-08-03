@@ -1,6 +1,14 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
@@ -41,6 +49,33 @@ function PortalSearchProgressBase({ portalLabel, progress, onStop }: Props) {
   const { t } = useTranslation();
   const reduceMotion = useReducedMotion();
   const [lineWidth, setLineWidth] = useState(0);
+
+  /**
+   * Latido del icono de detener mientras dura la búsqueda.
+   *
+   * Media de ~30 s contra una web ajena: un icono quieto en ese rato se lee
+   * como "esto se ha colgado". Late en el hilo de UI (Reanimated), así que no
+   * compite con el JavaScript que está procesando los eventos del WebView —
+   * justo lo que haría un `setInterval` con `setState`.
+   */
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    if (reduceMotion) {
+      pulse.value = 0;
+      return;
+    }
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 850, easing: Easing.inOut(Easing.quad) }),
+      -1, // sin fin: lo para el desmontaje, que ocurre al terminar la búsqueda
+      true // ida y vuelta
+    );
+    return () => cancelAnimation(pulse);
+  }, [reduceMotion, pulse]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + pulse.value * 0.22 }],
+    opacity: 0.55 + pulse.value * 0.45,
+  }));
 
   const stage = progress?.stage ?? "opening";
   const found = progress?.found ?? 0;
@@ -100,7 +135,9 @@ function PortalSearchProgressBase({ portalLabel, progress, onStop }: Props) {
         accessibilityRole="button"
         style={[styles.stop, { borderColor: th.border }]}
       >
-        <Ionicons name="stop-circle-outline" size={14} color={th.textMuted} />
+        <Animated.View style={pulseStyle}>
+          <Ionicons name="stop-circle-outline" size={16} color={th.accent} />
+        </Animated.View>
         <Text style={{ color: th.textMuted, fontSize: 12, fontFamily: fonts.bodySemibold }}>
           {t("trip.stream_stop")}
         </Text>
