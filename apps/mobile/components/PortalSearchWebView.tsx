@@ -200,7 +200,16 @@ export function PortalSearchWebView({
 }
 
 const styles = StyleSheet.create({
-  hidden: { position: "absolute", top: -5000, left: 0, width: 1, height: 1, overflow: "hidden" },
+  /**
+   * Oculto pero A TAMAÑO COMPLETO, desplazado fuera de pantalla.
+   *
+   * La versión anterior lo escondía en un contenedor de 1×1 px y ahí estaba el
+   * bug de "la página sale agrandada": el WebView maquetaba con un viewport de
+   * 1 px de ancho —`width=device-width` es literalmente 1— y al mostrarlo a
+   * pantalla completa todo aparecía gigante. Ningún `<meta viewport>` puede
+   * arreglar eso, porque el meta era correcto: el lienzo era el equivocado.
+   */
+  hidden: { ...StyleSheet.absoluteFillObject, transform: [{ translateY: -10000 }] },
   visible: { backgroundColor: "#fff", zIndex: 999 },
   bar: {
     flexDirection: "row",

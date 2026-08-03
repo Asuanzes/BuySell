@@ -144,13 +144,15 @@ export function WebViewImporter({ url, onExtracted, onError, onCancel, onProgres
 }
 
 const styles = StyleSheet.create({
+  /**
+   * Oculto pero A TAMAÑO COMPLETO, fuera de pantalla. Escondiéndolo en 1×1 px
+   * el WebView maqueta con un viewport de 1 px de ancho, y cuando aparece el
+   * captcha a pantalla completa la página se ve gigante. El tamaño del lienzo
+   * manda sobre cualquier `<meta viewport>`.
+   */
   hidden: {
-    position: "absolute",
-    top: -5000,
-    left: 0,
-    width: 1,
-    height: 1,
-    overflow: "hidden",
+    ...StyleSheet.absoluteFillObject,
+    transform: [{ translateY: -10000 }],
   },
   visible: {
     backgroundColor: "#fff",
@@ -179,6 +181,6 @@ const styles = StyleSheet.create({
   },
   hiddenIndicator: {
     position: "absolute",
-    top: -5100,
+    top: -10100,
   },
 });
