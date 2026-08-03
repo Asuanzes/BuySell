@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import { useCategoryPrefs } from "@/lib/records/category-prefs-context";
@@ -268,15 +268,21 @@ export default function ImportarScreen() {
 
   // Share/deep-link de INMUEBLE: una URL de portal → flujo property (WebView).
   const handleIncomingUrl = useCallback((u: string) => {
+    setType("property");
+    setValue(u);
+    setOkMsg(null);
+    setErrorMsg(null);
+    setProgress(0);
+    // Un portal desconocido NO se traga en silencio: se deja la URL en la caja
+    // y se dice por qué no arranca. Antes este método no hacía nada y la
+    // pantalla aparecía vacía, indistinguible de "se ha perdido el enlace".
     if (isPortalUrl(u)) {
-      setType("property");
-      setValue(u);
-      setOkMsg(null);
-      setErrorMsg(null);
-      setProgress(0);
       setStatus("extracting");
+    } else {
+      setStatus("error");
+      setErrorMsg(t("importar.err_unknown_portal"));
     }
-  }, []);
+  }, [t]);
 
   // El layout raíz captura el share/deep-link (estés donde estés) y deja aquí la
   // URL de inmueble O el TEXTO compartido de un libro; consumimos cada canal y lo
@@ -293,6 +299,26 @@ export default function ImportarScreen() {
       setPendingUrl(null);
     }
   }, [pendingUrl, handleIncomingUrl, setPendingUrl]);
+
+  /**
+   * URL por PARÁMETRO DE RUTA (la usa "añadir" desde los resultados de portal).
+   *
+   * El canal de contexto de arriba es un consumidor de un solo uso pensado para
+   * el share del sistema: depende de que el efecto y el montaje de la pantalla
+   * coincidan, y cuando no coinciden la URL se pierde sin dejar rastro — la
+   * pantalla aparecía vacía en la segunda importación seguida. Un parámetro de
+   * ruta no depende del tiempo: está en la navegación, y si la pantalla se
+   * vuelve a montar sigue ahí.
+   *
+   * Se limpia tras consumirlo para que volver a la pestaña no reimporte.
+   */
+  const params = useLocalSearchParams<{ url?: string }>();
+  useEffect(() => {
+    const incoming = typeof params.url === "string" ? params.url.trim() : "";
+    if (!incoming) return;
+    handleIncomingUrl(incoming);
+    router.setParams({ url: "" });
+  }, [params.url, handleIncomingUrl]);
   useEffect(() => {
     if (pendingBookShare) {
       void importBookShare(pendingBookShare);

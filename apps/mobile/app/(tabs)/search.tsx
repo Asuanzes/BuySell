@@ -103,10 +103,13 @@ export default function SearchScreen() {
   }
 
   function openPortalHit(hit: PortalHit) {
-    // Reutiliza el canal de importación que ya existe: la pestaña Importar abre
-    // el anuncio en el WebView, lo extrae y crea la ficha.
+    // La URL viaja en la RUTA, no solo en el contexto: el contexto es un
+    // consumidor de un solo uso y si el efecto de Importar no coincide con su
+    // montaje, el enlace se pierde y la pantalla sale vacía (pasaba en la
+    // segunda importación seguida). Se manda por los dos canales: el parámetro
+    // es el fiable, el contexto mantiene compatibilidad con el share del sistema.
     setPendingImportUrl(hit.url);
-    router.navigate("/importar");
+    router.navigate({ pathname: "/importar", params: { url: hit.url } });
   }
   const textReady = debounced.trim().length >= 2;
   // Inmuebles busca SIEMPRE, incluso sin texto ni filtros: un buscador que no
