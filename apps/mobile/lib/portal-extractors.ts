@@ -379,6 +379,53 @@ var __features = function() {
   return out;
 };
 
+/**
+ * Habitaciones, baños y superficie leídos del TEXTO de la ficha.
+ *
+ * Existe porque los datos estructurados no siempre están: el JSON-LD de
+ * Idealista no trae baños NUNCA, y cuando la ficha no lo publica (o lo inyecta
+ * tarde) la rama de respaldo guardaba el anuncio sin una sola característica.
+ * Un registro sin metros ni habitaciones no sirve para comparar, que es justo
+ * para lo que se guarda.
+ *
+ * Se mira primero la lista de características (poco ruido) y solo después el
+ * cuerpo acotado: en el texto largo hay números de teléfono, referencias y
+ * anuncios relacionados.
+ */
+var __specs = function() {
+  var pick = function(text) {
+    var out = { rooms: null, bathrooms: null, builtArea: null };
+    if (!text) return out;
+    var t = String(text).replace(/\\s+/g, ' ');
+    var r = t.match(/(\\d{1,2})\\s*(?:hab\\b|hab\\.|habitacion|habitaciones|dormitorio|dormitorios)/i);
+    if (r) out.rooms = parseInt(r[1], 10);
+    var b = t.match(/(\\d{1,2})\\s*(?:ba\\u00f1o|ba\\u00f1os|aseo|aseos|wc)\\b/i);
+    if (b) out.bathrooms = parseInt(b[1], 10);
+    // "90 m² construidos" gana a "12 m² de terraza": se prefiere la mayor.
+    var areas = t.match(/(\\d{2,5})\\s*m(?:\\u00b2|2)\\b/gi);
+    if (areas) {
+      var best = 0;
+      for (var i = 0; i < areas.length; i++) {
+        var n = parseInt(String(areas[i]).replace(/[^\\d]/g, ''), 10);
+        if (n > best && n <= 5000) best = n;
+      }
+      if (best > 0) out.builtArea = best;
+    }
+    return out;
+  };
+
+  var fromFeatures = pick(__features().join(' · '));
+  if (fromFeatures.rooms && fromFeatures.bathrooms && fromFeatures.builtArea) return fromFeatures;
+
+  var body = document.body ? document.body.innerText.slice(0, 4000) : '';
+  var fromBody = pick(body);
+  return {
+    rooms: fromFeatures.rooms != null ? fromFeatures.rooms : fromBody.rooms,
+    bathrooms: fromFeatures.bathrooms != null ? fromFeatures.bathrooms : fromBody.bathrooms,
+    builtArea: fromFeatures.builtArea != null ? fromFeatures.builtArea : fromBody.builtArea
+  };
+};
+
 var __challenge = function() {
   // Interstitial de DataDome: el captcha vive en un IFRAME de captcha-delivery
   // (o un script de datadome) y el body apenas tiene texto — las palabras clave
@@ -520,6 +567,7 @@ __post({ type: 'extracted', data: { url: ${JSON.stringify(url)}, portal: 'HABITA
 // manda lo que haya (el guard del importador avisará con err_empty_listing).
 const IDEALISTA_SCRIPT = (url: string) => `
 var __extract = function() {
+  var sp = __specs();
   var ld = __jsonLd('RealEstateListing');
   if (ld) {
     var imgArr = [];
@@ -530,8 +578,11 @@ var __extract = function() {
       title: ld.name || document.title,
       price: __price(ld.offers && ld.offers.price) || __priceDom(),
       description: __desc([ld.description]),
-      rooms: ld.numberOfRooms || null,
-      builtArea: (ld.floorSize && ld.floorSize.value) ? Math.round(ld.floorSize.value) : null,
+      // El JSON-LD de Idealista no publica baños nunca, y a veces tampoco
+      // habitaciones: se completa con lo leído del texto de la ficha.
+      rooms: ld.numberOfRooms || sp.rooms,
+      bathrooms: sp.bathrooms,
+      builtArea: (ld.floorSize && ld.floorSize.value) ? Math.round(ld.floorSize.value) : sp.builtArea,
       address: (ld.address && ld.address.streetAddress) || null,
       city: (ld.address && ld.address.addressLocality) || null,
       province: (ld.address && ld.address.addressRegion) || null,
@@ -549,6 +600,9 @@ var __extract = function() {
       url: ${JSON.stringify(url)}, portal: 'IDEALISTA',
       title: hasTitle ? titleEl.innerText.trim() : document.title,
       price: __priceDom(),
+      // Sin JSON-LD, ESTA es la única fuente de características: sin ella el
+      // registro se guardaba sin metros, habitaciones ni baños.
+      rooms: sp.rooms, bathrooms: sp.bathrooms, builtArea: sp.builtArea,
       description: __desc([]),
       images: __imgs(60), features: __features()
     }});
@@ -568,6 +622,7 @@ var __run = function() {
   __post({ type: 'extracted', data: {
     url: ${JSON.stringify(url)}, portal: 'IDEALISTA',
     title: document.title, price: __priceDom(), description: __desc([]),
+    rooms: sp.rooms, bathrooms: sp.bathrooms, builtArea: sp.builtArea,
     images: __imgs(60), features: __features()
   }});
 };
@@ -640,6 +695,7 @@ __post({ type: 'extracted', data: { url: ${JSON.stringify(url)}, portal: 'YAENCO
 `;
 
 const GENERIC_SCRIPT = (url: string, portal: string) => `
+var sp = __specs();
 var ld = __jsonLd('RealEstateListing') || __jsonLd('Apartment') || __jsonLd('House') || __jsonLd('Product');
 if (ld) {
   var li = []; if (ld.image) { var a = Array.isArray(ld.image) ? ld.image : [ld.image]; for (var i=0;i<a.length;i++){ var im=a[i]; li.push(typeof im==='string'?im:(im.url||im.contentUrl||'')); } }
@@ -648,15 +704,16 @@ if (ld) {
     url: ${JSON.stringify(url)}, portal: ${JSON.stringify(portal)},
     title: ld.name || document.title,
     price: __price(ld.offers && ld.offers.price) || __priceDom(),
-    rooms: ld.numberOfRooms || null,
-    builtArea: (ld.floorSize && ld.floorSize.value) ? Math.round(ld.floorSize.value) : null,
+    rooms: ld.numberOfRooms || sp.rooms,
+    bathrooms: sp.bathrooms,
+    builtArea: (ld.floorSize && ld.floorSize.value) ? Math.round(ld.floorSize.value) : sp.builtArea,
     city: (ld.address && ld.address.addressLocality) || null,
     description: __desc([ld.description]),
     images: imgs, features: __features()
   }});
   return;
 }
-__post({ type: 'extracted', data: { url: ${JSON.stringify(url)}, portal: ${JSON.stringify(portal)}, title: document.title, price: __priceDom(), description: __desc([]), images: __imgs(60), features: __features() }});
+__post({ type: 'extracted', data: { url: ${JSON.stringify(url)}, portal: ${JSON.stringify(portal)}, title: document.title, price: __priceDom(), rooms: sp.rooms, bathrooms: sp.bathrooms, builtArea: sp.builtArea, description: __desc([]), images: __imgs(60), features: __features() }});
 `;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
