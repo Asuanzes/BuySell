@@ -213,7 +213,32 @@
     "portal_none_desc": "The municipality may not match the portal's, or that portal may be asking for verification. Try another one.",
     "empty_operation_desc": "You have no saved properties for this operation. Try Sale or All, or look them up in Portals.",
     "empty_filters_title": "No properties match those filters",
-    "empty_filters_desc": "Try removing a filter or widening the area. This only searches the properties you've saved."
+    "empty_filters_desc": "Try removing a filter or widening the area. This only searches the properties you've saved.",
+    "hit_open": "View {{title}}",
+    "hit_open_saved": "View {{title}} (already in your records)"
+  },
+  "preview": {
+    "title": "Listing",
+    "add": "Add to records",
+    "already_saved": "Already in your records",
+    "loading": "Reading the listing…",
+    "extraction_failed": "I couldn't read this listing's full details. The portal may be asking for verification. The data above is what the search results carried.",
+    "no_photos": "No photos",
+    "photos_one": "{{count}} photo",
+    "photos_other": "{{count}} photos",
+    "photo_of": "Photo {{n}} of {{total}}",
+    "description": "Description",
+    "features": "Features",
+    "source": "Source: {{portal}}",
+    "rooms_one": "{{count}} bedroom",
+    "rooms_other": "{{count}} bedrooms",
+    "baths_one": "{{count}} bathroom",
+    "baths_other": "{{count}} bathrooms",
+    "untitled": "Untitled listing",
+    "invalid_title": "This link isn't from a supported portal",
+    "invalid_desc": "I can only open listings from the property portals I know.",
+    "err_other_account": "This listing is already saved in another account, so I can't add it to yours.",
+    "err_add": "I couldn't add it. Try again."
   },
   "screens": {
     "dashboard_desc": "The KPI dashboard is coming in a future update.",

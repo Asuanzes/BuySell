@@ -369,6 +369,21 @@ function AuthGate() {
               title: "",
             }}
           />
+          {/* Detalle de un resultado de BÚSQUEDA (aún no es un registro). Va
+              en el Stack raíz, no en las pestañas, para que la lista de
+              resultados siga montada debajo y volver conserve resultados,
+              filtros y scroll — las pestañas usan <Slot/> y desmontan. */}
+          <Stack.Screen
+            name="listing/preview"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("preview.title"),
+            }}
+          />
           <Stack.Screen
             name="shared"
             options={{

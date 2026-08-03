@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -8,7 +8,12 @@ import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { useQuery } from "@/lib/hooks/useQuery";
 import { searchProperties, searchRecords, type PropertySearchFilters } from "@/lib/data/records-repository";
-import { usePendingImport } from "@/lib/pending-import";
+import {
+  buildPreviewParams,
+  isListingSaved,
+  savedListingsVersion,
+  subscribeSavedListings,
+} from "@/lib/listing-preview";
 import {
   PORTALS,
   applyLocalFilters,
@@ -54,7 +59,25 @@ export default function SearchScreen() {
   // Extracción fallida: se enseña la página del portal para que el usuario vea
   // qué está pasando (captcha, muro de cookies, municipio inexistente).
   const [inspecting, setInspecting] = useState(false);
-  const { setUrl: setPendingImportUrl } = usePendingImport();
+  /**
+   * El scroll del listado NO se guarda en ninguna parte, y es correcto que no
+   * se guarde: el detalle se empuja sobre el Stack raíz, así que esta pantalla
+   * sigue montada debajo y el FlatList conserva su posición él solo.
+   *
+   * Codex objetó que el offset no estuviera persistido por si la pantalla se
+   * remonta. Se revisó y no procede: si esto se remonta es porque el usuario
+   * cambió de pestaña, y entonces `portalHits` — que también es estado local —
+   * ya está vacío. Restaurar el scroll de una lista sin resultados no
+   * significa nada, y un `contentOffset` reaplicado en cada render puede tirar
+   * de la lista mientras el usuario la arrastra. Lo que sí queda pendiente es
+   * verificar en dispositivo el swipe-back de iOS (ver el handoff).
+   */
+  /** Anuncios que el detalle ha guardado: repinta la fila con el check. */
+  const savedTick = useSyncExternalStore(
+    subscribeSavedListings,
+    savedListingsVersion,
+    savedListingsVersion
+  );
 
   // Debounce de 250ms sobre el texto.
   useEffect(() => {
@@ -102,14 +125,28 @@ export default function SearchScreen() {
     );
   }
 
+  /**
+   * Abre el DETALLE del anuncio. No importa nada todavía: el usuario está
+   * explorando, y añadirlo es una decisión que se toma con la ficha delante.
+   *
+   * `push` sobre el Stack raíz, no `navigate` a la pestaña Importar: esta
+   * pantalla guarda los resultados, los filtros y el scroll en estado local y
+   * las pestañas usan `<Slot/>`, así que ir a otra pestaña la desmontaría
+   * entera. Empujando una ruta del Stack, sigue viva debajo.
+   */
   function openPortalHit(hit: PortalHit) {
-    // La URL viaja en la RUTA, no solo en el contexto: el contexto es un
-    // consumidor de un solo uso y si el efecto de Importar no coincide con su
-    // montaje, el enlace se pierde y la pantalla sale vacía (pasaba en la
-    // segunda importación seguida). Se manda por los dos canales: el parámetro
-    // es el fiable, el contexto mantiene compatibilidad con el share del sistema.
-    setPendingImportUrl(hit.url);
-    router.navigate({ pathname: "/importar", params: { url: hit.url } });
+    // Con una búsqueda en marcha ya hay un WebView vivo (y puede estar
+    // pidiendo captcha a pantalla completa): montar el del detalle encima
+    // serían dos WebViews compitiendo por las cookies y por la pantalla.
+    if (runningUrl) return;
+    // `as never`: las rutas tipadas de Expo Router se generan en
+    // `.expo/types/router.d.ts`, que está en .gitignore y sólo se regenera al
+    // arrancar Metro — una ruta recién creada aún no está en ese union. Es el
+    // mismo apaño que ya usan /viajes/nuevo y /property/form.
+    router.push({
+      pathname: "/listing/preview",
+      params: buildPreviewParams(hit, filters.operation === "SALE" ? "SALE" : "RENT"),
+    } as never);
   }
   const textReady = debounced.trim().length >= 2;
   // Inmuebles busca SIEMPRE, incluso sin texto ni filtros: un buscador que no
@@ -349,9 +386,21 @@ export default function SearchScreen() {
         <FlatList
           data={portalHits ?? []}
           keyExtractor={(h) => h.url}
-          renderItem={({ item }) => (
+          // El check de "ya guardado" vive fuera de `data`: sin esto la fila no
+          // se repinta al volver del detalle.
+          extraData={savedTick}
+          renderItem={({ item }) => {
+            const alreadySaved = isListingSaved(item.url);
+            return (
             <Pressable
               onPress={() => openPortalHit(item)}
+              disabled={!!runningUrl}
+              accessibilityRole="button"
+              accessibilityLabel={
+                alreadySaved
+                  ? t("search.hit_open_saved", { title: item.title })
+                  : t("search.hit_open", { title: item.title })
+              }
               style={[styles.hit, { backgroundColor: th.surface, borderColor: th.border }]}
             >
               {item.imageUrl ? (
@@ -378,9 +427,17 @@ export default function SearchScreen() {
                   {PORTALS[item.portal].label}
                 </Text>
               </View>
-              <Ionicons name="add-circle-outline" size={20} color={th.primary} />
+              {/* Antes había un "+" aquí y mentía: no añadía, navegaba a
+                  Importar. Ahora pulsar abre la ficha, así que el glifo es un
+                  chevron — o un check si ya está en tus registros. */}
+              <Ionicons
+                name={alreadySaved ? "checkmark-circle" : "chevron-forward"}
+                size={20}
+                color={alreadySaved ? "#15803D" : th.textSubtle}
+              />
             </Pressable>
-          )}
+            );
+          }}
           contentContainerStyle={styles.list}
           keyboardShouldPersistTaps="handled"
         />

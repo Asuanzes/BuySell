@@ -213,7 +213,32 @@
     "portal_none_desc": "Puede que el municipio no coincida con el del portal, o que ese portal esté pidiendo verificación. Prueba con otro.",
     "empty_operation_desc": "No tienes inmuebles guardados de esta operación. Prueba con Venta o Todo, o búscalos en Portales.",
     "empty_filters_title": "Ningún inmueble con esos filtros",
-    "empty_filters_desc": "Prueba a quitar algún filtro o a ampliar la zona. Sólo se busca entre los inmuebles que has guardado."
+    "empty_filters_desc": "Prueba a quitar algún filtro o a ampliar la zona. Sólo se busca entre los inmuebles que has guardado.",
+    "hit_open": "Ver {{title}}",
+    "hit_open_saved": "Ver {{title}} (ya en tus registros)"
+  },
+  "preview": {
+    "title": "Anuncio",
+    "add": "Añadir a registros",
+    "already_saved": "Ya en tus registros",
+    "loading": "Leyendo el anuncio…",
+    "extraction_failed": "No he podido leer la ficha completa de este anuncio. Puede que el portal esté pidiendo verificación. Los datos de arriba son los que traía el listado.",
+    "no_photos": "Sin fotos",
+    "photos_one": "{{count}} foto",
+    "photos_other": "{{count}} fotos",
+    "photo_of": "Foto {{n}} de {{total}}",
+    "description": "Descripción",
+    "features": "Características",
+    "source": "Fuente: {{portal}}",
+    "rooms_one": "{{count}} habitación",
+    "rooms_other": "{{count}} habitaciones",
+    "baths_one": "{{count}} baño",
+    "baths_other": "{{count}} baños",
+    "untitled": "Anuncio sin título",
+    "invalid_title": "Este enlace no es de un portal soportado",
+    "invalid_desc": "Sólo puedo abrir anuncios de los portales inmobiliarios que conozco.",
+    "err_other_account": "Este anuncio ya está guardado en otra cuenta, así que no puedo añadirlo a la tuya.",
+    "err_add": "No he podido añadirlo. Reintenta."
   },
   "screens": {
     "dashboard_desc": "El panel de KPIs llegará en una próxima actualización.",

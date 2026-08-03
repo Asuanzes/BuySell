@@ -356,7 +356,36 @@ export class CrossOwnerError extends Error {
   }
 }
 
+/**
+ * Importar es IDEMPOTENTE por URL, incluso contra sí mismo en paralelo.
+ *
+ * `importListingOnce` decide entre crear y actualizar leyendo el `Listing` por
+ * su URL, pero entre esa lectura y la escritura cabe otra petición: dos toques
+ * seguidos del botón "Añadir a registros", un reintento tras un timeout de red
+ * que en realidad sí llegó, o la misma URL importada desde dos sitios a la vez.
+ * Las dos entran por el camino de creación y, como `Listing.url` es `@unique`
+ * GLOBAL, la segunda muere con P2002 dentro de la transacción — sin dejar
+ * `Property` huérfano, pero devolviendo un 500 al usuario por algo que sí
+ * había funcionado.
+ *
+ * Un reintento basta: quien perdió la carrera vuelve a leer, ahora encuentra el
+ * anuncio que acaba de crear su gemela y sale por el camino de actualización,
+ * que es la respuesta correcta ("ya lo tenías"). No se reintenta dos veces: un
+ * segundo P2002 ya no sería una carrera, sino un fallo de verdad.
+ */
 export async function importListing(
+  rawPayload: ImportListingPayload,
+  opts: { ownerId?: string | null } = {}
+): Promise<ImportResult> {
+  try {
+    return await importListingOnce(rawPayload, opts);
+  } catch (err) {
+    if ((err as { code?: string })?.code !== "P2002") throw err;
+    return importListingOnce(rawPayload, opts);
+  }
+}
+
+async function importListingOnce(
   rawPayload: ImportListingPayload,
   opts: { ownerId?: string | null } = {}
 ): Promise<ImportResult> {
