@@ -27,6 +27,34 @@ import {
 const ANDROID_CHROME_UA =
   "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
 
+/**
+ * Ajusta la página al ancho del móvil.
+ *
+ * Sin esto la web se pinta a su anchura natural y hay que hacer zoom para leer
+ * nada — se nota sobre todo en la interstitial de DataDome, que no es
+ * responsive y no trae `<meta viewport>`. Se corre en CADA carga (prop
+ * `injectedJavaScript`), no solo en la del listado, porque el usuario ve
+ * precisamente esas páginas intermedias.
+ *
+ * `maximum-scale=5` en vez de bloquear el zoom: impedir ampliar rompe la
+ * accesibilidad de quien necesita agrandar el texto.
+ */
+const FIT_TO_SCREEN = `
+(function() {
+  var head = document.head || document.getElementsByTagName('head')[0];
+  if (!head) return;
+  var m = document.querySelector('meta[name="viewport"]');
+  if (!m) { m = document.createElement('meta'); m.setAttribute('name', 'viewport'); head.appendChild(m); }
+  m.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=5');
+  // Alguna interstitial fija un ancho en píxeles al body y desborda igual.
+  try {
+    var b = document.body;
+    if (b) { b.style.maxWidth = '100%'; b.style.overflowX = 'hidden'; }
+  } catch (e) {}
+})();
+true;
+`;
+
 type Msg =
   | { type: "results"; data: PortalHit[]; debug?: PortalDebug }
   | { type: "progress"; stage: PortalProgress["stage"]; found: number; seconds: number }
@@ -138,6 +166,14 @@ export function PortalSearchWebView({
         pointerEvents={shown ? "auto" : "none"}
         javaScriptEnabled
         domStorageEnabled
+        // Ajuste al ancho del móvil en cada carga, incluidas las interstitials.
+        injectedJavaScript={FIT_TO_SCREEN}
+        // Android: escala la página al ancho del WebView cuando la web ignora
+        // el viewport. En iOS lo resuelve WKWebView con el meta de arriba.
+        scalesPageToFit
+        // Zoom manual disponible: si el usuario necesita agrandar, que pueda.
+        setBuiltInZoomControls
+        setDisplayZoomControls={false}
         userAgent={Platform.OS === "android" ? ANDROID_CHROME_UA : undefined}
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
