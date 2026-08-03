@@ -445,8 +445,14 @@ Adivinar el slug del municipio fue el punto débil y reventó por ahí. Lo medid
 | Idealista | `/alquiler-viviendas/{muni}-{provincia}/` | Sirve interstitial de DataDome en la primera carga |
 | Fotocasa | `/es/alquiler/viviendas/{muni}/todas-las-zonas/l` | Si el municipio se llama como su provincia hace falta `{muni}-capital`, o devuelve la PROVINCIA entera; y `-capital` en un municipio normal da 404 |
 | Pisos.com | `/alquiler/pisos-{muni}/` | Reescribe el slug solo (`pisos-gijon` → `pisos-gijon_concejo_xixon_conceyu_gijon`) |
-| Milanuncios | `/alquiler-de-pisos-en-{muni}/` | **Sin provincia**: con ella rebota al listado NACIONAL y devuelve anuncios de otra ciudad |
-| Habitaclia | `/alquiler-{muni}.htm` | Redirige a `m.habitaclia.com`; sirve verificación al WebView |
+| Milanuncios | `/alquiler-de-pisos-en-{muni}-{provincia}/` | Con provincia da la CIUDAD ("Barcelona Capital"); sin ella, la provincia entera; y `{muni}-capital` cae al listado nacional |
+| ~~Habitaclia~~ | — | **Retirado el 2026-08-03**: servía verificación al WebView sistemáticamente. Su importación por URL sigue viva |
+
+⚠️ Lección de método: la primera lectura de Milanuncios fue **equivocada**. Se
+concluyó "la provincia sobra en la URL" a partir de lo que hacía el móvil,
+cuando lo que desviaba la navegación era el aceptador de cookies propio. Medido
+en un entorno sin ese clic, la URL ciudad-provincia siempre fue la correcta.
+Antes de cambiar el contrato con un tercero hay que descartar el propio código.
 
 Tres defectos propios que salieron de esa prueba:
 

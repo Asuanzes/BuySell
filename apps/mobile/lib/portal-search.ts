@@ -17,7 +17,14 @@
 
 import { isValidMonthlyRentEur, isValidPriceEur } from "@nidokey/shared";
 
-export type PortalKey = "IDEALISTA" | "FOTOCASA" | "PISOS_COM" | "HABITACLIA" | "MILANUNCIOS";
+/**
+ * Habitaclia se retiró el 2026-08-03: servía muro de verificación al WebView de
+ * forma sistemática (y en francés), así que el usuario pagaba el captcha sin
+ * llegar nunca a ver anuncios. Su adaptador de importación por URL sigue vivo en
+ * `src/features/scraping/adapters/habitaclia.ts`; lo retirado es sólo la
+ * búsqueda.
+ */
+export type PortalKey = "IDEALISTA" | "FOTOCASA" | "PISOS_COM" | "MILANUNCIOS";
 
 export type PortalHit = {
   url: string;
@@ -71,20 +78,20 @@ export const PORTALS: Record<PortalKey, PortalDef> = {
     saleUrl: (c) => `https://www.pisos.com/venta/pisos-${slugify(c)}/`,
     detailPattern: /-\d{5,}_\d+\/?$/,
   },
-  HABITACLIA: {
-    label: "Habitaclia",
-    rentUrl: (c) => `https://www.habitaclia.com/alquiler-${slugify(c)}.htm`,
-    saleUrl: (c) => `https://www.habitaclia.com/viviendas-${slugify(c)}.htm`,
-    detailPattern: /-i\d+\.htm/,
-  },
   MILANUNCIOS: {
     label: "Milanuncios",
-    // SIN provincia: medido el 2026-08-03 — ".../alquiler-de-pisos-en-barcelona/"
-    // devuelve el listado y ".../alquiler-de-pisos-en-barcelona-barcelona/"
-    // rebota al listado NACIONAL (de ahí el piso de Madrid en una búsqueda de
-    // Barcelona).
-    rentUrl: (c) => `https://www.milanuncios.com/alquiler-de-pisos-en-${slugify(c)}/`,
-    saleUrl: (c) => `https://www.milanuncios.com/venta-de-pisos-en-${slugify(c)}/`,
+    // CIUDAD-PROVINCIA. Medido el 2026-08-03:
+    //   …-en-barcelona-barcelona/  → "Barcelona Capital"  ✅ la ciudad
+    //   …-en-barcelona/            → "Barcelona Provincia" (la provincia entera)
+    //   …-en-gijon/                → listado NACIONAL
+    //   …-en-gijon-asturias/       → "Gijón"              ✅
+    // Que en el móvil acabara en el listado nacional NO era culpa de la URL:
+    // era el aceptador de cookies de este mismo fichero clicando un botón
+    // cualquiera y navegando fuera. Desde servidor, sin nadie clicando, esta
+    // URL siempre devolvió la ciudad.
+    rentUrl: (c, p) =>
+      `https://www.milanuncios.com/alquiler-de-pisos-en-${slugify(c)}-${slugify(p)}/`,
+    saleUrl: (c, p) => `https://www.milanuncios.com/venta-de-pisos-en-${slugify(c)}-${slugify(p)}/`,
     detailPattern: /-\d{6,}\.htm/,
   },
 };
