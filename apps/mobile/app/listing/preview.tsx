@@ -10,6 +10,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
@@ -50,6 +51,7 @@ type Phase = "extracting" | "ready" | "failed";
 export default function ListingPreviewScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const [seed] = useState(() => parsePreviewParams(params as Record<string, unknown>));
 
@@ -286,11 +288,21 @@ export default function ListingPreviewScreen() {
         )}
       </ScrollView>
 
-      {/* Única acción operativa de la pantalla. */}
+      {/* Única acción operativa de la pantalla.
+          El `paddingBottom` sale del safe area, no de una constante: esta
+          pantalla es una ruta del Stack raíz y no hereda el SafeAreaView de
+          las pestañas, así que en Android la barra de navegación del sistema
+          (gestos o tres botones) se comía el botón. Mismo idiom que la barra
+          de pestañas en `(tabs)/_layout.tsx`. El 16 es el suelo, para que en
+          un móvil sin barra tampoco quede pegado al borde. */}
       <View
         style={[
           styles.cta,
-          { backgroundColor: th.surface, borderTopColor: th.border },
+          {
+            backgroundColor: th.surface,
+            borderTopColor: th.border,
+            paddingBottom: Math.max(insets.bottom, 16),
+          },
         ]}
       >
         <Button
@@ -354,7 +366,7 @@ const styles = StyleSheet.create({
   cta: {
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 16,
+    // paddingBottom lo pone el safe area en el componente.
     borderTopWidth: StyleSheet.hairlineWidth,
   },
 });
