@@ -324,13 +324,26 @@ export function getSearchExtractorScript(
   var announcedChallenge = false;
   var MAX_TRIES = 25;
 
+  // Cada vuelta informa de lo que ACABA de hacer: es lo que convierte la espera
+  // en algo legible en vez de una ruedecita.
+  var t0 = Date.now();
+  var say = function(stage, found) {
+    post({
+      type: 'progress',
+      stage: stage,
+      found: found || 0,
+      seconds: Math.round((Date.now() - t0) / 1000)
+    });
+  };
+
   var tick = function() {
     if (isChallenge()) {
       if (!announcedChallenge) { announcedChallenge = true; post({ type: 'challenge' }); }
+      say('challenge', 0);
       if (tries++ < MAX_TRIES) { setTimeout(tick, 1500); return; }
       return finish([]);
     }
-    if (tries < 3) acceptConsent();
+    if (tries < 3 && acceptConsent()) say('consent', 0);
     // Fallar PRONTO: si a la tercera vuelta seguimos en una página que no es la
     // pedida, es un redirect, no una carga lenta. Esperar 30 s no lo arregla y
     // deja al usuario mirando una ruedecita (objeción de Codex, aceptada).
@@ -340,6 +353,9 @@ export function getSearchExtractorScript(
     try { window.scrollTo(0, document.body.scrollHeight * Math.min(1, tries / 4)); } catch (e) {}
 
     var hits = collect();
+    // "slow" a partir de ~10 s: si el portal tarda, decirlo es más honesto que
+    // repetir "leyendo anuncios" veinte veces.
+    say(tries === 0 ? 'opening' : (Date.now() - t0 > 10000 ? 'slow' : 'scanning'), hits.length);
     // Entrega en cuanto hay material: dos vueltas más si aún entran pocos, por
     // si el scroll está trayendo la siguiente tanda.
     if (hits.length >= 8 || (hits.length > 0 && tries >= 4)) return finish(hits);
@@ -351,6 +367,15 @@ export function getSearchExtractorScript(
 true;
 `;
 }
+
+/**
+ * Fases que reporta el script mientras trabaja. Son ACCIONES verificables —
+ * cada una corresponde a algo que acaba de pasar en la página—, no relleno para
+ * entretener. Es la misma regla que sostiene el progreso de vuelos.
+ */
+export type PortalStage = "opening" | "consent" | "scanning" | "slow" | "challenge";
+
+export type PortalProgress = { stage: PortalStage; found: number; seconds: number };
 
 /**
  * Diagnóstico del extractor: sin esto, "0 resultados" no dice dónde falla.

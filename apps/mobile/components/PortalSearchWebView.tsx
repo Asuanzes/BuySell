@@ -12,6 +12,7 @@ import {
   type PortalDebug,
   type PortalHit,
   type PortalKey,
+  type PortalProgress,
 } from "@/lib/portal-search";
 
 /**
@@ -28,6 +29,7 @@ const ANDROID_CHROME_UA =
 
 type Msg =
   | { type: "results"; data: PortalHit[]; debug?: PortalDebug }
+  | { type: "progress"; stage: PortalProgress["stage"]; found: number; seconds: number }
   | { type: "challenge" };
 
 export function PortalSearchWebView({
@@ -37,6 +39,7 @@ export function PortalSearchWebView({
   city,
   forceVisible = false,
   onResults,
+  onProgress,
   onCancel,
 }: {
   url: string;
@@ -52,6 +55,8 @@ export function PortalSearchWebView({
    */
   forceVisible?: boolean;
   onResults: (hits: PortalHit[], debug?: PortalDebug) => void;
+  /** Qué está haciendo el script ahora mismo, para pintarlo en pantalla. */
+  onProgress?: (p: PortalProgress) => void;
   onCancel: () => void;
 }) {
   const { th } = useTheme();
@@ -73,7 +78,9 @@ export function PortalSearchWebView({
   function handleMessage(event: { nativeEvent: { data: string } }) {
     try {
       const msg = JSON.parse(event.nativeEvent.data) as Msg;
-      if (msg.type === "challenge") {
+      if (msg.type === "progress") {
+        onProgress?.({ stage: msg.stage, found: msg.found, seconds: msg.seconds });
+      } else if (msg.type === "challenge") {
         // El portal pide captcha: se enseña el WebView para que lo resuelva.
         // La cookie que deja sobrevive, así que no vuelve a pedirlo cada vez.
         setChallenge(true);

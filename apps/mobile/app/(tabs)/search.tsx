@@ -15,8 +15,10 @@ import {
   buildSearchUrl,
   type PortalHit,
   type PortalKey,
+  type PortalProgress,
 } from "@/lib/portal-search";
 import { PortalSearchWebView } from "@/components/PortalSearchWebView";
+import { PortalSearchProgress } from "@/components/PortalSearchProgress";
 import { RecordCard } from "@/components/RecordCard";
 import {
   EMPTY_FILTERS,
@@ -48,6 +50,7 @@ export default function SearchScreen() {
   const [runningUrl, setRunningUrl] = useState<string | null>(null);
   const [portalHits, setPortalHits] = useState<PortalHit[] | null>(null);
   const [portalDebug, setPortalDebug] = useState<string | null>(null);
+  const [progress, setProgress] = useState<PortalProgress | null>(null);
   // Extracción fallida: se enseña la página del portal para que el usuario vea
   // qué está pasando (captcha, muro de cookies, municipio inexistente).
   const [inspecting, setInspecting] = useState(false);
@@ -93,6 +96,7 @@ export default function SearchScreen() {
     setPortalHits(null);
     setPortalDebug(null);
     setInspecting(false);
+    setProgress({ stage: "opening", found: 0, seconds: 0 });
     setRunningUrl(
       buildSearchUrl(portal, filters.operation === "SALE" ? "SALE" : "RENT", city, province)
     );
@@ -249,33 +253,31 @@ export default function SearchScreen() {
             })}
           </View>
 
-          <Pressable
-            onPress={runPortalSearch}
-            disabled={!!runningUrl}
-            accessibilityRole="button"
-            style={[
-              styles.portalCta,
-              { backgroundColor: runningUrl ? th.surfaceRaised : th.primary, borderColor: th.border },
-            ]}
-          >
-            {runningUrl ? (
-              <ActivityIndicator size="small" color={th.primary} />
-            ) : (
-              <Ionicons name="globe-outline" size={16} color={th.primaryFg} />
-            )}
-            <Text
+          {/* Mientras busca, el botón deja paso al progreso: enseñar a la vez un
+              botón inerte y una tarjeta de estado sería ruido duplicado. */}
+          {runningUrl && !inspecting ? (
+            <PortalSearchProgress
+              portalLabel={PORTALS[portal].label}
+              progress={progress}
+              onStop={() => { setRunningUrl(null); setProgress(null); }}
+            />
+          ) : (
+            <Pressable
+              onPress={runPortalSearch}
+              accessibilityRole="button"
               style={[
-                styles.portalCtaText,
-                { color: runningUrl ? th.textSubtle : th.primaryFg },
+                styles.portalCta,
+                { backgroundColor: th.primary, borderColor: th.border },
               ]}
             >
-              {runningUrl
-                ? t("search.portal_searching", { portal: PORTALS[portal].label })
-                : city
+              <Ionicons name="globe-outline" size={16} color={th.primaryFg} />
+              <Text style={[styles.portalCtaText, { color: th.primaryFg }]}>
+                {city
                   ? t("search.portal_search", { portal: PORTALS[portal].label })
                   : t("search.portal_set_zone")}
-            </Text>
-          </Pressable>
+              </Text>
+            </Pressable>
+          )}
 
           <Text style={[styles.notice, { color: th.textSubtle }]}>
             {city
@@ -398,6 +400,7 @@ export default function SearchScreen() {
           operation={filters.operation === "SALE" ? "SALE" : "RENT"}
           city={city}
           forceVisible={inspecting}
+          onProgress={setProgress}
           onResults={(hits, debug) => {
             const kept = applyLocalFilters(hits, filters);
             setPortalHits(kept);
@@ -426,6 +429,7 @@ export default function SearchScreen() {
               setRunningUrl(null);
               setInspecting(false);
             }
+            setProgress(null);
           }}
           onCancel={() => { setRunningUrl(null); setInspecting(false); }}
         />
