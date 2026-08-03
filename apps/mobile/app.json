@@ -25,7 +25,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "7"
+      "buildNumber": "13"
     },
     "android": {
       "intentFilters": [
@@ -80,6 +80,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "es.nidokey.app",
+      "versionCode": 2,
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.CAMERA",
