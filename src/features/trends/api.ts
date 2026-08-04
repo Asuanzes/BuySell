@@ -86,9 +86,15 @@ export async function getTrend(id: string, db: TrendDbRead = prisma) {
 export async function getTrendRelatedNews(
   id: string,
   params: URLSearchParams,
-  db: TrendDbRead = prisma,
-  news = trendNews,
+  opts: {
+    db?: TrendDbRead;
+    news?: typeof trendNews;
+    /** Idioma/región del feed; sin él, Google News devuelve siempre español. */
+    locale?: { hl: string; gl: string; ceid: string };
+  } = {},
 ) {
+  const db = opts.db ?? prisma;
+  const news = opts.news ?? trendNews;
   // Tope duro a 7: son las noticias que entran en la pantalla de detalle sin
   // hacer scroll. default y máx = 7 (ignora ?limit mayor del cliente).
   const limit = parseLimit(params.get("limit"), 7, 7);
@@ -102,7 +108,10 @@ export async function getTrendRelatedNews(
   const trend = await db.trend.findUnique({ where: { id } });
   if (!trend) return { status: 404 as const, body: { error: "Tendencia no encontrada" } };
 
-  const items = await news(trend.query || trend.name, { limit: offset + limit + 1 });
+  const items = await news(trend.query || trend.name, {
+    limit: offset + limit + 1,
+    locale: opts.locale,
+  });
   const slice = items.slice(offset, offset + limit);
   return {
     status: 200 as const,

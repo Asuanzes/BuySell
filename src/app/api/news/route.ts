@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { yahooNews, type NewsItem } from "@/features/sources/providers/yahoo-news";
+import { newsLocaleFromRequest } from "@/lib/news-locale";
 
 export const maxDuration = 30;
 
@@ -23,7 +24,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "type debe ser 'crypto' o 'market'" }, { status: 400 });
   }
 
-  const key = `${ownerId}:${type}`;
+  // El idioma llega en `Accept-Language` y decide fuente Y región (índices de
+  // referencia incluidos).
+  const locale = newsLocaleFromRequest(req);
+  // ⚠️ El idioma va EN LA CLAVE. Sin él, la primera petición en español dejaría
+  // cinco minutos de titulares en español para quien tenga la app en inglés —
+  // exactamente el bug que este cambio viene a quitar.
+  const key = `${ownerId}:${type}:${locale.lang}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) {
     return NextResponse.json({ items: hit.items, cached: true });
@@ -44,17 +51,18 @@ export async function GET(req: NextRequest) {
       select: { symbol: true },
     });
     // Mercado: el símbolo ya es el ticker de Yahoo (SXRV.DE, AAPL…). Anteponemos
-    // índices de referencia con economía generalista en español, porque muchos
-    // ETFs de nicho no tienen noticias propias en Yahoo y el sheet quedaría
-    // vacío (igual que en cripto, donde los feeds ya traen generalista).
-    symbols = ["^IBEX", "^STOXX50E", "^GSPC", ...instruments.map((i) => i.symbol)];
+    // índices de referencia con economía generalista, porque muchos ETFs de
+    // nicho no tienen noticias propias en Yahoo y el sheet quedaría vacío (igual
+    // que en cripto, donde los feeds ya traen generalista). Los índices son los
+    // de la región del idioma: antes eran el IBEX y el STOXX para todo el mundo.
+    symbols = [...locale.benchmarkSymbols, ...instruments.map((i) => i.symbol)];
   }
   symbols = [...new Set(symbols)].slice(0, 15);
 
   // Noticias por símbolo (el throttle vive dentro de yahooNews).
   const collected: NewsItem[] = [];
   for (const s of symbols) {
-    collected.push(...(await yahooNews(s)));
+    collected.push(...(await yahooNews(s, locale.yahoo)));
   }
 
   // Dedupe por URL · orden por fecha desc · cota.

@@ -4,7 +4,10 @@
  * Lee la URL de EXPO_PUBLIC_API_URL (env de Expo, expuesta al cliente).
  * Si hay token de sesión, lo añade como `Authorization: Bearer`.
  */
+import i18n from "i18next";
+
 import { getItem } from "./secure-store";
+import { localeForLang } from "./i18n/languages";
 
 /**
  * URL base del backend de Nidokey — ORIGEN, sin "/api".
@@ -61,6 +64,28 @@ async function authHeader(): Promise<{ Authorization?: string }> {
   return getAuthHeaders(token);
 }
 
+/**
+ * Idioma de la app para el backend.
+ *
+ * Hasta ahora el servidor no sabía en qué idioma estaba la app, así que las
+ * noticias de mercados, cripto y tendencias salían SIEMPRE en español: los
+ * proveedores llevaban la región escrita a mano porque no tenían alternativa.
+ * Va por `Accept-Language`, que es la cabecera estándar para esto, y así lo
+ * aprovecha cualquier ruta —incluidas las que aún no existen— sin tocar cada
+ * llamada.
+ *
+ * Se lee de i18next en cada petición, no se captura al arrancar: el idioma se
+ * cambia en caliente desde Ajustes.
+ */
+function languageHeader(): { "Accept-Language"?: string } {
+  try {
+    const lang = i18n.language === "en" ? "en" : "es";
+    return { "Accept-Language": `${localeForLang(lang)},${lang};q=0.9` };
+  } catch {
+    return {};
+  }
+}
+
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const { skipAuth, headers, timeoutMs, ...rest } = opts;
   const auth = skipAuth ? {} : await authHeader();
@@ -73,7 +98,10 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
+        ...languageHeader(),
         ...auth,
+        // Lo que pida el llamante manda: puede sobrescribir el idioma si alguna
+        // pantalla necesitara pedir en otro.
         ...(headers as Record<string, string> | undefined),
       },
     });

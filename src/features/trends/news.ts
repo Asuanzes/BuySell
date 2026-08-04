@@ -28,14 +28,28 @@ function asItems(raw: unknown): Record<string, unknown>[] {
   return (Array.isArray(raw) ? raw : [raw]).filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
 }
 
-export async function trendNews(query: string, opts: { limit?: number } = {}): Promise<NewsItem[]> {
+export async function trendNews(
+  query: string,
+  opts: {
+    limit?: number;
+    /** Idioma y región del feed. Antes iban fijos a España para todo el mundo. */
+    locale?: { hl: string; gl: string; ceid: string };
+  } = {}
+): Promise<NewsItem[]> {
   const q = query.trim();
   if (!q) return [];
-  const key = q.toLowerCase();
+  const locale = opts.locale ?? { hl: "es-ES", gl: "ES", ceid: "ES:es" };
+  // El idioma forma parte de la clave: si no, la primera consulta en español
+  // serviría titulares en español a quien tenga la app en inglés hasta que
+  // caducara la caché.
+  const key = `${locale.hl}:${q.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.items.slice(0, opts.limit ?? hit.items.length);
 
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=es-ES&gl=ES&ceid=ES:es`;
+  const url =
+    `https://news.google.com/rss/search?q=${encodeURIComponent(q)}` +
+    `&hl=${encodeURIComponent(locale.hl)}&gl=${encodeURIComponent(locale.gl)}` +
+    `&ceid=${encodeURIComponent(locale.ceid)}`;
   let res: Response;
   try {
     res = await fetch(url, {

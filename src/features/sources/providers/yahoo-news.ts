@@ -2,9 +2,12 @@ import { XMLParser } from "fast-xml-parser";
 
 /**
  * Noticias por símbolo desde el RSS público de Yahoo Finanzas (gratis, sin clave
- * — la MISMA fuente que ya usamos para los precios de mercado). Con `region=ES`
- * devuelve titulares en español. Algunos símbolos de nicho (ETFs poco cubiertos)
- * devuelven 0 noticias; es esperado.
+ * — la MISMA fuente que ya usamos para los precios de mercado). La región y el
+ * idioma los decide quien llama, a partir del idioma del usuario: antes iban
+ * fijos a `ES`/`es-ES`, así que un usuario con la app en inglés recibía
+ * titulares en español. Algunos símbolos de nicho (ETFs poco cubiertos)
+ * devuelven 0 noticias; es esperado, y en idiomas distintos del español la
+ * cobertura de valores europeos pequeños es todavía más fina.
  *
  * El `<link>` apunta a un artículo alojado en Yahoo (es-us.finanzas.yahoo.com);
  * el medio original (Reuters, ElEconomista…) suele venir en el prefijo de la
@@ -41,9 +44,14 @@ function sourceFromSummary(summary: string | null): string | null {
   return m ? m[1].trim() : null;
 }
 
-export async function yahooNews(symbol: string): Promise<NewsItem[]> {
+export async function yahooNews(
+  symbol: string,
+  locale: { region: string; lang: string } = { region: "ES", lang: "es-ES" }
+): Promise<NewsItem[]> {
   await throttle();
-  const url = `${FEED}?s=${encodeURIComponent(symbol)}&region=ES&lang=es-ES`;
+  const url =
+    `${FEED}?s=${encodeURIComponent(symbol)}` +
+    `&region=${encodeURIComponent(locale.region)}&lang=${encodeURIComponent(locale.lang)}`;
   let res: Response;
   try {
     res = await fetch(url, {

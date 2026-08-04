@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+
 import { api } from "@/lib/api";
 
 export type NewsItem = {
@@ -25,6 +27,11 @@ export function useNews(query: NewsQuery) {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // El idioma decide en qué lengua vienen los titulares (viaja en
+  // `Accept-Language`), así que cambiarlo tiene que volver a pedirlas. La URL no
+  // lo lleva, de modo que sin esta dependencia el hook se quedaría con las de
+  // antes hasta que la pantalla se desmontara.
+  const { i18n } = useTranslation();
 
   const load = useCallback(async () => {
     const path = newsPath(query);
@@ -43,7 +50,9 @@ export function useNews(query: NewsQuery) {
     } finally {
       setLoading(false);
     }
-  }, [query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- el idioma no se usa
+    // en el cuerpo, pero cambia la respuesta del servidor.
+  }, [query, i18n.language]);
 
   useEffect(() => {
     void load();
