@@ -276,6 +276,48 @@ export function openStore(options = {}) {
 
     CREATE INDEX IF NOT EXISTS idx_task_runs_active
       ON task_runs(status, heartbeat_at DESC);
+
+    CREATE TABLE IF NOT EXISTS collaboration_hosts (
+      host_session_id TEXT PRIMARY KEY,
+      cwd TEXT NOT NULL,
+      latest_prompt TEXT NOT NULL,
+      prompt_generation INTEGER NOT NULL DEFAULT 1,
+      graph_session_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collaboration_hosts_graph_session
+      ON collaboration_hosts(graph_session_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_collaboration_hosts_unlinked
+      ON collaboration_hosts(updated_at DESC)
+      WHERE graph_session_id IS NULL;
+
+    CREATE TABLE IF NOT EXISTS collaboration_requirements (
+      id TEXT PRIMARY KEY,
+      graph_session_id TEXT NOT NULL,
+      host_session_id TEXT,
+      context_key TEXT NOT NULL,
+      task TEXT NOT NULL,
+      classification TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      required INTEGER NOT NULL DEFAULT 1,
+      peer_task_id TEXT,
+      state TEXT NOT NULL,
+      reviewed_at TEXT,
+      handoff_id TEXT,
+      last_mutation_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(graph_session_id, context_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collaboration_requirements_host
+      ON collaboration_requirements(host_session_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_collaboration_requirements_peer
+      ON collaboration_requirements(peer_task_id);
+    CREATE INDEX IF NOT EXISTS idx_collaboration_requirements_graph
+      ON collaboration_requirements(graph_session_id, updated_at DESC);
   `);
 
   const delegatedColumns = new Set(
@@ -295,6 +337,35 @@ export function openStore(options = {}) {
     }
   }
 
+  const collaborationHostColumns = new Set(
+    db.prepare("PRAGMA table_info(collaboration_hosts)").all().map((column) => column.name),
+  );
+  const collaborationRequirementColumns = new Set(
+    db.prepare("PRAGMA table_info(collaboration_requirements)").all().map((column) => column.name),
+  );
+  const collaborationMigrations = [];
+  if (!collaborationHostColumns.has("prompt_generation")) {
+    collaborationMigrations.push(
+      "ALTER TABLE collaboration_hosts ADD COLUMN prompt_generation INTEGER NOT NULL DEFAULT 1",
+    );
+  }
+  if (!collaborationRequirementColumns.has("last_mutation_at")) {
+    collaborationMigrations.push(
+      "ALTER TABLE collaboration_requirements ADD COLUMN last_mutation_at TEXT",
+    );
+  }
+  if (collaborationMigrations.length) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const statement of collaborationMigrations) db.exec(statement);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      db.close();
+      throw error;
+    }
+  }
+
   db.exec(`
     DELETE FROM edges
     WHERE id NOT IN (
@@ -304,7 +375,24 @@ export function openStore(options = {}) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_identity
       ON edges(source_id, target_id, relation, COALESCE(source_file, ''));
-    PRAGMA user_version = 3;
+    DELETE FROM collaboration_requirements
+    WHERE host_session_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM collaboration_requirements newer
+        WHERE newer.host_session_id = collaboration_requirements.host_session_id
+          AND newer.context_key = collaboration_requirements.context_key
+          AND (
+            newer.updated_at > collaboration_requirements.updated_at OR
+            (
+              newer.updated_at = collaboration_requirements.updated_at AND
+              newer.id < collaboration_requirements.id
+            )
+          )
+      );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_collaboration_requirements_host_context
+      ON collaboration_requirements(host_session_id, context_key)
+      WHERE host_session_id IS NOT NULL;
+    PRAGMA user_version = 5;
   `);
 
   try {

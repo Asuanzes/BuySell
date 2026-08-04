@@ -207,10 +207,31 @@ incrementalmente al abrir y cerrar cada sesión. Protocolo obligatorio:
 
 - `delegate_task` crea una tarea persistente para el otro agente. El ámbito
   debe ser concreto y no puede solaparse con el trabajo del padre.
-- Las tareas raíz siempre quedan en cola. Usa `dispatch_tasks` solo cuando el
-  usuario haya pedido ejecución paralela/en segundo plano y se haya confirmado
-  el consumo de cuota de Codex o Claude. Las subtareas heredan esa autorización
-  y no pueden crear raíces nuevas.
+- Tercer ejecutor `deepseek` (diseño de producto/UX): wrapper API en
+  `tools/graphrag/agents/deepseek-runner.mjs`, requiere `DEEPSEEK_API_KEY`
+  local, **solo `mode=analyze`** (jamás edita). La colaboración obligatoria
+  sigue siendo únicamente Claude → Codex.
+- La colaboración Claude Code → Codex está en modo **obligatorio**. Al ejecutar
+  `session_context`, toda tarea clasificada como `critical` o `substantial`
+  crea automáticamente **exactamente una** tarea raíz Codex en modo `analyze`,
+  la autoriza y la despacha. Esta regla es la autorización persistente del
+  propietario para consumir cuota en esos casos; no se pide confirmación en
+  cada tarea. Las consultas triviales quedan exentas.
+- Son `critical`/`substantial`, entre otras, las implementaciones y correcciones
+  con riesgo funcional, seguridad, datos, arquitectura, integraciones,
+  refactors, rendimiento, investigación técnica o cambios que afecten a varios
+  archivos. Son triviales las consultas informativas breves, estado, formato,
+  erratas o cambios mecánicos de texto sin impacto funcional.
+- Para una tarea obligatoria, Codex debe haber arrancado **antes de que Claude
+  edite**. Claude puede continuar en paralelo, pero antes de cerrar debe esperar
+  la entrega, recuperar el resumen mediante `get_delegated_task`, incorporar o
+  responder expresamente a sus hallazgos y publicar `publish_handoff`. Los hooks
+  `PreToolUse` y `Stop` impiden editar o finalizar si falta alguno de estos pasos.
+- La delegación automática usa un solo peer por `context_key`, profundidad
+  máxima 0, un intento, timeout de 25 minutos y un tope global de 3 tareas
+  automáticas por día. Si se alcanza el tope, el flujo queda bloqueado y debe
+  solicitar intervención humana; nunca se sustituye por una delegación oculta
+  adicional.
 - Para seguimiento frecuente usar `orchestration_status`.
   `list_delegated_tasks` y `get_delegated_task` usan vista `status` compacta;
   solicitar `summary` o `full` únicamente cuando haga falta revisar la entrega,

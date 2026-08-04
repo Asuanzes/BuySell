@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -43,6 +43,11 @@ import {
   redactObviousSecrets,
   sanitizedEnvironment,
 } from "./lib/executors.mjs";
+import {
+  classifyCollaborationTask,
+  upsertHostPrompt,
+  upsertRequirement,
+} from "./lib/collaboration.mjs";
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nidokey-graph-"));
@@ -71,6 +76,192 @@ function fixture() {
   );
   return root;
 }
+
+test("clasifica la colaboración obligatoria con excepciones estrechas", () => {
+  for (const task of [
+    "Implementa autenticación robusta",
+    "Corrige el bug de login",
+    "Refactoriza el chat en tiempo real",
+    "Haz una revisión adversarial de seguridad",
+    "Mejora la app",
+    "Haz un análisis del proyecto",
+    "Haz una auditoría del proyecto",
+    "Añade un botón",
+    "Completa la pantalla",
+    "Termina la app",
+    "Elimina el componente",
+    "Modifica la pantalla",
+    "Explica el flujo y analiza vulnerabilidades",
+    "Escribe un prompt y analiza la autenticación",
+    "Comprueba el estado y analiza la seguridad",
+    "Explica el flujo e implementa la corrección",
+    "Escribe un prompt y refactoriza el componente",
+    "Corrige una errata en README y refactoriza el componente",
+  ]) {
+    assert.equal(classifyCollaborationTask(task).required, true, task);
+  }
+  for (const task of [
+    "¿Qué es TaskOutput?",
+    "Comprueba si Codex sigue trabajando",
+    "Escribe un prompt para Claude",
+    "Corrige una errata en README",
+    "Escribe un prompt para Claude sobre Catastro",
+    "¿Qué es un MCP?",
+    "Comprueba el estado de seguridad",
+    "¿Qué es OAuth?",
+    "Hola",
+    "Gracias",
+    "¿Qué es un análisis de seguridad?",
+    "Explica qué contiene una auditoría",
+    "Sí",
+    "Cambia una coma en README",
+  ]) {
+    assert.equal(classifyCollaborationTask(task).required, false, task);
+  }
+});
+
+test("correlaciona hosts explícitos y reutiliza el requisito tras reconectar MCP", () => {
+  const root = fixture();
+  const store = openStore({ root });
+  try {
+    upsertHostPrompt(store, {
+      hostSessionId: "host-a",
+      cwd: root,
+      prompt: "Implementa autenticación robusta",
+    });
+    upsertHostPrompt(store, {
+      hostSessionId: "host-b",
+      cwd: root,
+      prompt: "Implementa el chat",
+    });
+    const rawSecret = "abcdefghijklmnopqrstuvwxyz123456";
+    const sanitizedHost = upsertHostPrompt(store, {
+      hostSessionId: "host-secret",
+      cwd: root,
+      prompt: `Implementa el login con token=${rawSecret}`,
+    });
+    assert.equal(sanitizedHost.latestPrompt.includes(rawSecret), false);
+    assert.match(sanitizedHost.latestPrompt, /\[REDACTED\]/);
+    const first = upsertRequirement(
+      store,
+      { agent: "claude-code", sessionId: "graph-a-1", hostSessionId: "host-a" },
+      { task: "Implementa autenticación robusta", contextKey: "auth" },
+    );
+    const other = upsertRequirement(
+      store,
+      { agent: "claude-code", sessionId: "graph-b-1", hostSessionId: "host-b" },
+      { task: "Implementa el chat", contextKey: "auth" },
+    );
+    const reconnected = upsertRequirement(
+      store,
+      { agent: "claude-code", sessionId: "graph-a-2", hostSessionId: "host-a" },
+      { task: "Implementa autenticación robusta", contextKey: "auth" },
+    );
+    assert.notEqual(first.id, other.id);
+    assert.equal(reconnected.id, first.id);
+    assert.equal(reconnected.graphSessionId, "graph-a-2");
+    assert.throws(
+      () =>
+        upsertRequirement(
+          store,
+          {
+            agent: "claude-code",
+            sessionId: "graph-unknown",
+            hostSessionId: "host-does-not-exist",
+          },
+          { task: "Implementa pagos", contextKey: "payments" },
+        ),
+      /host_session_id no registrado/,
+    );
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("el hook bloquea edición y cierre si Claude omite la colaboración", () => {
+  const root = fixture();
+  const hookPath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "collaboration-hook.mjs",
+  );
+  const invoke = (payload) =>
+    spawnSync(process.execPath, ["--no-warnings", hookPath], {
+      cwd: root,
+      encoding: "utf8",
+      input: JSON.stringify(payload),
+    });
+  try {
+    const prompt = invoke({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "host-required",
+      cwd: root,
+      prompt: "Implementa autenticación robusta",
+    });
+    assert.equal(prompt.status, 0);
+    const edit = invoke({
+      hook_event_name: "PreToolUse",
+      session_id: "host-required",
+      cwd: root,
+      tool_name: "Edit",
+      tool_input: { file_path: path.join(root, "src", "auth.ts") },
+    });
+    const editDecision = JSON.parse(edit.stdout);
+    assert.equal(editDecision.hookSpecificOutput.permissionDecision, "deny");
+    for (const command of [
+      "npm test",
+      "npm run build",
+      "npm run lint -- --fix",
+      "npm test -- --updateSnapshot",
+      "node --test evil.mjs",
+      "npx tsc",
+      "git status & node evil.js",
+      "ls & node evil.js",
+    ]) {
+      const shell = invoke({
+        hook_event_name: "PreToolUse",
+        session_id: "host-required",
+        cwd: root,
+        tool_name: "Bash",
+        tool_input: { command },
+      });
+      assert.equal(
+        JSON.parse(shell.stdout).hookSpecificOutput.permissionDecision,
+        "deny",
+        command,
+      );
+    }
+    const stop = invoke({
+      hook_event_name: "Stop",
+      session_id: "host-required",
+      cwd: root,
+      stop_hook_active: false,
+    });
+    assert.equal(JSON.parse(stop.stdout).decision, "block");
+    const loopGuard = invoke({
+      hook_event_name: "Stop",
+      session_id: "host-required",
+      cwd: root,
+      stop_hook_active: true,
+    });
+    assert.equal(JSON.parse(loopGuard.stdout).decision, "block");
+
+    invoke({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "host-trivial",
+      cwd: root,
+      prompt: "¿Qué es TaskOutput?",
+    });
+    const trivialStop = invoke({
+      hook_event_name: "Stop",
+      session_id: "host-trivial",
+      cwd: root,
+    });
+    assert.equal(trivialStop.stdout.trim(), "");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("indexa símbolos, imports y recupera contexto con citas", () => {
   const root = fixture();
@@ -304,6 +495,56 @@ test("delega, evita duplicados y persiste TaskOutput con handoff", () => {
       "requireUserId valida el token antes de continuar.",
     );
     assert.ok(store.getNode(`handoff:${completed.handoffId}`));
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("los análisis delegados son no exclusivos y conviven con el editor", () => {
+  const root = fixture();
+  const store = openStore({ root });
+  const claude = { agent: "claude-code", sessionId: "claude-editor" };
+  try {
+    refreshIndex(store);
+    const editorClaim = claimScope(store, claude, {
+      scope: "src/auth.ts",
+      task: "Implementar validación",
+      ttl_minutes: 30,
+    });
+    assert.equal(editorClaim.acquired, true);
+
+    const analysis = delegateTask(store, claude, {
+      target_agent: "codex",
+      title: "Revisión paralela",
+      instructions: "Analiza la validación sin modificar archivos.",
+      scope: "src/auth.ts",
+      mode: "analyze",
+      priority: 3,
+    }).task;
+    const edit = delegateTask(store, claude, {
+      target_agent: "codex",
+      title: "Edición conflictiva",
+      instructions: "Intenta editar la misma validación.",
+      scope: "src/auth.ts",
+      mode: "edit",
+      priority: 2,
+    }).task;
+    authorizeBackgroundTasks(store, claude, [analysis.id, edit.id]);
+
+    const leased = leaseNextEligibleTask(store, { taskIds: [analysis.id] });
+    assert.equal(leased.task.id, analysis.id);
+    assert.equal(leased.claimId, null);
+    assert.equal(
+      store.db.prepare("SELECT COUNT(*) AS count FROM claims WHERE status = 'active'").get()
+        .count,
+      1,
+    );
+    const board = listDelegatedTasks(store, { limit: 10 });
+    assert.equal(
+      board.tasks.find((task) => task.id === edit.id).eligibility.state,
+      "waiting_scope",
+    );
   } finally {
     store.close();
     fs.rmSync(root, { recursive: true, force: true });
@@ -612,6 +853,41 @@ test("construye ejecutores sin shell ni prompt en la línea de comandos", () => 
   assert.ok(claude.args.includes("-p"));
   assert.ok(claude.args.includes("plan"));
   assert.equal(claude.args.includes(base.instructions), false);
+  // deepseek: wrapper API solo-análisis. Guardas de entorno para no depender
+  // del orden de tests ni de claves reales.
+  const previousDeepseekKey = process.env.DEEPSEEK_API_KEY;
+  const previousTestExecutor = process.env.NIDOKEY_GRAPH_TEST_EXECUTOR_SCRIPT;
+  delete process.env.DEEPSEEK_API_KEY;
+  delete process.env.NIDOKEY_GRAPH_TEST_EXECUTOR_SCRIPT;
+  const deepseekInput = {
+    task: { ...base, targetAgent: "deepseek" },
+    root: process.cwd(),
+    schemaPath,
+    resultPath: path.join(os.tmpdir(), "deepseek-result.json"),
+    mcpConfigPath: path.join(process.cwd(), ".mcp.json"),
+  };
+  assert.throws(() => buildExecution(deepseekInput), /DEEPSEEK_API_KEY/);
+  process.env.DEEPSEEK_API_KEY = "test-not-a-real-key";
+  const deepseek = buildExecution(deepseekInput);
+  assert.equal(deepseek.args[0], "--use-system-ca");
+  assert.ok(deepseek.args[1].endsWith("deepseek-runner.mjs"));
+  assert.ok(deepseek.args.includes("--output-last-message"));
+  assert.equal(deepseek.source, "api-wrapper");
+  assert.equal(deepseek.args.includes(base.instructions), false);
+  assert.throws(
+    () =>
+      buildExecution({
+        ...deepseekInput,
+        task: { ...base, targetAgent: "deepseek", mode: "edit", scope: "." },
+      }),
+    /mode=analyze/,
+  );
+  assert.equal(sanitizedEnvironment().DEEPSEEK_API_KEY, "test-not-a-real-key");
+  if (previousDeepseekKey === undefined) delete process.env.DEEPSEEK_API_KEY;
+  else process.env.DEEPSEEK_API_KEY = previousDeepseekKey;
+  if (previousTestExecutor !== undefined) {
+    process.env.NIDOKEY_GRAPH_TEST_EXECUTOR_SCRIPT = previousTestExecutor;
+  }
   process.env.NIDOKEY_TEST_SECRET = "do-not-forward";
   assert.equal(sanitizedEnvironment().NIDOKEY_TEST_SECRET, undefined);
   delete process.env.NIDOKEY_TEST_SECRET;
@@ -861,7 +1137,7 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
       capabilities: {},
     });
     assert.equal(initialized.result.serverInfo.name, "nidokey-graph");
-    assert.equal(initialized.result.serverInfo.version, "0.5.0");
+    assert.equal(initialized.result.serverInfo.version, "0.6.0");
     assert.match(initialized.result.instructions, /Bootstrap automático/);
     const listed = await request(2, "tools/list");
     assert.ok(listed.result.tools.some((tool) => tool.name === "session_context"));
@@ -1046,14 +1322,18 @@ test("habla MCP por stdio y publica sus herramientas", async () => {
   }
 });
 
-function startMcpClient(agent, root, databasePath) {
+function startMcpClient(agent, root, databasePath, extraEnvironment = {}) {
   const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "server.mjs");
   const child = spawn(
     process.execPath,
     ["--no-warnings", serverPath, "--root", root, "--db", databasePath],
     {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, NIDOKEY_GRAPH_AGENT: agent },
+      env: {
+        ...process.env,
+        ...extraEnvironment,
+        NIDOKEY_GRAPH_AGENT: agent,
+      },
     },
   );
   const output = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
@@ -1095,6 +1375,199 @@ function startMcpClient(agent, root, databasePath) {
   };
 }
 
+test("Claude autoarranca una única revisión Codex y no puede cerrar sin integrarla", async () => {
+  const root = fixture();
+  const databasePath = path.join(root, ".graphrag", "mandatory.sqlite");
+  const fakeExecutor = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "fixtures",
+    "fake-agent.mjs",
+  );
+  const bootstrap = openStore({ root, databasePath });
+  refreshIndex(bootstrap);
+  upsertHostPrompt(bootstrap, {
+    hostSessionId: "host-mandatory",
+    cwd: root,
+    prompt: "Implementa una validación robusta de autenticación",
+  });
+  bootstrap.close();
+  const claude = startMcpClient("claude-code", root, databasePath, {
+    NODE_ENV: "test",
+    NIDOKEY_GRAPH_TEST_EXECUTOR_SCRIPT: fakeExecutor,
+    NIDOKEY_GRAPH_TEST_DELAY_MS: "1200",
+    NIDOKEY_GRAPH_TEST_HEARTBEAT_MS: "100",
+    NIDOKEY_GRAPH_COLLAB_POLICY: "required",
+    NIDOKEY_GRAPH_COLLAB_DAILY_LIMIT: "8",
+    NIDOKEY_GRAPH_COLLAB_TIMEOUT_MINUTES: "5",
+  });
+  try {
+    await claude.initialize();
+    let session = await claude.request("tools/call", {
+      name: "session_context",
+      arguments: {
+        task: "Implementa una validación robusta de autenticación",
+        context_key: "mandatory-auth",
+        scope_hint: "src/auth.ts",
+        host_session_id: "host-mandatory",
+      },
+    });
+    let payload = JSON.parse(session.result.content[0].text);
+    assert.equal(payload.collaboration.required, true);
+    assert.equal(payload.collaboration.classification, "critical");
+    const peerTaskId = payload.collaboration.peerTask.id;
+
+    const earlyHandoff = await claude.request("tools/call", {
+      name: "publish_handoff",
+      arguments: { summary: "No debe cerrar todavía" },
+    });
+    assert.equal(earlyHandoff.result.isError, true);
+
+    const startDeadline = Date.now() + 5000;
+    let claimPayload = { acquired: false };
+    while (Date.now() < startDeadline && !claimPayload.acquired) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const claim = await claude.request("tools/call", {
+        name: "claim_scope",
+        arguments: {
+          scope: "src/auth.ts",
+          task: "Implementar validación",
+        },
+      });
+      claimPayload = JSON.parse(claim.result.content[0].text);
+      if (!claimPayload.acquired) {
+        assert.equal(claimPayload.gate.state, "waiting_peer_start");
+      }
+    }
+    assert.equal(claimPayload.acquired, true);
+    session = await claude.request("tools/call", {
+      name: "session_context",
+      arguments: {
+        task: "Implementa una validación robusta de autenticación",
+        context_key: "mandatory-auth",
+        scope_hint: "src/auth.ts",
+        host_session_id: "host-mandatory",
+      },
+    });
+    payload = JSON.parse(session.result.content[0].text);
+    assert.equal(payload.collaboration.gates.peerStarted, true);
+    assert.equal(payload.collaboration.gates.graphContextUsed, true);
+    assert.ok(payload.collaboration.run.workerPid > 0);
+    assert.ok(payload.collaboration.run.childPid > 0);
+    assert.equal(payload.collaboration.run.externalSessionId, "fake-thread");
+
+    const hookPath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "collaboration-hook.mjs",
+    );
+    const invokeHook = (filePath) => spawnSync(
+      process.execPath,
+      ["--no-warnings", hookPath],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NIDOKEY_GRAPH_DB: databasePath,
+          NIDOKEY_GRAPH_ROOT: root,
+        },
+        input: JSON.stringify({
+          hook_event_name: "PreToolUse",
+          session_id: "host-mandatory",
+          cwd: root,
+          tool_name: "Edit",
+          tool_input: { file_path: filePath },
+        }),
+      },
+    );
+    assert.equal(
+      invokeHook(path.join(root, "src", "auth.ts")).stdout.trim(),
+      "",
+    );
+    const outsideClaim = JSON.parse(
+      invokeHook(path.join(root, "src", "route.ts")).stdout,
+    );
+    assert.equal(
+      outsideClaim.hookSpecificOutput.permissionDecision,
+      "deny",
+    );
+
+    const claimReuse = await claude.request("tools/call", {
+      name: "claim_scope",
+      arguments: { scope: "src/auth.ts", task: "Implementar validación" },
+    });
+    assert.equal(JSON.parse(claimReuse.result.content[0].text).acquired, true);
+
+    let taskStatus = "running";
+    const resultDeadline = Date.now() + 7000;
+    while (Date.now() < resultDeadline && taskStatus === "running") {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const status = await claude.request("tools/call", {
+        name: "get_delegated_task",
+        arguments: { task_id: peerTaskId, detail: "status" },
+      });
+      taskStatus = JSON.parse(status.result.content[0].text).task.status;
+    }
+    assert.equal(taskStatus, "succeeded");
+    const beforeSummary = await claude.request("tools/call", {
+      name: "publish_handoff",
+      arguments: { summary: "Todavía no se ha leído Codex" },
+    });
+    assert.equal(beforeSummary.result.isError, true);
+    const summary = await claude.request("tools/call", {
+      name: "get_delegated_task",
+      arguments: { task_id: peerTaskId, detail: "summary" },
+    });
+    assert.equal(JSON.parse(summary.result.content[0].text).collaboration.marked, true);
+    const handoff = await claude.request("tools/call", {
+      name: "publish_handoff",
+      arguments: {
+        summary: "Validación implementada e integrada con la revisión Codex.",
+        paths: ["src/auth.ts"],
+        tests: ["fake-agent"],
+        peer_task_id: peerTaskId,
+        peer_findings_disposition: [
+          "Aceptado: mantener validación server-side y cubrir el caso sin token.",
+        ],
+      },
+    });
+    const handoffPayload = JSON.parse(handoff.result.content[0].text);
+    assert.ok(handoffPayload.id);
+    assert.equal(handoffPayload.collaboration.readyForStop, true);
+
+    const verification = openStore({ root, databasePath });
+    try {
+      const peers = verification.db
+        .prepare(`
+          SELECT COUNT(*) AS count FROM delegated_tasks
+          WHERE created_by_agent = 'claude-code'
+            AND target_agent = 'codex'
+            AND idempotency_key LIKE 'mandatory-collab:%'
+        `)
+        .get().count;
+      assert.equal(peers, 1);
+      assert.equal(
+        verification.db
+          .prepare("SELECT COUNT(*) AS count FROM claims WHERE session_id LIKE 'runner:%'")
+          .get().count,
+        0,
+      );
+    } finally {
+      verification.close();
+    }
+  } finally {
+    await claude.close();
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+        break;
+      } catch (error) {
+        if (attempt === 29) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+  }
+});
+
 test("dos procesos MCP coordinan claims y liberan al desconectar", async () => {
   const root = fixture();
   const databasePath = path.join(root, ".graphrag", "parallel.sqlite");
@@ -1128,6 +1601,78 @@ test("dos procesos MCP coordinan claims y liberan al desconectar", async () => {
   } finally {
     if (codex.child.exitCode === null) await codex.close();
     if (claude.child.exitCode === null) await claude.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("habla MCP por stdio con framing Content-Length (compatible VS Code/Copilot)", async () => {
+  const root = fixture();
+  const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "server.mjs");
+  const protocolDatabase = path.join(root, ".graphrag", "protocol.sqlite");
+  const seeded = openStore({ root, databasePath: protocolDatabase });
+  seeded.close();
+
+  const child = spawn(
+    process.execPath,
+    ["--no-warnings", serverPath, "--root", root, "--db", protocolDatabase],
+    { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, NIDOKEY_GRAPH_AGENT: "codex" } },
+  );
+
+  let outBuf = Buffer.alloc(0);
+  const pending = new Map();
+  const parseFramed = () => {
+    for (;;) {
+      const hdrEnd = outBuf.indexOf("\r\n\r\n");
+      if (hdrEnd === -1) return;
+      const header = outBuf.subarray(0, hdrEnd).toString("utf8");
+      const match = /content-length:\s*(\d+)/i.exec(header);
+      if (!match) return;
+      const length = parseInt(match[1], 10);
+      if (outBuf.length < hdrEnd + 4 + length) return;
+      const body = outBuf.subarray(hdrEnd + 4, hdrEnd + 4 + length).toString("utf8");
+      outBuf = outBuf.subarray(hdrEnd + 4 + length);
+      const message = JSON.parse(body);
+      if (pending.has(message.id)) {
+        pending.get(message.id)(message);
+        pending.delete(message.id);
+      }
+    }
+  };
+  child.stdout.on("data", (chunk) => {
+    outBuf = Buffer.concat([outBuf, chunk]);
+    parseFramed();
+  });
+
+  const request = (id, method, params = {}) =>
+    new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`MCP CL timeout: ${method}`)), 8000);
+      pending.set(id, (message) => {
+        clearTimeout(timeout);
+        resolve(message);
+      });
+      const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id, method, params }), "utf8");
+      child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
+      child.stdin.write(body);
+    });
+
+  try {
+    const initialized = await request(1, "initialize", {
+      protocolVersion: "2025-06-18",
+      clientInfo: { name: "vs-code-test", version: "1.0.0" },
+      capabilities: {},
+    });
+    assert.equal(initialized.result.serverInfo.name, "nidokey-graph");
+    const listed = await request(2, "tools/list");
+    assert.ok(listed.result.tools.some((tool) => tool.name === "session_context"));
+    assert.ok(listed.result.tools.some((tool) => tool.name === "claim_scope"));
+    assert.ok(listed.result.tools.some((tool) => tool.name === "publish_handoff"));
+  } finally {
+    if (child.exitCode === null) {
+      await new Promise((resolve) => {
+        child.once("exit", resolve);
+        child.kill();
+      });
+    }
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

@@ -11,7 +11,10 @@
       ],
       "env": {
         "NIDOKEY_GRAPH_AGENT": "claude-code",
-        "NIDOKEY_GRAPH_ROOT": "C:\\Users\\suanz\\Desktop\\Nidokey"
+        "NIDOKEY_GRAPH_ROOT": "C:\\Users\\suanz\\Desktop\\Nidokey",
+        "NIDOKEY_GRAPH_COLLAB_POLICY": "required",
+        "NIDOKEY_GRAPH_COLLAB_DAILY_LIMIT": "3",
+        "NIDOKEY_GRAPH_COLLAB_TIMEOUT_MINUTES": "25"
       }
     }
   }

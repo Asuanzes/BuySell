@@ -8,9 +8,16 @@ Code y ejecutar tareas controladas en segundo plano.
 
 ```text
 Codex ─┐                          ┌─ Codex CLI
-       ├─ MCP ─ SQLite ─ runners ─┤
-Claude ┘                          └─ Claude Code CLI
+       ├─ MCP ─ SQLite ─ runners ─┤─ Claude Code CLI
+Claude ┘                          └─ DeepSeek (wrapper API)
 ```
+
+Existe un tercer ejecutor delegable, `deepseek` (rol de diseño de producto/UX):
+no tiene CLI propio, corre vía `agents/deepseek-runner.mjs` contra la API de
+DeepSeek (`DEEPSEEK_API_KEY` en el entorno; modelo `NIDOKEY_DEEPSEEK_MODEL`,
+por defecto `deepseek-chat`). Solo admite `mode=analyze` — nunca escribe en el
+working tree — y no participa en la colaboración obligatoria, que sigue siendo
+exclusivamente Claude → Codex.
 
 ## Qué indexa
 
@@ -167,6 +174,36 @@ Para seguimiento frecuente usa `orchestration_status`. Consulta
 `get_delegated_task` con `detail: "status"` solo cuando necesites el estado de
 una tarea concreta; evita sondear repetidamente `summary` o `full`.
 
+### Colaboración Claude Code → Codex obligatoria
+
+Con `NIDOKEY_GRAPH_COLLAB_POLICY=required`, `session_context` clasifica el
+objetivo de una sesión Claude Code. Las tareas `critical` o `substantial`
+(implementación, bugs funcionales, seguridad, datos, arquitectura,
+integraciones, refactors, rendimiento, investigación técnica o cambios
+multifichero) crean de forma idempotente exactamente una raíz Codex en modo
+`analyze`. Se autoriza y despacha automáticamente; la configuración constituye
+la autorización persistente del propietario y no abre una confirmación de cuota
+por tarea. Consultas cortas de estado, formato, erratas o texto sin impacto
+funcional se clasifican como triviales y quedan exentas.
+
+El gate exige este orden:
+
+1. Claude llama `session_context` con un `context_key` estable.
+2. El peer Codex queda arrancado antes de cualquier edición de Claude.
+3. Ambos trabajan en paralelo; el peer `analyze` no recibe un claim de escritura.
+4. Claude espera su estado terminal y recupera el resultado con
+   `get_delegated_task` (`detail: "summary"`).
+5. Claude integra o responde expresamente a los hallazgos y publica
+   `publish_handoff` antes de cerrar.
+
+Los hooks de Claude `PreToolUse` y `Stop` bloquean, respectivamente, una
+edición prematura y el cierre sin revisar el peer. El perfil automático fija
+1 peer por `context_key`, `max_depth: 0`, `max_attempts: 1`, timeout de 25
+minutos y 3 peers automáticos por día. Alcanzar el tope no degrada a ejecución
+silenciosa: requiere intervención humana. El peer conserva sandbox de solo
+lectura y no hereda permisos para commit, push, PR, deploy, EAS Update,
+migraciones, producción, pagos, secretos o borrados.
+
 Las tareas de análisis usan sandbox de solo lectura. En tareas `edit`, Codex
 limita su raíz escribible al directorio delegado; Claude arranca desde ese mismo
 directorio con aceptación de ediciones. El ámbito sigue siendo una frontera
@@ -192,6 +229,11 @@ incorporan aunque el agente omita la actualización manual.
   concurrentes y las escrituras cortas se serializan.
 - Cada tarea de fondo usa un runner Node desacoplado de la sesión MCP que la
   creó. Sus logs acotados viven en `.graphrag/runs/`.
+- `.mcp.json` activa la política obligatoria y sus topes mediante
+  `NIDOKEY_GRAPH_COLLAB_POLICY`, `NIDOKEY_GRAPH_COLLAB_DAILY_LIMIT` y
+  `NIDOKEY_GRAPH_COLLAB_TIMEOUT_MINUTES`. La entrada MCP de Codex usa
+  `required = true`, de modo que una sesión no continúa silenciosamente sin el
+  servidor compartido.
 
 Después de instalar o cambiar la configuración, reinicia la sesión del agente y
 comprueba el servidor con `/mcp`.

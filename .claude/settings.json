@@ -16,6 +16,16 @@
     "codex@openai-codex": true
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --no-warnings C:\\Users\\suanz\\.nidokey-graph\\runtime\\collaboration-hook.mjs"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|PowerShell",
@@ -23,6 +33,25 @@
           {
             "type": "command",
             "command": "node .claude/hooks/block-prisma-migrate.cjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__filesystem__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --no-warnings C:\\Users\\suanz\\.nidokey-graph\\runtime\\collaboration-hook.mjs"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --no-warnings C:\\Users\\suanz\\.nidokey-graph\\runtime\\collaboration-hook.mjs"
           }
         ]
       }

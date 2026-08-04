@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SAFE_ENVIRONMENT_KEYS = [
   "PATH",
@@ -33,6 +34,9 @@ export function sanitizedEnvironment(extra = {}) {
     "NIDOKEY_CODEX_EXECUTABLE",
     "NIDOKEY_CLAUDE_EXECUTABLE",
     "NIDOKEY_GRAPH_DISABLE_BACKGROUND",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_API_URL",
+    "NIDOKEY_DEEPSEEK_MODEL",
   ]) {
     if (process.env[key] !== undefined) environment[key] = process.env[key];
   }
@@ -156,12 +160,38 @@ export function resolveExecutor(agent) {
     }
     throw new Error("No se encontró el ejecutable local de Claude Code");
   }
+
+  if (agent === "deepseek") {
+    // Sin CLI agéntico propio: wrapper node contra la API (solo análisis).
+    if (!process.env.DEEPSEEK_API_KEY) {
+      throw new Error("Falta DEEPSEEK_API_KEY en el entorno");
+    }
+    const script = existingFile([
+      process.env.NIDOKEY_DEEPSEEK_RUNNER,
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "agents",
+        "deepseek-runner.mjs",
+      ),
+    ]);
+    if (script) {
+      return {
+        command: process.execPath,
+        // --use-system-ca: el TLS de este equipo intercepta con una CA local y
+        // el entorno saneado no propaga NODE_OPTIONS del usuario.
+        prefixArgs: ["--use-system-ca", script],
+        source: "api-wrapper",
+      };
+    }
+    throw new Error("No se encontró agents/deepseek-runner.mjs");
+  }
   throw new Error(`Ejecutor no permitido: ${agent}`);
 }
 
 export function executorAvailability() {
   const result = {};
-  for (const agent of ["codex", "claude-code"]) {
+  for (const agent of ["codex", "claude-code", "deepseek"]) {
     try {
       const resolved = resolveExecutor(agent);
       result[agent] = {
@@ -193,7 +223,7 @@ export function buildTaskPrompt(task, dependencies = []) {
     `TAREA_PADRE: ${task.parentId ?? "ninguna"}`,
     `AGENTE: ${task.targetAgent}`,
     `MODO: ${task.mode}`,
-    `ÁMBITO EXCLUSIVO: ${task.scope}`,
+    `${task.mode === "edit" ? "ÁMBITO EXCLUSIVO" : "FOCO DE ANÁLISIS NO EXCLUSIVO"}: ${task.scope}`,
     `TÍTULO: ${task.title}`,
     "",
     "INSTRUCCIONES:",
@@ -213,10 +243,14 @@ export function buildTaskPrompt(task, dependencies = []) {
     "",
     "PROTOCOLO OBLIGATORIO:",
     `1. Usa nidokey-graph y ejecuta session_context con el objetivo de esta tarea y context_key="${task.id}".`,
-    "2. El runner ya ha reservado el ámbito; no reclames de nuevo la misma ruta.",
+    task.mode === "edit"
+      ? "2. El runner ya ha reservado el ámbito; no reclames de nuevo la misma ruta."
+      : "2. Trabajas en solo lectura y sin claim exclusivo para revisar en paralelo mientras el agente principal edita.",
     `3. No leas ni modifiques fuera de ${task.scope}, salvo archivos mínimos necesarios para comprender imports o ejecutar pruebas.`,
     "4. Verifica las citas del grafo en el código actual.",
-    "5. Si necesitas delegar, usa delegate_task hacia el otro agente, indica esta TAREA_ID como parent_task_id y utiliza un ámbito no solapado.",
+    task.maxDepth > task.depth
+      ? "5. Si necesitas delegar, usa delegate_task hacia el otro agente, indica esta TAREA_ID como parent_task_id y utiliza un ámbito no solapado."
+      : "5. Esta revisión no puede crear subtareas: concentra el resultado en un único TaskOutput.",
     "6. Ejecuta validaciones proporcionales al cambio.",
     "7. Puedes registrar decisiones técnicas con record_decision. El runner publicará el handoff final.",
     "8. No hagas commit, push, pull request, deploy, publicación OTA, migraciones, cambios de pagos, secretos ni acciones de producción.",
@@ -249,6 +283,9 @@ export function buildExecution({
   }
   if (task.targetAgent === "codex") {
     const serverPath = path.join(path.dirname(schemaPath), "server.mjs");
+    const mandatoryReview = String(task.idempotencyKey ?? "").startsWith(
+      "mandatory-collab:",
+    );
     return {
       ...resolved,
       cwd: workingDirectory,
@@ -264,6 +301,9 @@ export function buildExecution({
         "--strict-config",
         "--ignore-user-config",
         "--ignore-rules",
+        ...(mandatoryReview
+          ? ["-c", 'model_reasoning_effort="medium"']
+          : []),
         "--json",
         "--output-schema",
         schemaPath,
@@ -284,6 +324,17 @@ export function buildExecution({
         "mcp_servers.nidokey-graph.required=true",
         "-",
       ],
+    };
+  }
+
+  if (task.targetAgent === "deepseek") {
+    if (task.mode === "edit") {
+      throw new Error("deepseek solo admite mode=analyze");
+    }
+    return {
+      ...resolved,
+      cwd: workingDirectory,
+      args: [...resolved.prefixArgs, "--output-last-message", resultPath],
     };
   }
 

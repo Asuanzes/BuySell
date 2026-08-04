@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { openStore } from "./lib/store.mjs";
 import { refreshIndex } from "./lib/indexer.mjs";
 import {
+  delegatedTaskUsedSessionContext,
   dispatchEligibleTasks,
   finalizeRunner,
   heartbeatRun,
@@ -70,6 +71,7 @@ let logBytes = 0;
 let finished = false;
 let cancellationRequested = false;
 let terminationStarted = false;
+let externalSessionRecorded = false;
 let child;
 let heartbeatTimer;
 let timeoutTimer;
@@ -160,7 +162,7 @@ async function finalize(exitCode, signal, processError = null) {
     }
     if (!resultText) resultText = stdoutText;
     const parsedResult = parseTaskOutput(resultText);
-    const result = parsedResult
+    let result = parsedResult
       ? {
           ...parsedResult,
           summary: redactObviousSecrets(parsedResult.summary),
@@ -169,6 +171,15 @@ async function finalize(exitCode, signal, processError = null) {
           nextSteps: parsedResult.nextSteps.map(redactObviousSecrets),
         }
       : null;
+    const mandatoryReview = String(task.idempotencyKey ?? "").startsWith(
+      "mandatory-collab:",
+    );
+    const graphProtocolMissing = Boolean(
+      result &&
+        mandatoryReview &&
+        !delegatedTaskUsedSessionContext(store, task.id),
+    );
+    if (graphProtocolMissing) result = null;
 
     if (result) {
       try {
@@ -187,6 +198,9 @@ async function finalize(exitCode, signal, processError = null) {
     const error =
       redactObviousSecrets(
         processError?.message ??
+          (graphProtocolMissing
+            ? "Codex no acreditó session_context en nidokey-graph"
+            : null) ??
           (cancellationRequested
             ? "Cancelación solicitada"
             : exitCode === 0 && result
@@ -236,6 +250,17 @@ writeLog("runner", `Ejecutor ${task.targetAgent} iniciado (pid ${child.pid})`);
 
 child.stdout.on("data", (chunk) => {
   capturedStdout = appendBounded(capturedStdout, chunk);
+  if (!externalSessionRecorded) {
+    const externalSessionId = extractExternalSessionId(
+      task.targetAgent,
+      capturedStdout.toString("utf8"),
+    );
+    if (externalSessionId) {
+      setRunPaths(store, runId, { externalSessionId });
+      externalSessionRecorded = true;
+      writeLog("runner", `Sesión externa confirmada (${externalSessionId})`);
+    }
+  }
   writeLog("stdout", `${chunk.length} bytes capturados; contenido omitido`);
 });
 child.stderr.on("data", (chunk) => {

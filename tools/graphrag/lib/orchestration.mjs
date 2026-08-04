@@ -12,7 +12,7 @@ import {
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUNNER_PATH = path.resolve(MODULE_DIR, "../runner.mjs");
-const TARGET_AGENTS = new Set(["codex", "claude-code"]);
+const TARGET_AGENTS = new Set(["codex", "claude-code", "deepseek"]);
 const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
 const ACTIVE_RUN_STATUSES = new Set(["starting", "running", "cancel_requested"]);
 const MAX_TOTAL_RUNNING = 3;
@@ -27,10 +27,11 @@ function normalizeAgent(value) {
     .replace(/[^a-z0-9_-]+/g, "-");
   if (normalized.includes("claude")) return "claude-code";
   if (normalized.includes("codex") || normalized.includes("chatgpt")) return "codex";
+  if (normalized.includes("deepseek")) return "deepseek";
   return normalized;
 }
 
-function normalizeScope(value, root) {
+function normalizeScope(value, root, options = {}) {
   const scope = normalizePath(String(value ?? "").trim()).replace(/\/+$/, "");
   const segments = scope.split("/");
   const rootPath = path.resolve(root);
@@ -48,7 +49,8 @@ function normalizeScope(value, root) {
     relative === ".." ||
     path.isAbsolute(relative) ||
     /^(?:\.git|\.graphrag|node_modules)(?:\/|$)/i.test(scope) ||
-    /(?:^|\/)(?:\.claude|\.codex|tools\/graphrag)(?:\/|$)/i.test(scope) ||
+    (!options.allowProtectedRead &&
+      /(?:^|\/)(?:\.claude|\.codex|tools\/graphrag)(?:\/|$)/i.test(scope)) ||
     /(?:^|\/)(?:\.env(?:\.|$)|credentials?|private-key|service-account)(?:\/|$)/i.test(scope)
   ) {
     throw new Error("scope debe ser una ruta relativa, acotada y no sensible del repositorio");
@@ -471,24 +473,29 @@ export function delegateTask(store, context, input = {}) {
   }
   const targetAgent = normalizeAgent(input.target_agent);
   if (!TARGET_AGENTS.has(targetAgent)) {
-    throw new Error("target_agent debe ser codex o claude-code");
+    throw new Error("target_agent debe ser codex, claude-code o deepseek");
   }
   if (targetAgent === context.agent) {
     throw new Error("La delegación cruzada debe dirigirse al otro agente");
+  }
+  if (targetAgent === "deepseek" && input.mode === "edit") {
+    throw new Error("deepseek solo admite mode=analyze (rol de diseño, sin escritura)");
   }
   const title = boundedText(input.title, 300, "title");
   const instructions = boundedText(input.instructions, 12000, "instructions");
   if (containsObviousSecret(instructions)) {
     throw new Error("Las instrucciones parecen contener una credencial; no se persistieron");
   }
-  const scope = normalizeScope(input.scope, store.root);
+  const mode = input.mode === "edit" ? "edit" : "analyze";
+  const scope = normalizeScope(input.scope, store.root, {
+    allowProtectedRead: mode === "analyze",
+  });
   const acceptanceCriteria = Array.isArray(input.acceptance_criteria)
     ? input.acceptance_criteria
         .map((item) => clipText(item, 500))
         .filter(Boolean)
         .slice(0, 10)
     : [];
-  const mode = input.mode === "edit" ? "edit" : "analyze";
   const priority = clampInteger(input.priority, 0, 3, 1);
   const maxAttempts = clampInteger(input.max_attempts, 1, 3, 2);
   const timeoutSeconds = clampInteger(input.timeout_minutes, 5, 120, 45) * 60;
@@ -558,7 +565,11 @@ export function delegateTask(store, context, input = {}) {
     if (descendants >= maxDescendants) {
       throw new Error(`La raíz ya alcanzó ${maxDescendants} tareas descendientes`);
     }
-    if (!TERMINAL_STATUSES.has(parent.status) && scopesOverlap(parent.scope, scope)) {
+    if (
+      mode === "edit" &&
+      !TERMINAL_STATUSES.has(parent.status) &&
+      scopesOverlap(parent.scope, scope)
+    ) {
       throw new Error(
         "El ámbito delegado se solapa con la tarea padre; divide el trabajo en rutas no solapadas",
       );
@@ -722,18 +733,22 @@ function taskEligibility(store, row) {
   if (row.status !== "queued") return { eligible: false, state: row.status };
   const dependency = dependencyState(store, row.id);
   if (!dependency.eligible) return dependency;
-  const conflict = activeClaims(store).find((claim) => scopesOverlap(claim.scope, row.scope));
-  if (conflict) {
-    return {
-      eligible: false,
-      state: "waiting_scope",
-      conflict: {
-        agent: conflict.agent,
-        scope: conflict.scope,
-        task: conflict.task,
-        expiresAt: conflict.expires_at,
-      },
-    };
+  if (row.mode === "edit") {
+    const conflict = activeClaims(store).find((claim) =>
+      scopesOverlap(claim.scope, row.scope),
+    );
+    if (conflict) {
+      return {
+        eligible: false,
+        state: "waiting_scope",
+        conflict: {
+          agent: conflict.agent,
+          scope: conflict.scope,
+          task: conflict.task,
+          expiresAt: conflict.expires_at,
+        },
+      };
+    }
   }
   return {
     eligible: true,
@@ -915,7 +930,8 @@ export function claimDelegatedTask(store, context, input = {}) {
   if (!eligibility.eligible) {
     return { acquired: false, ...eligibility, task: hydrateTask(row) };
   }
-  const claimId = crypto.randomUUID();
+  const exclusive = row.mode === "edit";
+  const claimId = exclusive ? crypto.randomUUID() : null;
   const ttlMinutes = clampInteger(input.ttl_minutes, 15, 240, 120);
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
   let acquired = false;
@@ -923,48 +939,53 @@ export function claimDelegatedTask(store, context, input = {}) {
     const current = store.db.prepare("SELECT * FROM delegated_tasks WHERE id = ?").get(taskId);
     if (!current || current.status !== "queued") return;
     if (!dependencyState(store, taskId).eligible) return;
-    if (activeClaims(store).some((claim) => scopesOverlap(claim.scope, current.scope))) return;
+    if (
+      current.mode === "edit" &&
+      activeClaims(store).some((claim) => scopesOverlap(claim.scope, current.scope))
+    ) return;
     const timestamp = nowIso();
-    store.db
-      .prepare(`
-        INSERT INTO claims(
-          id, agent, session_id, scope, task, status,
-          created_at, updated_at, expires_at
-        ) VALUES(?, ?, ?, ?, ?, 'active', ?, ?, ?)
-      `)
-      .run(
-        claimId,
-        context.agent,
-        context.sessionId,
-        current.scope,
-        `Tarea delegada ${current.id}: ${current.title}`,
-        timestamp,
-        timestamp,
-        expiresAt,
-      );
-    store.upsertNode({
-      id: `claim:${claimId}`,
-      kind: "work_claim",
-      name: `${context.agent}: ${current.scope}`,
-      signature: current.title,
-      content: `${context.agent} reserva ${current.scope} para la tarea ${current.id}`,
-      searchText: `${context.agent} ${current.scope} ${current.title}`,
-      authority: 0.95,
-      metadata: {
-        agent: context.agent,
-        sessionId: context.sessionId,
-        taskId: current.id,
-        scope: current.scope,
-        expiresAt,
-      },
-    });
-    ensureAgentNode(store, context.agent);
-    store.upsertEdge({
-      sourceId: `agent:${context.agent}`,
-      targetId: `claim:${claimId}`,
-      relation: "CLAIMS",
-      metadata: { expiresAt, taskId: current.id },
-    });
+    if (current.mode === "edit") {
+      store.db
+        .prepare(`
+          INSERT INTO claims(
+            id, agent, session_id, scope, task, status,
+            created_at, updated_at, expires_at
+          ) VALUES(?, ?, ?, ?, ?, 'active', ?, ?, ?)
+        `)
+        .run(
+          claimId,
+          context.agent,
+          context.sessionId,
+          current.scope,
+          `Tarea delegada ${current.id}: ${current.title}`,
+          timestamp,
+          timestamp,
+          expiresAt,
+        );
+      store.upsertNode({
+        id: `claim:${claimId}`,
+        kind: "work_claim",
+        name: `${context.agent}: ${current.scope}`,
+        signature: current.title,
+        content: `${context.agent} reserva ${current.scope} para la tarea ${current.id}`,
+        searchText: `${context.agent} ${current.scope} ${current.title}`,
+        authority: 0.95,
+        metadata: {
+          agent: context.agent,
+          sessionId: context.sessionId,
+          taskId: current.id,
+          scope: current.scope,
+          expiresAt,
+        },
+      });
+      ensureAgentNode(store, context.agent);
+      store.upsertEdge({
+        sourceId: `agent:${context.agent}`,
+        targetId: `claim:${claimId}`,
+        relation: "CLAIMS",
+        metadata: { expiresAt, taskId: current.id },
+      });
+    }
     store.db
       .prepare(`
         UPDATE delegated_tasks
@@ -984,6 +1005,7 @@ export function claimDelegatedTask(store, context, input = {}) {
     appendTaskEvent(store, taskId, "claimed_by_session", context, {
       claimId,
       expiresAt,
+      exclusive: current.mode === "edit",
     });
     syncTaskNode(
       store,
@@ -995,7 +1017,9 @@ export function claimDelegatedTask(store, context, input = {}) {
   return {
     acquired,
     task: hydrateTask(updated),
-    ...(acquired ? { claimId, expiresAt } : { eligibility: taskEligibility(store, updated) }),
+    ...(acquired
+      ? { claimId, expiresAt, exclusive }
+      : { eligibility: taskEligibility(store, updated) }),
   };
 }
 
@@ -1371,8 +1395,11 @@ function runningCounts(store) {
   };
 }
 
-export function leaseNextEligibleTask(store) {
+export function leaseNextEligibleTask(store, options = {}) {
   let leased = null;
+  const requestedTaskIds = Array.isArray(options.taskIds)
+    ? new Set(options.taskIds.map(String))
+    : null;
   store.withImmediateTransaction(() => {
     const counts = runningCounts(store);
     if (counts.total >= MAX_TOTAL_RUNNING) return;
@@ -1385,12 +1412,13 @@ export function leaseNextEligibleTask(store) {
       `)
       .all();
     for (const candidate of candidates) {
+      if (requestedTaskIds && !requestedTaskIds.has(candidate.id)) continue;
       if ((counts.byAgent[candidate.target_agent] ?? 0) >= MAX_RUNNING_PER_AGENT) {
         continue;
       }
       if (!taskEligibility(store, candidate).eligible) continue;
       const runId = crypto.randomUUID();
-      const claimId = crypto.randomUUID();
+      const claimId = candidate.mode === "edit" ? crypto.randomUUID() : null;
       const leaseExpiresAt = new Date(
         Date.now() + DEFAULT_LEASE_SECONDS * 1000,
       ).toISOString();
@@ -1399,11 +1427,16 @@ export function leaseNextEligibleTask(store) {
         .get(candidate.id);
       if (!current || current.status !== "queued") continue;
       if (!dependencyState(store, current.id).eligible) continue;
-      if (activeClaims(store).some((claim) => scopesOverlap(claim.scope, current.scope))) {
+      if (
+        current.mode === "edit" &&
+        activeClaims(store).some((claim) => scopesOverlap(claim.scope, current.scope))
+      ) {
         continue;
       }
       const timestamp = nowIso();
-      createRunnerClaim(store, current, runId, claimId, leaseExpiresAt);
+      if (current.mode === "edit") {
+        createRunnerClaim(store, current, runId, claimId, leaseExpiresAt);
+      }
       const transition = store.db
         .prepare(`
           UPDATE delegated_tasks
@@ -1435,7 +1468,7 @@ export function leaseNextEligibleTask(store) {
       appendTaskEvent(store, current.id, "leased", {
         agent: current.target_agent,
         sessionId: `runner:${runId}`,
-      }, { runId, leaseExpiresAt });
+      }, { runId, leaseExpiresAt, exclusive: current.mode === "edit" });
       const updated = store.db
         .prepare("SELECT * FROM delegated_tasks WHERE id = ?")
         .get(current.id);
@@ -1595,7 +1628,7 @@ export function dispatchEligibleTasks(store, options = {}) {
   const launched = [];
   const maximum = clampInteger(options.maximum, 1, MAX_TOTAL_RUNNING, MAX_TOTAL_RUNNING);
   while (launched.length < maximum) {
-    const leased = leaseNextEligibleTask(store);
+    const leased = leaseNextEligibleTask(store, { taskIds: options.taskIds });
     if (!leased) break;
     try {
       const workerPid = spawnRunner(store, leased);
@@ -1836,7 +1869,9 @@ export function setRunPaths(store, runId, input = {}) {
   store.db
     .prepare(`
       UPDATE task_runs
-      SET log_path = ?, result_path = ?, child_pid = COALESCE(?, child_pid),
+      SET log_path = COALESCE(?, log_path),
+          result_path = COALESCE(?, result_path),
+          child_pid = COALESCE(?, child_pid),
           external_session_id = COALESCE(?, external_session_id),
           heartbeat_at = ?
       WHERE id = ?
@@ -1849,6 +1884,22 @@ export function setRunPaths(store, runId, input = {}) {
       nowIso(),
       runId,
     );
+}
+
+export function delegatedTaskUsedSessionContext(store, taskId) {
+  return Boolean(
+    store.db
+      .prepare(`
+        SELECT 1 AS found
+        FROM agent_sessions session
+        JOIN activity event ON event.session_id = session.session_id
+        WHERE session.delegated_task_id = ?
+          AND session.agent = 'codex'
+          AND event.action = 'session_context'
+        LIMIT 1
+      `)
+      .get(String(taskId)),
+  );
 }
 
 export function taskInstructionsForRunner(store, taskId) {

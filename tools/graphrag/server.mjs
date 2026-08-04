@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import readline from "node:readline";
 import { openStore } from "./lib/store.mjs";
 import { refreshIndex } from "./lib/indexer.mjs";
 import {
@@ -33,9 +32,19 @@ import {
   releaseManualSessionTasks,
 } from "./lib/orchestration.mjs";
 import { executorAvailability } from "./lib/executors.mjs";
+import {
+  attachPeerTask,
+  classifyCollaborationTask,
+  collaborationStatus,
+  getCurrentRequirement,
+  markPeerReviewed,
+  markRequirementBlocked,
+  markRequirementHandoff,
+  upsertRequirement,
+} from "./lib/collaboration.mjs";
 
 const SERVER_NAME = "nidokey-graph";
-const SERVER_VERSION = "0.5.0";
+const SERVER_VERSION = "0.6.0";
 const SESSION_CONTEXT_MAX_CHARACTERS = 4000;
 const SESSION_CONTEXT_DEFAULT_RESULTS = 2;
 const TOOL_RESPONSE_BUDGETS = {
@@ -73,12 +82,14 @@ const state = {
   deliveredContextTasks: new Set(),
   contextBootstrapDelivered: false,
   contextSnapshot: null,
+  collaborationRequirementId: null,
 };
 
 const baseInstructions = [
   "Grafo local compartido de Nidokey para Codex y Claude Code.",
   "PRIMERA ACCIÓN OBLIGATORIA de cada tarea: llama session_context con el objetivo actual; evita releer todo el repositorio.",
-  "Revisa taskInbox: puedes reclamar una tarea recibida o delegar trabajo no solapado al otro agente.",
+  "Revisa taskInbox. En tareas sustanciales o críticas de Claude, nidokey-graph inicia obligatoriamente un análisis Codex en paralelo.",
+  "Claude no puede editar hasta que exista evidencia de una sesión Codex real; debe revisar su entrega antes del handoff.",
   "Antes de editar: revisa el trabajo activo devuelto y reclama el ámbito mínimo con claim_scope.",
   "No edites un ámbito reclamado por otra sesión.",
   "Usa graph_search/trace_relationships para localizar contexto y verifica siempre las citas en el código.",
@@ -122,6 +133,20 @@ const tools = [
           description:
             "Identificador estable opcional de la tarea; evita repetir contexto si cambia su redacción.",
         },
+        host_session_id: {
+          type: "string",
+          minLength: 1,
+          maxLength: 200,
+          description:
+            "Identificador de sesión Claude inyectado por el hook UserPromptSubmit; obligatorio para correlación segura entre sesiones paralelas.",
+        },
+        scope_hint: {
+          type: "string",
+          minLength: 1,
+          maxLength: 500,
+          description:
+            "Ruta relativa opcional que centra la revisión Codex obligatoria; si falta se infiere de la mejor cita del grafo.",
+        },
         force_context: {
           type: "boolean",
           default: false,
@@ -146,7 +171,7 @@ const tools = [
       type: "object",
       required: ["target_agent", "title", "instructions", "scope"],
       properties: {
-        target_agent: { type: "string", enum: ["codex", "claude-code"] },
+        target_agent: { type: "string", enum: ["codex", "claude-code", "deepseek"] },
         title: { type: "string", minLength: 1, maxLength: 300 },
         instructions: { type: "string", minLength: 1, maxLength: 12000 },
         scope: {
@@ -191,7 +216,7 @@ const tools = [
     inputSchema: {
       type: "object",
       properties: {
-        target_agent: { type: "string", enum: ["codex", "claude-code"] },
+        target_agent: { type: "string", enum: ["codex", "claude-code", "deepseek"] },
         status: {
           oneOf: [
             { type: "string" },
@@ -626,6 +651,18 @@ const tools = [
         paths: { type: "array", items: { type: "string" }, default: [] },
         tests: { type: "array", items: { type: "string" }, default: [] },
         next_steps: { type: "array", items: { type: "string" }, default: [] },
+        peer_task_id: {
+          type: "string",
+          description: "Tarea Codex integrada; obligatoria bajo la política required.",
+        },
+        peer_findings_disposition: {
+          type: "array",
+          minItems: 1,
+          maxItems: 10,
+          items: { type: "string", minLength: 1, maxLength: 500 },
+          description:
+            "Qué hallazgos Codex se aceptaron, rechazaron o aplazaron, con una razón breve.",
+        },
       },
       additionalProperties: false,
     },
@@ -639,8 +676,22 @@ const tools = [
   },
 ];
 
+// Transporte MCP stdio DUAL: framing estándar `Content-Length` (VS Code / SDK
+// oficial de MCP) y JSON por líneas (newline, los clientes originales Claude
+// Code / Codex / el test del repo). El formato de salida se fija con el primer
+// mensaje recibido; antes de recibir nada se responde en newline (retrocompatible).
+let transportFraming = null; // null | "newline" | "content-length"
+let inputBuffer = Buffer.alloc(0);
+
 function writeMessage(message) {
-  process.stdout.write(`${JSON.stringify(message)}\n`);
+  const payload = JSON.stringify(message);
+  if (transportFraming === "content-length") {
+    const body = Buffer.from(payload, "utf8");
+    process.stdout.write(`Content-Length: ${body.length}\r\n\r\n`);
+    process.stdout.write(body);
+  } else {
+    process.stdout.write(`${payload}\n`);
+  }
 }
 
 function responseBudgetFor(toolName, input = {}) {
@@ -903,6 +954,190 @@ function sessionSnapshot(work) {
   };
 }
 
+function collaborationPolicyEnabled() {
+  return (
+    process.env.NIDOKEY_GRAPH_COLLAB_POLICY === "required" &&
+    state.agent === "claude-code" &&
+    !state.delegatedTaskId
+  );
+}
+
+function collaborationScope(input, search) {
+  const explicit = clipText(input.scope_hint, 500);
+  if (explicit) return explicit.replaceAll("\\", "/");
+  for (const result of search?.results ?? []) {
+    const citation = String(result.citation ?? "")
+      .replace(/:\d+(?:-\d+)?$/, "")
+      .replaceAll("\\", "/")
+      .trim();
+    if (citation && !/^(?:\.git|\.graphrag|node_modules)(?:\/|$)/i.test(citation)) {
+      return citation;
+    }
+  }
+  return "CLAUDE.md";
+}
+
+function compactCollaboration(status, dispatch = null) {
+  const requirement = status?.requirement;
+  const task = status?.evidence?.task;
+  const run = status?.evidence?.run;
+  return {
+    policy: collaborationPolicyEnabled() ? "required" : "advisory",
+    required: Boolean(requirement?.required && collaborationPolicyEnabled()),
+    classification: requirement?.classification,
+    reason: requirement?.reason,
+    requirementId: requirement?.id,
+    contextKey: requirement?.contextKey,
+    peerTask: task
+      ? {
+          id: task.id,
+          status: task.status,
+          targetAgent: task.targetAgent,
+          mode: task.mode,
+          backgroundAuthorized: task.backgroundAuthorized,
+        }
+      : null,
+    run: run?.runId
+      ? {
+          runId: run.runId,
+          status: run.status,
+          workerPid: run.workerPid,
+          childPid: run.childPid,
+          externalSessionId: run.externalSessionId,
+          heartbeat: run.heartbeat,
+          exit: run.exit,
+        }
+      : null,
+    gates: status?.gates ?? {
+      peerStarted: false,
+      peerDelivered: false,
+      reviewed: false,
+      handoff: false,
+    },
+    dispatch: dispatch
+      ? {
+          enabled: dispatch.enabled,
+          launched: (dispatch.launched ?? []).map((item) => ({
+            taskId: item.taskId,
+            runId: item.runId,
+            workerPid: item.workerPid,
+          })),
+          reason: dispatch.reason,
+        }
+      : undefined,
+  };
+}
+
+function ensureMandatoryPeer(requirement, task, scope, search) {
+  if (!requirement) {
+    const classification = classifyCollaborationTask(task);
+    return {
+      policy: "advisory",
+      required: false,
+      classification: classification.classification,
+      reason: classification.reason,
+    };
+  }
+  if (!requirement.required || !collaborationPolicyEnabled()) {
+    return compactCollaboration(collaborationStatus(store, { requirementId: requirement.id }));
+  }
+  let status = collaborationStatus(store, { requirementId: requirement.id });
+  let dispatch = null;
+  if (!requirement.peerTaskId) {
+    const dailyLimit = Math.min(
+      Math.max(Number(process.env.NIDOKEY_GRAPH_COLLAB_DAILY_LIMIT ?? 3), 1),
+      32,
+    );
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const automaticToday = store.db
+      .prepare(`
+        SELECT COUNT(*) AS count FROM delegated_tasks
+        WHERE created_by_agent = 'claude-code'
+          AND target_agent = 'codex'
+          AND parent_id IS NULL
+          AND idempotency_key LIKE 'mandatory-collab:%'
+          AND created_at >= ?
+      `)
+      .get(since).count;
+    if (automaticToday >= dailyLimit) {
+      markRequirementBlocked(
+        store,
+        { requirementId: requirement.id },
+        `Límite diario de ${dailyLimit} lanzamientos alcanzado`,
+      );
+      throw new Error(
+        `Colaboración Codex obligatoria bloqueada: se alcanzó el límite de ${dailyLimit} lanzamientos automáticos en 24 h. Solicita autorización al usuario para ampliar el tope.`,
+      );
+    }
+    if (!executorAvailability().codex?.available) {
+      markRequirementBlocked(
+        store,
+        { requirementId: requirement.id },
+        "Ejecutor Codex no disponible",
+      );
+      throw new Error(
+        "Colaboración Codex obligatoria bloqueada: el ejecutor Codex no está disponible.",
+      );
+    }
+    const timeoutMinutes = Math.min(
+      Math.max(Number(process.env.NIDOKEY_GRAPH_COLLAB_TIMEOUT_MINUTES ?? 25), 5),
+      60,
+    );
+    const citations = (search?.results ?? [])
+      .slice(0, 3)
+      .map((item) => item.citation)
+      .filter(Boolean);
+    const delegated = delegateTask(store, context(), {
+      target_agent: "codex",
+      title: `Revisión Codex obligatoria: ${clipText(task, 180)}`,
+      instructions: clipText(
+        [
+          "Realiza una revisión independiente y adversarial, en paralelo con Claude Code y sin modificar archivos.",
+          `Objetivo del usuario: ${task}`,
+          `Foco inicial: ${scope}.`,
+          citations.length ? `Citas iniciales del grafo: ${citations.join(", ")}.` : "",
+          "Localiza defectos, regresiones, riesgos de seguridad, casos límite, pruebas ausentes y una propuesta concreta de validación.",
+          "Prioriza hallazgos verificables con rutas y líneas. El resultado será de lectura obligatoria para Claude antes de cerrar la tarea.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        4000,
+      ),
+      acceptance_criteria: [
+        "Aportar evidencia verificable con rutas o símbolos",
+        "Distinguir bloqueantes, riesgos y mejoras opcionales",
+        "Proponer pruebas o comprobaciones concretas",
+      ],
+      scope,
+      mode: "analyze",
+      priority: 3,
+      max_depth: 0,
+      max_attempts: 1,
+      timeout_minutes: timeoutMinutes,
+      idempotency_key: `mandatory-collab:${requirement.id}`,
+    });
+    attachPeerTask(store, { requirementId: requirement.id }, delegated.task.id);
+    status = collaborationStatus(store, { requirementId: requirement.id });
+  }
+  if (
+    status.evidence.task?.status === "queued" &&
+    !status.evidence.task.backgroundAuthorized
+  ) {
+    authorizeBackgroundTasks(store, context(), [status.evidence.task.id]);
+  }
+  status = collaborationStatus(store, { requirementId: requirement.id });
+  if (status.evidence.task?.status === "queued") {
+    dispatch = dispatchEligibleTasks(store, {
+      maximum: 1,
+      taskIds: [status.evidence.task.id],
+    });
+  }
+  return compactCollaboration(
+    collaborationStatus(store, { requirementId: requirement.id }),
+    dispatch,
+  );
+}
+
 function withSessionBudget(payload) {
   const stamp = (value, squeezed) => {
     value.responseBudget = {
@@ -932,6 +1167,7 @@ function withSessionBudget(payload) {
     message: payload.message,
     automaticIndexing: payload.automaticIndexing,
     index: payload.index,
+    collaboration: payload.collaboration,
     coordination: {
       agents: (payload.coordination?.agents ?? []).slice(0, 2),
       claims: (payload.coordination?.claims ?? []).slice(0, 2),
@@ -977,6 +1213,7 @@ function withSessionBudget(payload) {
     atSessionStart: true,
     atSessionEnd: true,
   };
+  if (squeezed.collaboration?.dispatch) delete squeezed.collaboration.dispatch;
   squeezed.coordination.agents = squeezed.coordination.agents.slice(0, 1);
   squeezed.coordination.claims = squeezed.coordination.claims.slice(0, 1);
   squeezed.taskInbox.tasks = squeezed.taskInbox.tasks.slice(0, 1);
@@ -988,6 +1225,11 @@ function withSessionBudget(payload) {
 function sessionContext(input) {
   const task = clipText(input.task, 1000);
   if (!task) throw new Error("task es obligatorio");
+  if (collaborationPolicyEnabled() && !clipText(input.host_session_id, 200)) {
+    throw new Error(
+      "host_session_id es obligatorio con la política de colaboración required; usa el identificador inyectado por UserPromptSubmit.",
+    );
+  }
   const stableKey = clipText(input.context_key, 200);
   const taskKey = stableKey
     ? `key:${stableKey.toLowerCase()}`
@@ -1076,6 +1318,40 @@ function sessionContext(input) {
             include_metadata: false,
           }),
         );
+  let collaboration;
+  if (collaborationPolicyEnabled()) {
+    const requirement = upsertRequirement(
+      store,
+      { ...context(), hostSessionId: input.host_session_id },
+      {
+      task,
+      contextKey: stableKey || taskKey,
+      },
+    );
+    state.collaborationRequirementId = requirement.id;
+    collaboration = ensureMandatoryPeer(
+      requirement,
+      task,
+      collaborationScope(input, search),
+      search,
+    );
+  } else {
+    const classification = classifyCollaborationTask(task);
+    state.collaborationRequirementId = null;
+    collaboration = {
+      policy: "advisory",
+      required: false,
+      classification: classification.classification,
+      reason: classification.reason,
+      peerTask: null,
+      gates: {
+        peerStarted: false,
+        peerDelivered: false,
+        reviewed: false,
+        handoff: false,
+      },
+    };
+  }
   state.deliveredContextTasks.add(taskKey);
   state.contextBootstrapDelivered = true;
   state.contextSnapshot = sessionSnapshot(
@@ -1105,12 +1381,23 @@ function sessionContext(input) {
       },
     },
     index,
+    collaboration,
     coordination: work,
     taskInbox,
     orchestration,
     relevantContext: search,
     requiredNextActions:
-      contextMode === "reuse"
+      collaboration.required
+        ? [
+            collaboration.gates.peerStarted
+              ? "Codex está ejecutándose: reclama el ámbito mínimo antes de editar."
+              : "Espera la evidencia de arranque real de Codex y reintenta claim_scope.",
+            collaboration.gates.peerDelivered
+              ? "Recupera el resultado Codex con get_delegated_task detail=summary e incorpóralo."
+              : "Continúa el trabajo principal en paralelo y consulta el estado de forma compacta.",
+            "publish_handoff exige peer_task_id y la disposición explícita de sus hallazgos.",
+          ]
+        : contextMode === "reuse"
         ? [
             "Reutilizar el contexto ya recibido.",
             "Consultar detalle únicamente si cambió el estado o falta evidencia.",
@@ -1188,6 +1475,45 @@ function handleInitialize(message) {
   };
 }
 
+function requiredCollaborationStatus(operation) {
+  if (!collaborationPolicyEnabled()) return null;
+  if (!state.collaborationRequirementId) {
+    throw new Error(
+      `${operation} bloqueado: session_context debe ser la primera acción de la tarea.`,
+    );
+  }
+  const requirement = getCurrentRequirement(store, {
+    requirementId: state.collaborationRequirementId,
+  });
+  if (!requirement) {
+    throw new Error(`${operation} bloqueado: no existe el requisito de colaboración.`);
+  }
+  return collaborationStatus(store, { requirementId: requirement.id });
+}
+
+function peerStartStatus(operation) {
+  const status = requiredCollaborationStatus(operation);
+  if (!status?.requirement.required) return status;
+  return status;
+}
+
+function assertPeerIntegrated(operation) {
+  const status = requiredCollaborationStatus(operation);
+  if (!status?.requirement.required) return status;
+  if (!status.gates.peerDelivered || !status.gates.reviewed) {
+    throw new Error(
+      [
+        `${operation} bloqueado: falta integrar la revisión Codex obligatoria.`,
+        `peerTask=${status.evidence.task?.id ?? "pendiente"} status=${status.evidence.task?.status ?? "sin tarea"}.`,
+        status.gates.peerDelivered
+          ? "Llama get_delegated_task con detail=summary y aplica o razona sus hallazgos."
+          : "Espera a que la tarea Codex termine antes de cerrar.",
+      ].join(" "),
+    );
+  }
+  return status;
+}
+
 function handleToolCall(name, input) {
   if (!state.sessionId) {
     const registration = registerAgent(store, {
@@ -1232,10 +1558,25 @@ function handleToolCall(name, input) {
         },
         context(),
       );
-    case "get_delegated_task":
-      return getDelegatedTask(store, input.task_id, {
-        detail: input.detail ?? "status",
+    case "get_delegated_task": {
+      const detail = input.detail ?? "status";
+      const result = getDelegatedTask(store, input.task_id, {
+        detail,
       });
+      if (
+        collaborationPolicyEnabled() &&
+        ["summary", "full"].includes(detail) &&
+        state.collaborationRequirementId
+      ) {
+        const requirement = getCurrentRequirement(store, {
+          requirementId: state.collaborationRequirementId,
+        });
+        if (requirement?.peerTaskId === String(input.task_id)) {
+          result.collaboration = markPeerReviewed(store, context(), input.task_id);
+        }
+      }
+      return result;
+    }
     case "claim_delegated_task": {
       const claimed = claimDelegatedTask(store, context(), input);
       const { task: _fullTask, ...claimState } = claimed;
@@ -1326,17 +1667,67 @@ function handleToolCall(name, input) {
         input,
       );
     }
-    case "claim_scope":
+    case "claim_scope": {
       ensureIndex();
+      const collaboration = peerStartStatus("claim_scope");
+      if (collaboration?.requirement.required && !collaboration.gates.peerStarted) {
+        return {
+          acquired: false,
+          scope: input.scope,
+          gate: {
+            state: "waiting_peer_start",
+            peerTaskId: collaboration.evidence.task?.id ?? null,
+            taskStatus: collaboration.evidence.task?.status ?? null,
+            runId: collaboration.evidence.run?.runId ?? null,
+            childPid: collaboration.evidence.run?.childPid ?? null,
+            externalSessionId: collaboration.evidence.run?.externalSessionId ?? null,
+            retryAfterMs: 3000,
+          },
+          guidance:
+            "Codex aún no ha confirmado una sesión real. Reintenta solo claim_scope; no repitas session_context.",
+        };
+      }
       return claimScope(store, context(), input);
+    }
     case "release_claim":
       return releaseClaim(store, context(), input);
     case "record_decision":
       ensureIndex();
       return recordDecision(store, context(), input);
-    case "publish_handoff":
+    case "publish_handoff": {
       ensureIndex();
-      return publishHandoff(store, context(), input);
+      const integration = assertPeerIntegrated("publish_handoff");
+      let handoffInput = input;
+      if (integration?.requirement.required) {
+        const expectedPeerTaskId = integration.evidence.task?.id;
+        const dispositions = Array.isArray(input.peer_findings_disposition)
+          ? input.peer_findings_disposition.map((item) => clipText(item, 500)).filter(Boolean)
+          : [];
+        if (String(input.peer_task_id ?? "") !== expectedPeerTaskId) {
+          throw new Error(
+            `publish_handoff requiere peer_task_id=${expectedPeerTaskId} para acreditar la integración Codex.`,
+          );
+        }
+        if (!dispositions.length) {
+          throw new Error(
+            "publish_handoff requiere peer_findings_disposition con al menos una conclusión aceptada, rechazada o aplazada.",
+          );
+        }
+        handoffInput = {
+          ...input,
+          summary: `${input.summary}\nIntegración Codex ${expectedPeerTaskId}: ${dispositions.join("; ")}`,
+        };
+      }
+      const handoff = publishHandoff(store, context(), handoffInput);
+      if (collaborationPolicyEnabled() && state.collaborationRequirementId) {
+        handoff.collaboration = markRequirementHandoff(
+          store,
+          { ...context(), requirementId: state.collaborationRequirementId },
+          handoff.id,
+        );
+      }
+      return handoff;
+    }
     default:
       throw new Error(`Herramienta desconocida: ${name}`);
   }
@@ -1381,21 +1772,53 @@ function handleRequest(message) {
   errorResponse(id, -32601, `Método no soportado: ${method}`);
 }
 
-const input = readline.createInterface({
-  input: process.stdin,
-  crlfDelay: Infinity,
-  terminal: false,
-});
+// Parser de entrada DUAL. Acumula bytes en `inputBuffer` y extrae mensajes con
+// framing `Content-Length` (cabeceras + cuerpo de N bytes) o newline JSON.
+function headerEndIndex(buffer) {
+  const crlf = buffer.indexOf("\r\n\r\n");
+  if (crlf !== -1) return crlf + 4;
+  const lf = buffer.indexOf("\n\n");
+  if (lf !== -1) return lf + 2;
+  return -1;
+}
 
-input.on("line", (line) => {
-  if (!line.trim()) return;
+function extractNewlineMessage(buffer) {
+  const nl = buffer.indexOf(0x0a);
+  if (nl === -1) return null; // esperar más datos
+  const line = buffer.subarray(0, nl).toString("utf8").replace(/\r$/, "");
+  const rest = buffer.subarray(nl + 1);
+  if (!line.trim()) return { skip: true, rest }; // línea en blanco
   let message;
   try {
     message = JSON.parse(line);
   } catch (error) {
     errorResponse(null, -32700, "JSON inválido", error.message);
-    return;
+    return { skip: true, rest };
   }
+  return { message, rest };
+}
+
+function extractContentLengthMessage(buffer) {
+  const headerEnd = headerEndIndex(buffer);
+  if (headerEnd === -1) return null; // cabeceras incompletas
+  const header = buffer.subarray(0, headerEnd).toString("utf8");
+  const match = /content-length:\s*(\d+)/i.exec(header);
+  if (!match) return null; // sin cabecera Content-Length → no es este framing
+  const length = parseInt(match[1], 10);
+  if (buffer.length < headerEnd + length) return null; // cuerpo incompleto
+  const body = buffer.subarray(headerEnd, headerEnd + length).toString("utf8");
+  const rest = buffer.subarray(headerEnd + length);
+  let message;
+  try {
+    message = JSON.parse(body);
+  } catch (error) {
+    errorResponse(null, -32700, "JSON inválido", error.message);
+    return { skip: true, rest };
+  }
+  return { message, rest };
+}
+
+function dispatchParsed(message) {
   try {
     handleRequest(message);
   } catch (error) {
@@ -1403,6 +1826,54 @@ input.on("line", (line) => {
       errorResponse(message.id, -32603, error.message, error.stack);
     }
   }
+}
+
+function isContentLengthHeader(buffer) {
+  const nl = buffer.indexOf(0x0a);
+  const firstLine = (nl === -1 ? buffer : buffer.subarray(0, nl)).toString("utf8");
+  return /^content-length:/i.test(firstLine.trim());
+}
+
+function pumpInput() {
+  for (;;) {
+    if (inputBuffer.length === 0) break;
+    // Un mensaje que empieza por '{' es JSON por línea (newline).
+    if (inputBuffer[0] === 0x7b) {
+      const parsed = extractNewlineMessage(inputBuffer);
+      if (!parsed) break;
+      inputBuffer = parsed.rest;
+      if (parsed.skip) continue;
+      if (!transportFraming) transportFraming = "newline";
+      dispatchParsed(parsed.message);
+      continue;
+    }
+    // Cabeceras Content-Length: esperar el cuerpo completo ANTES de procesar.
+    // Si las cabeceras llegaron sin el cuerpo aún, break (nunca descartar).
+    if (isContentLengthHeader(inputBuffer)) {
+      const framed = extractContentLengthMessage(inputBuffer);
+      if (!framed) break; // cabeceras o cuerpo incompletos → esperar más datos
+      inputBuffer = framed.rest;
+      if (framed.skip) continue;
+      if (!transportFraming) transportFraming = "content-length";
+      dispatchParsed(framed.message);
+      continue;
+    }
+    // Línea suelta (ni '{' ni cabecera CL): tratarla como newline.
+    const line = extractNewlineMessage(inputBuffer);
+    if (line) {
+      inputBuffer = line.rest;
+      if (line.skip) continue;
+      if (!transportFraming) transportFraming = "newline";
+      dispatchParsed(line.message);
+      continue;
+    }
+    break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  inputBuffer = Buffer.concat([inputBuffer, chunk]);
+  pumpInput();
 });
 
 let cleanedUp = false;
@@ -1415,7 +1886,7 @@ function cleanup() {
   store.close();
 }
 
-input.on("close", () => {
+process.stdin.on("end", () => {
   cleanup();
 });
 process.on("SIGINT", () => {

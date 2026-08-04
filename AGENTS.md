@@ -32,10 +32,21 @@ Codex y Claude Code comparten el MCP `nidokey-graph`.
 - Al terminar, ejecuta `refresh_index`, registra decisiones no triviales,
   publica un `publish_handoff` y libera el claim.
 - Para repartir trabajo, usa `delegate_task` solo hacia el otro agente y con un
-  ámbito no solapado. Las raíces siempre quedan en cola: usa `dispatch_tasks`
-  únicamente tras una petición explícita del usuario y la confirmación de
-  consumo. Las subtareas heredan ese presupuesto y no pueden crear nuevas
-  raíces.
+  ámbito no solapado. En sesiones Claude Code, la política `required` convierte
+  automáticamente cada tarea `critical` o `substantial` en exactamente una raíz
+  Codex `analyze`, autorizada y despachada al llamar `session_context`; esta
+  petición del propietario es autorización persistente y no requiere confirmar
+  cuota en cada ejecución. Consultas breves de estado, formato, erratas o texto
+  sin impacto funcional quedan exentas.
+- En una tarea sujeta a la política, Codex debe estar arrancado antes de editar.
+  Claude trabaja en paralelo, recupera después el resumen con
+  `get_delegated_task`, integra o contesta sus hallazgos y publica
+  `publish_handoff` antes de finalizar. Los hooks `PreToolUse` y `Stop` hacen
+  cumplir el protocolo.
+- La colaboración automática está limitada a 1 peer por `context_key`,
+  profundidad 0, 1 intento, 25 minutos y 3 ejecuciones al día. No concede
+  permisos de commit, push, PR, deploy, OTA, migración, producción, pagos,
+  secretos ni borrados.
 - Las tareas delegadas pueden crear subtareas, pero deben respetar los límites
   de profundidad, descendientes y concurrencia del orquestador. No se delegan
   implícitamente commits, push, PR, despliegues, OTA, migraciones, pagos,
