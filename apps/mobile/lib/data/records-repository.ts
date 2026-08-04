@@ -56,7 +56,7 @@ export async function deleteRecord(record: BaseRecord): Promise<void> {
  * EUROS: el backend los convierte a céntimos.
  */
 export type PropertySearchFilters = {
-  operation: "RENT" | "SALE" | "ANY";
+  operation: "RENT" | "SALE" | "RENT_TO_OWN" | "ANY";
   q?: string;
   province?: string;
   city?: string;

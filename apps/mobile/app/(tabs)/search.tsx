@@ -4,6 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 
+import { isRentOperation } from "@nidokey/shared";
+
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { useQuery } from "@/lib/hooks/useQuery";
@@ -121,7 +123,7 @@ export default function SearchScreen() {
     setInspecting(false);
     setProgress({ stage: "opening", found: 0, seconds: 0 });
     setRunningUrl(
-      buildSearchUrl(portal, filters.operation === "SALE" ? "SALE" : "RENT", city, province)
+      buildSearchUrl(portal, isRentOperation(filters.operation) ? "RENT" : "SALE", city, province)
     );
   }
 
@@ -237,7 +239,14 @@ export default function SearchScreen() {
           "Inmuebles" pareciera vacío cuando sólo estaba filtrando alquiler. */}
       {(isProperty || isPortals) && (
         <View style={styles.scopeRow}>
-          {(isPortals ? (["RENT", "SALE"] as const) : (["RENT", "SALE", "ANY"] as const)).map((op) => {
+          {/* Portales NO ofrece «con opción»: sus URLs de resultados sólo saben de
+              alquiler y venta, y adivinar la gramática de filtros de cada portal
+              es lo primero que se rompe (ver lib/portal-search.ts). Se detecta al
+              importar, no al buscar. */}
+          {(isPortals
+            ? (["RENT", "SALE"] as const)
+            : (["RENT", "RENT_TO_OWN", "SALE", "ANY"] as const)
+          ).map((op) => {
             const active = filters.operation === op;
             return (
               <Pressable
@@ -256,9 +265,11 @@ export default function SearchScreen() {
                 <Text style={[styles.scopeText, { color: active ? th.accent : th.textMuted }]}>
                   {op === "RENT"
                     ? t("records.op_rent")
-                    : op === "SALE"
-                      ? t("records.op_sale")
-                      : t("records.op_all")}
+                    : op === "RENT_TO_OWN"
+                      ? t("records.op_rent_to_own")
+                      : op === "SALE"
+                        ? t("records.op_sale")
+                        : t("records.op_all")}
                 </Text>
               </Pressable>
             );
@@ -457,7 +468,7 @@ export default function SearchScreen() {
           key={runningUrl}
           url={runningUrl}
           portal={portal}
-          operation={filters.operation === "SALE" ? "SALE" : "RENT"}
+          operation={isRentOperation(filters.operation) ? "RENT" : "SALE"}
           city={city}
           forceVisible={inspecting}
           onProgress={setProgress}

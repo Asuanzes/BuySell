@@ -214,15 +214,13 @@ describe("sanitizePayload — banda de precio según la operación", () => {
     assert.equal(sanitizePayload(p, "RENT").price, 850);
   });
 
-  it("RENT_TO_OWN se valida hoy con la banda de VENTA", () => {
-    // Comportamiento ACTUAL, deliberado del lado de escritura y documentado en
-    // features/scraping/recheck-plan.ts y matching/auto-merge-guard.ts: el
-    // alquiler con opción a compra se sigue por su precio de venta.
-    // ⚠️ El buscador de alquiler (lib/rentals/filters.ts) asume lo contrario y
-    // lo consulta por monthlyRent. La contradicción está abierta y decidida
-    // aparte; esta prueba fija el lado de escritura para que el cambio se vea.
-    assert.equal(sanitizePayload(payload({ price: 850, operationType: "RENT_TO_OWN" })).price, null);
-    assert.equal(sanitizePayload(payload({ price: 220000, operationType: "RENT_TO_OWN" })).price, 220000);
+  it("RENT_TO_OWN se valida con la banda de ALQUILER", () => {
+    // Su precio principal es la cuota mensual, que es lo que anuncia el portal.
+    // Una renta de 850 € sobrevive y un importe de venta se descarta por pasarse
+    // del techo de renta: si el anuncio publica además el precio de compra, va
+    // aparte en currentPrice, no aquí.
+    assert.equal(sanitizePayload(payload({ price: 850, operationType: "RENT_TO_OWN" })).price, 850);
+    assert.equal(sanitizePayload(payload({ price: 220000, operationType: "RENT_TO_OWN" })).price, null);
   });
 });
 

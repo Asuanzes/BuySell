@@ -256,6 +256,7 @@
     "op_all": "All",
     "op_sale": "Sale",
     "op_rent": "Rent",
+    "op_rent_to_own": "Rent-to-own",
     "filter_empty_title": "No results",
     "filter_empty_desc": "No properties for this filter."
   },

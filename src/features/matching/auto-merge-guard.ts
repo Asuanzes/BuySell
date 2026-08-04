@@ -1,3 +1,5 @@
+import { operationPrice } from "@nidokey/shared";
+
 /**
  * Guard de seguridad del auto-merge (score ≥ 95). Función pura para poder
  * testearla sin BBDD. Decide si una fusión automática debe BLOQUEARSE.
@@ -19,7 +21,7 @@ export type MergeGuardProperty = {
 
 /** Precio comparable según la operación: venta→currentPrice, alquiler→monthlyRent. */
 export function comparablePrice(p: MergeGuardProperty): number | null {
-  return p.operationType === "RENT" ? p.monthlyRent : p.currentPrice;
+  return operationPrice(p);
 }
 
 export function autoMergeSafety(

@@ -13,6 +13,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
+import { isRentOperation } from "@nidokey/shared";
+
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { api, ApiError } from "@/lib/api";
@@ -169,10 +171,9 @@ export default function ListingPreviewScreen() {
     .map((v) => v?.trim())
     .filter(Boolean)
     .join(" · ");
-  // `=== "RENT"` y no `!== "SALE"`: el alquiler con opción a compra guarda su
-  // importe como precio de VENTA, así que pintarlo con «/mes» mostraría algo
-  // como "220.000 €/mes". Misma convención que el resto de la app.
-  const isRent = (payload?.operationType ?? seed.operation) === "RENT";
+  // El alquiler con opción a compra cuenta como alquiler: su precio principal
+  // es la cuota mensual. Una sola definición para toda la app.
+  const isRent = isRentOperation(payload?.operationType ?? seed.operation);
 
   return (
     <View style={[styles.screen, { backgroundColor: th.bg }]}>

@@ -1,5 +1,5 @@
 import type { ListingStatus, OperationType } from "@prisma/client";
-import { isReasonablePriceChange } from "@nidokey/shared";
+import { isReasonablePriceChange, isRentOperation } from "@nidokey/shared";
 import type { ScrapeOutcome } from "./types";
 import { isGoneStatus, nextListingStatus } from "./listing-status";
 
@@ -153,7 +153,7 @@ export function planRecheck(listing: ListingState, outcome: ScrapeOutcome, now: 
     wasGone,
     fallbackStatus: r.status,
   });
-  const isRent = listing.operationType === "RENT";
+  const isRent = isRentOperation(listing.operationType);
 
   return {
     summary: {

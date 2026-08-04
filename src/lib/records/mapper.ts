@@ -1,4 +1,4 @@
-import { formatPrice, formatMoney, formatDate, type BaseRecord, type Book } from "@nidokey/shared";
+import { formatPrice, formatMoney, formatDate, isRentOperation, type BaseRecord, type Book } from "@nidokey/shared";
 import type { Property, Media, CryptoHolding, MarketInstrument, JobListing, BookRecord, Holiday } from "@prisma/client";
 
 /**
@@ -22,7 +22,7 @@ export function propertyToBaseRecord(p: PropertyWithCover): BaseRecord {
       .join(" · ") || null;
 
   // Alquiler: el valor principal es la renta mensual con sufijo "/mes".
-  const isRent = p.operationType === "RENT";
+  const isRent = isRentOperation(p.operationType);
   const primaryValue = isRent
     ? p.monthlyRent != null
       ? `${formatPrice(p.monthlyRent)}/mes`

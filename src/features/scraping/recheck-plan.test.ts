@@ -145,11 +145,14 @@ describe("secuencia determinista ALQUILER: 900 → 850 → = → 875", () => {
     assert.equal(l.lastPrice, 87_500);
   });
 
-  it("RENT_TO_OWN se sigue por precio de venta (currentPrice), decisión documentada", () => {
-    const l = saleListing({ id: "l-rto", operationType: "RENT_TO_OWN" });
-    const drop = planRecheck(l, okOutcome(21_000_000), T0);
-    assert.deepEqual(drop.propertyPatch, { currentPrice: 21_000_000 });
-    assert.equal(drop.alert?.field, "price");
+  it("RENT_TO_OWN se sigue por su RENTA (monthlyRent), como cualquier alquiler", () => {
+    // Su precio principal es la cuota mensual: es lo que anuncia el portal y lo
+    // que guarda la importación. El importe de la compra, si se conoce, vive
+    // aparte en currentPrice y no es lo que sigue el recheck.
+    const l = rentListing({ id: "l-rto", operationType: "RENT_TO_OWN" });
+    const drop = planRecheck(l, okOutcome(85_000), T0);
+    assert.deepEqual(drop.propertyPatch, { monthlyRent: 85_000 });
+    assert.equal(drop.alert?.field, "rent");
   });
 });
 

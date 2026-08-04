@@ -256,6 +256,7 @@
     "op_all": "Todo",
     "op_sale": "Venta",
     "op_rent": "Alquiler",
+    "op_rent_to_own": "Con opción",
     "filter_empty_title": "Sin resultados",
     "filter_empty_desc": "No hay inmuebles para este filtro."
   },

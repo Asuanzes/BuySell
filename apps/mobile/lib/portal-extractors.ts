@@ -46,6 +46,32 @@ var __text = function(el) {
   return String(el.innerText || el.textContent || '');
 };
 
+/**
+ * ¿Alquiler con OPCIÓN A COMPRA? Sólo señales explícitas, nunca inferencia.
+ *
+ * Un anuncio de esta modalidad vive bajo /alquiler-…, así que la cascada normal
+ * lo clasificaría como alquiler a secas en su primer paso. Esta sonda va antes,
+ * pero con dos cautelas que son las que evitan el destrozo:
+ *
+ *  - Se exige la EXPRESIÓN completa ("opción a compra" / "opción de compra"). Un
+ *    "compra" suelto o una "opción" suelta no valen.
+ *  - Quien decide que además es un alquiler es la cascada de siempre: si dice
+ *    venta, se queda en venta. Un anuncio de VENTA cuya descripción mencione la
+ *    modalidad no se convierte en alquiler.
+ *
+ * Un falso negativo degrada a 'RENT', que es lo que hacía hasta hoy: no se
+ * empeora nada. Un falso positivo sí molesta, y por eso se pide tanto.
+ */
+var __hasPurchaseOption = function() {
+  var re = /opci[o\\u00f3]n\\s+(a|de)\\s+compra|opcio\\s+(a|de)\\s+compra|rent[-\\s]?to[-\\s]?own/;
+  var path = (location.pathname + ' ' + location.search).toLowerCase()
+    .replace(/-/g, ' ');
+  if (re.test(path)) return true;
+  var head = ((document.title || '') + ' ' + __text(document.querySelector('h1'))).toLowerCase();
+  if (re.test(head)) return true;
+  return re.test(__text(document.body).slice(0, 4000).toLowerCase());
+};
+
 var __operation = function() {
   var path = (location.pathname + ' ' + location.search).toLowerCase();
   if (/alquil|lloguer|arrenda|\\brent\\b|\\brental\\b/.test(path)) return 'RENT';
@@ -72,7 +98,17 @@ var __post = function(obj) {
   if (obj && obj.type === 'extracted' && obj.data) {
     // Inyecta la operación en toda extracción (evita repetirlo en cada portal).
     if (obj.data.operationType == null) {
-      try { obj.data.operationType = __operation(); } catch(e) { obj.data.operationType = 'SALE'; }
+      try {
+        var __op = __operation();
+        // El alquiler con opción a compra se marca SOLO sobre un alquiler ya
+        // reconocido: es un alquiler con un extra, no una tercera cosa que
+        // pueda salir de la nada. Y sólo si hay renta: sin importe preferimos
+        // 'RENT' a una ficha de una modalidad rara y sin precio.
+        if (__op === 'RENT' && __hasPurchaseOption() && obj.data.price != null) {
+          __op = 'RENT_TO_OWN';
+        }
+        obj.data.operationType = __op;
+      } catch(e) { obj.data.operationType = 'SALE'; }
     }
     // SPA sin hidratar: onLoadEnd dispara antes de que el precio esté en el DOM
     // (las imágenes/descripción sobreviven porque se rascan del HTML/JSON crudo,

@@ -69,19 +69,30 @@ describe("parseRentalFilters", () => {
 });
 
 describe("buildRentalWhere", () => {
-  it("alquiler NO incluye el alquiler con opción a compra", () => {
-    // Cambiado a propósito. Su importe se guarda como precio de VENTA en
-    // `currentPrice` (convención de import-listing, recheck y auto-merge), así
-    // que dentro de una búsqueda de alquiler salía sin precio, se esfumaba al
-    // filtrar por renta y ordenaba el último. Para el buscador es una venta
-    // mientras su precio sea de venta.
+  it("alquiler incluye el alquiler con opción a compra", () => {
+    // Ahora sí, y por fin es correcto: su importe se guarda en `monthlyRent`
+    // como el de cualquier alquiler, de modo que entra en el rango de renta y
+    // ordena con los demás. Antes se colaba aquí con el precio en la columna de
+    // venta, que es lo que lo dejaba sin precio y fuera de todo filtro.
     const where = buildRentalWhere(parse("operation=RENT"));
-    assert.deepEqual(clause(where, "operationType"), "RENT");
+    assert.deepEqual(clause(where, "operationType"), { in: ["RENT", "RENT_TO_OWN"] });
   });
 
-  it("venta sí lo incluye, que es donde vive su precio", () => {
+  it("tiene filtro propio para quien busca esa modalidad en concreto", () => {
+    const where = buildRentalWhere(parse("operation=RENT_TO_OWN"));
+    assert.deepEqual(clause(where, "operationType"), "RENT_TO_OWN");
+  });
+
+  it("venta es sólo venta", () => {
     const where = buildRentalWhere(parse("operation=SALE"));
-    assert.deepEqual(clause(where, "operationType"), { in: ["SALE", "RENT_TO_OWN"] });
+    assert.deepEqual(clause(where, "operationType"), "SALE");
+  });
+
+  it("el rango de precio del alquiler con opción va a monthlyRent", () => {
+    assert.deepEqual(
+      clause(buildRentalWhere(parse("operation=RENT_TO_OWN&maxPrice=900")), "monthlyRent"),
+      { lte: 90_000 }
+    );
   });
 
   it("una búsqueda mixta con precio mira las DOS columnas", () => {
@@ -206,6 +217,7 @@ describe("rentalOrderBy", () => {
 describe("priceColumn", () => {
   it("alquiler y alquiler-con-opción usan monthlyRent; venta usa currentPrice", () => {
     assert.equal(priceColumn("RENT"), "monthlyRent");
+    assert.equal(priceColumn("RENT_TO_OWN"), "monthlyRent");
     assert.equal(priceColumn("ANY"), "monthlyRent");
     assert.equal(priceColumn("SALE"), "currentPrice");
   });

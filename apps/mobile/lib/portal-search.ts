@@ -15,7 +15,7 @@
  * filtros y adivinarlas sería lo primero que se rompiera.
  */
 
-import { isValidMonthlyRentEur, isValidPriceEur } from "@nidokey/shared";
+import { isRentOperation, isValidMonthlyRentEur, isValidPriceEur } from "@nidokey/shared";
 
 /**
  * Habitaclia se retiró el 2026-08-03: servía muro de verificación al WebView de
@@ -464,7 +464,7 @@ export type FilterOutcome = {
 export function applyLocalFilters(
   hits: PortalHit[],
   f: {
-    operation?: "RENT" | "SALE" | "ANY";
+    operation?: "RENT" | "SALE" | "RENT_TO_OWN" | "ANY";
     minPrice?: number;
     maxPrice?: number;
     minRooms?: number;
@@ -472,7 +472,7 @@ export function applyLocalFilters(
     maxArea?: number;
   }
 ): FilterOutcome {
-  const sane = f.operation === "SALE" ? isValidPriceEur : isValidMonthlyRentEur;
+  const sane = isRentOperation(f.operation) ? isValidMonthlyRentEur : isValidPriceEur;
   const dropped = { sanity: 0, price: 0, rooms: 0, area: 0 };
   const kept = hits.filter((h) => {
     // Precio nulo se deja pasar (el anuncio existe, el precio se ve al abrirlo);

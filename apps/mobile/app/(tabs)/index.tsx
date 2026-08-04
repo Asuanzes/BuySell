@@ -10,7 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { metaField, type BaseRecord } from "@nidokey/shared";
+import { isRentOperation, metaField, type BaseRecord } from "@nidokey/shared";
 import { useCategoryPrefs } from "@/lib/records/category-prefs-context";
 import { useTypeI18n } from "@/lib/records/type-i18n";
 import { useAuth } from "@/lib/auth-context";
@@ -68,7 +68,7 @@ export default function RecordsScreen() {
   // Filtro de operación (solo Inmuebles): Todo / Venta / Alquiler. Client-side
   // sobre meta.operationType — no necesita endpoint nuevo. Se resetea al cambiar
   // de categoría.
-  const [opFilter, setOpFilter] = useState<"ALL" | "SALE" | "RENT">("ALL");
+  const [opFilter, setOpFilter] = useState<"ALL" | "SALE" | "RENT" | "RENT_TO_OWN">("ALL");
   useEffect(() => { setEditing(false); setOpFilter("ALL"); }, [type]);
   useEffect(() => { if (records && records.length === 0) setEditing(false); }, [records]);
 
@@ -114,20 +114,19 @@ export default function RecordsScreen() {
   /**
    * Sólo Inmuebles ofrece el segmento de operación.
    *
-   * El alquiler con opción a compra cuenta como VENTA, no como alquiler, por
-   * más que su nombre diga lo contrario: su importe se guarda como precio de
-   * venta en `currentPrice` — misma convención que la importación, el recheck y
-   * el buscador. Antes esta lista lo metía en «Alquiler» (`op !== "SALE"`), de
-   * modo que un registro así salía aquí bajo alquiler y NO salía al buscarlo
-   * como alquiler: dos respuestas distintas a la misma pregunta según la
-   * pantalla.
+   * «Alquiler» incluye el alquiler con opción a compra, que además tiene chip
+   * propio para quien busca esa modalidad en concreto. El predicado sale de
+   * `isRentOperation` (paquete compartido) para que esta lista y el buscador no
+   * puedan volver a responder distinto a la misma pregunta.
    */
   const showOpFilter = type === "property" && !editing;
   const shown =
     showOpFilter && ordered && opFilter !== "ALL"
       ? ordered.filter((r) => {
           const op = metaField<string>(r, "operationType", "SALE");
-          return opFilter === "RENT" ? op === "RENT" : op !== "RENT";
+          if (opFilter === "RENT") return isRentOperation(op);
+          if (opFilter === "RENT_TO_OWN") return op === "RENT_TO_OWN";
+          return !isRentOperation(op);
         })
       : ordered;
 
@@ -149,10 +148,16 @@ export default function RecordsScreen() {
 
           {!isChat && !isFood && showOpFilter && records && records.length > 0 && (
             <View style={[styles.opFilter, th.elevation.sm, { backgroundColor: th.surfaceRaised, borderColor: th.border }]}>
-              {(["ALL", "SALE", "RENT"] as const).map((opt) => {
+              {(["ALL", "SALE", "RENT", "RENT_TO_OWN"] as const).map((opt) => {
                 const active = opFilter === opt;
                 const label =
-                  opt === "ALL" ? t("records.op_all") : opt === "SALE" ? t("records.op_sale") : t("records.op_rent");
+                  opt === "ALL"
+                    ? t("records.op_all")
+                    : opt === "SALE"
+                      ? t("records.op_sale")
+                      : opt === "RENT"
+                        ? t("records.op_rent")
+                        : t("records.op_rent_to_own");
                 return (
                   <Pressable
                     key={opt}

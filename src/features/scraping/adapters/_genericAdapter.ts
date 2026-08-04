@@ -2,7 +2,7 @@ import type { Portal } from "@prisma/client";
 import type * as cheerio from "cheerio";
 import type { PortalAdapter, ScrapeContext, ScrapeOutcome } from "../types";
 import { loadPage, parsePriceEur, readJsonLd, priceFromJsonLd } from "./_common";
-import { isValidPriceEur, isValidMonthlyRentEur } from "@nidokey/shared";
+import { isValidPriceEur, isValidMonthlyRentEur, isRentOperation } from "@nidokey/shared";
 
 /**
  * Adaptador genérico para re-check server-side de portales sin anti-bot fuerte.
@@ -32,7 +32,7 @@ export type ExtractPriceOpts = {
 
 /** Selección de precio PURA sobre un documento ya cargado (testeable con fixtures). */
 export function extractPriceEur($: cheerio.CheerioAPI, opts: ExtractPriceOpts): number | null {
-  const isRent = opts.operationType === "RENT";
+  const isRent = isRentOperation(opts.operationType);
   const validBand = isRent ? isValidMonthlyRentEur : isValidPriceEur;
   const prevEur = opts.previousPriceCents != null ? opts.previousPriceCents / 100 : null;
 

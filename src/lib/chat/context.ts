@@ -1,4 +1,4 @@
-import type { RecordType } from "@nidokey/shared";
+import { isRentOperation, type RecordType } from "@nidokey/shared";
 
 import { prisma } from "@/lib/db";
 import { sharedAccess } from "@/lib/records/access";
@@ -54,7 +54,7 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
     });
     if (!p) return null;
     const price =
-      p.operationType === "RENT"
+      isRentOperation(p.operationType)
         ? p.monthlyRent != null
           ? `${Math.round(p.monthlyRent / 100).toLocaleString("es-ES")} €/mes`
           : null

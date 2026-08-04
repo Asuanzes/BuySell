@@ -75,7 +75,7 @@ export default function ImportarScreen() {
   // Operación para el import por URL de inmuebles. AUTO = la detecta el extractor
   // por la ruta del portal; el usuario puede forzar Venta/Alquiler si la web no
   // lo deja claro.
-  const [opOverride, setOpOverride] = useState<"AUTO" | "SALE" | "RENT">("AUTO");
+  const [opOverride, setOpOverride] = useState<"AUTO" | "SALE" | "RENT" | "RENT_TO_OWN">("AUTO");
   // Alta manual de libro (fallback final del híbrido): cuando ni el share ni la
   // búsqueda encuentran el libro, se mete a mano (título/autor/ISBN).
   const [manualOpen, setManualOpen] = useState(false);
@@ -581,14 +581,16 @@ export default function ImportarScreen() {
           {/* Operación (solo inmuebles por URL): Auto / Venta / Alquiler. */}
           {type === "property" && cfg.addMode === "url" && (
             <View style={styles.opRow}>
-              {(["AUTO", "SALE", "RENT"] as const).map((opt) => {
+              {(["AUTO", "SALE", "RENT", "RENT_TO_OWN"] as const).map((opt) => {
                 const active = opOverride === opt;
                 const label =
                   opt === "AUTO"
                     ? t("importar.operation_auto")
                     : opt === "SALE"
                     ? t("importar.operation_sale")
-                    : t("importar.operation_rent");
+                    : opt === "RENT"
+                    ? t("importar.operation_rent")
+                    : t("form.op_rent_to_own");
                 return (
                   <Pressable
                     key={opt}

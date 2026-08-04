@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
-import { formatPrice } from "@nidokey/shared";
+import { formatPrice, isRentOperation } from "@nidokey/shared";
 import { useTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useRecord } from "@/lib/hooks/useRecord";
@@ -177,7 +177,8 @@ export default function PropertyDetailScreen() {
   }
 
   const photos = p.media.filter((m) => m.kind === "PHOTO");
-  const isRent = p.operationType === "RENT";
+  // Incluye el alquiler con opción a compra: su precio principal es la renta.
+  const isRent = isRentOperation(p.operationType);
   // Ficha mixta: el mismo inmueble se vende Y se alquila → enseñamos ambos y la
   // rentabilidad bruta (renta anual / precio de compra).
   const hasBoth = p.currentPrice != null && p.monthlyRent != null;

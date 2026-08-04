@@ -58,14 +58,14 @@ test("dos alquileres con rentas muy distintas → bloquea por renta", () => {
  * toda venta salía con precio null. Es la única definición del proyecto de "el
  * precio de esta ficha", así que se prueba directamente.
  */
-test("comparablePrice: sólo el alquiler puro vive en monthlyRent", () => {
+test("comparablePrice: todo lo que es alquiler vive en monthlyRent", () => {
   const base = { type: "PISO", currentPrice: 22_000_000, monthlyRent: 90_000 };
 
   assert.equal(comparablePrice({ ...base, operationType: "SALE" }), 22_000_000);
   assert.equal(comparablePrice({ ...base, operationType: "RENT" }), 90_000);
-  // El alquiler con opción a compra guarda su importe como precio de venta:
-  // misma convención que import-listing, el recheck y el buscador.
-  assert.equal(comparablePrice({ ...base, operationType: "RENT_TO_OWN" }), 22_000_000);
+  // El alquiler con opción a compra también: su precio principal es la cuota
+  // mensual. Una sola definición, en packages/shared.
+  assert.equal(comparablePrice({ ...base, operationType: "RENT_TO_OWN" }), 90_000);
 });
 
 test("comparablePrice: sin importe en su columna devuelve null, no el de la otra", () => {

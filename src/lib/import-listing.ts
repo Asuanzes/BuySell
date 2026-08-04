@@ -21,6 +21,7 @@ import {
   isValidPlotArea,
   isValidYear,
   isReasonablePriceChange,
+  isRentOperation,
   cleanDescription,
   isLikelyJunkDescription,
 } from "@nidokey/shared";
@@ -304,7 +305,7 @@ export function sanitizePayload(
   //    de su operación: alquiler 100–50.000 €/mes, venta ≥ 10.000 €. Así una
   //    renta de 450 € no se descarta (isValidPriceEur la rechazaría) ni un
   //    precio de venta bajo se cuela como renta.
-  const isRent = (effectiveOperation ?? out.operationType) === "RENT";
+  const isRent = isRentOperation(effectiveOperation ?? out.operationType);
   const priceOk = isRent ? isValidMonthlyRentEur(out.price ?? null) : isValidPriceEur(out.price ?? null);
   if (!priceOk) out.price = null;
   if (!isValidBuiltArea(out.builtArea ?? null)) out.builtArea = null;
@@ -446,7 +447,7 @@ async function importListingOnce(
   const payload = sanitizePayload(rawPayload, existing?.operationType ?? undefined);
   const portal = payload.portal ?? detectPortal(payload.url);
   const operationType = payload.operationType ?? "SALE";
-  const isRent = operationType === "RENT";
+  const isRent = isRentOperation(operationType);
   const priceCents = payload.price != null ? payload.price * 100 : null;
   const depositCents = payload.deposit != null ? payload.deposit * 100 : null;
 
@@ -466,7 +467,7 @@ async function importListingOnce(
     // inmueble puede tener anuncio de venta y de alquiler. Reusamos la del
     // listing existente (no la del payload) para no cambiar de operación al
     // re-importar la misma URL.
-    const existingIsRent = existing.operationType === "RENT";
+    const existingIsRent = isRentOperation(existing.operationType);
 
     // Sanity check: si el cambio es brutal (>5x o <0.2x), NO escribimos
     // el precio nuevo ni creamos snapshot. Log para revisión.

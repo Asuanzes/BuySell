@@ -1,3 +1,4 @@
+import { priceFieldFor } from "@nidokey/shared";
 import type { Prisma } from "@prisma/client";
 
 import { canonicalProvince } from "@/lib/geo-es";
@@ -24,7 +25,7 @@ import { canonicalProvince } from "@/lib/geo-es";
  *    fichas antiguas conservan el `FOR_SALE` por defecto del esquema.
  */
 
-export type RentalOperation = "RENT" | "SALE" | "ANY";
+export type RentalOperation = "RENT" | "SALE" | "RENT_TO_OWN" | "ANY";
 export type RentalSort = "recent" | "price_asc" | "price_desc" | "area_desc";
 
 export type RentalFilters = {
@@ -123,7 +124,7 @@ function text(raw: string | null, maxLength = 80): string | undefined {
 export function parseRentalFilters(sp: URLSearchParams): RentalFilters {
   const operation = ((): RentalOperation => {
     const v = sp.get("operation")?.trim().toUpperCase();
-    return v === "SALE" || v === "ANY" ? v : "RENT";
+    return v === "SALE" || v === "ANY" || v === "RENT_TO_OWN" ? v : "RENT";
   })();
 
   const minEuros = clampInt(sp.get("minPrice"), 0, MAX_EUROS);
@@ -178,9 +179,16 @@ export function parseRentalFilters(sp: URLSearchParams): RentalFilters {
  * `ANY` no tiene columna propia: una búsqueda mixta compara contra las dos (ver
  * `buildRentalWhere`). Se devuelve `monthlyRent` sólo para no romper a quien la
  * llame con ANY; el sitio que decide de verdad es el rango de precio.
+ *
+ * El alquiler con opción a compra va a `monthlyRent` como cualquier alquiler:
+ * su precio principal es la cuota mensual (`isRentOperation` en el paquete
+ * compartido, que es la única definición del proyecto).
  */
 export function priceColumn(operation: RentalOperation): "monthlyRent" | "currentPrice" {
-  return operation === "SALE" ? "currentPrice" : "monthlyRent";
+  // `ANY` no es una operación de una ficha, es un valor del BUSCADOR, así que no
+  // se le puede preguntar a `priceFieldFor` — lo respondería como venta. Se
+  // resuelve aquí y el resto delega en la definición compartida.
+  return operation === "ANY" ? "monthlyRent" : priceFieldFor(operation);
 }
 
 function range(min?: number, max?: number): Prisma.IntFilter | undefined {
@@ -197,16 +205,16 @@ export function buildRentalWhere(f: RentalFilters): Prisma.PropertyWhereInput {
   const and: Prisma.PropertyWhereInput[] = [];
 
   if (f.operation === "RENT") {
-    // El alquiler con opción a compra NO entra aquí, aunque intuitivamente sea
-    // alquiler. El motivo es de datos, no de producto: la importación guarda su
-    // importe como PRECIO DE VENTA en `currentPrice` y deja `monthlyRent` vacío
-    // (`import-listing.ts`, y lo mismo hacen el recheck y el auto-merge). Si se
-    // colara en una búsqueda de alquiler saldría sin precio, desaparecería en
-    // cuanto se filtrara por renta y ordenaría el último — que es justo lo que
-    // pasaba. Mientras su precio sea de venta, para el buscador es una venta.
-    and.push({ operationType: "RENT" });
+    // El alquiler con opción a compra ES alquiler para quien busca dónde vivir,
+    // y ahora además su precio vive donde toca: la importación lo guarda en
+    // `monthlyRent`, así que entra en el rango de renta y ordena con los demás
+    // en vez de quedarse sin precio al final de la lista.
+    and.push({ operationType: { in: ["RENT", "RENT_TO_OWN"] } });
+  } else if (f.operation === "RENT_TO_OWN") {
+    // Filtro propio: quien busca específicamente esta modalidad.
+    and.push({ operationType: "RENT_TO_OWN" });
   } else if (f.operation === "SALE") {
-    and.push({ operationType: { in: ["SALE", "RENT_TO_OWN"] } });
+    and.push({ operationType: "SALE" });
   }
 
   if (!f.includeUnavailable) {
@@ -304,8 +312,7 @@ export function rentalOrderBy(f: RentalFilters): Prisma.PropertyOrderByWithRelat
    */
   const byPrice = (dir: "asc" | "desc"): Prisma.PropertyOrderByWithRelationInput[] => {
     const d = dir === "asc" ? asc : desc;
-    if (f.operation === "SALE") return [{ currentPrice: d }];
-    if (f.operation === "RENT") return [{ monthlyRent: d }];
+    if (f.operation !== "ANY") return [{ [priceColumn(f.operation)]: d }];
     return dir === "asc"
       ? [{ monthlyRent: d }, { currentPrice: d }]
       : [{ currentPrice: d }, { monthlyRent: d }];

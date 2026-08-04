@@ -43,6 +43,7 @@ const SORTS: { value: NonNullable<PropertySearchFilters["sort"]>; labelKey: I18n
 
 const OPERATIONS: { value: PropertySearchFilters["operation"]; labelKey: I18nKey }[] = [
   { value: "RENT", labelKey: "records.op_rent" },
+  { value: "RENT_TO_OWN", labelKey: "records.op_rent_to_own" },
   { value: "SALE", labelKey: "records.op_sale" },
   { value: "ANY", labelKey: "records.op_all" },
 ];
