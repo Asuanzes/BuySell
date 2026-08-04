@@ -351,9 +351,14 @@ export function sanitizePayload(
 }
 
 /**
- * Se lanza cuando un import intenta tocar (update path) una ficha cuyo Property
- * pertenece a OTRO usuario (colisión de `Listing.url`, que es @unique global).
- * Los route handlers lo mapean a 403 sin filtrar existencia del recurso ajeno.
+ * Se lanza si un import llegara a tocar una ficha de OTRO usuario. Los route
+ * handlers lo mapean a 403 sin filtrar existencia del recurso ajeno.
+ *
+ * Prácticamente inalcanzable desde que `Listing` es único por `[url, ownerId]`
+ * y la búsqueda va acotada al dueño: sólo saltaría si `Listing.ownerId` y
+ * `Property.ownerId` divergieran. Se conserva como aserción de esa frontera.
+ * Cuando la URL era única GLOBAL sí era alcanzable, y de hecho era el 403 que
+ * impedía a un segundo usuario guardar un piso ya guardado por otro.
  */
 export class CrossOwnerError extends Error {
   constructor(message = "Recurso de otro usuario") {
@@ -363,15 +368,37 @@ export class CrossOwnerError extends Error {
 }
 
 /**
+ * ¿Este error es la carrera de dos importaciones simultáneas del MISMO anuncio?
+ *
+ * Sólo cuenta como tal un P2002 (violación de índice único) sobre la clave
+ * `[url, ownerId]` de `Listing`. Antes se reintentaba ante CUALQUIER P2002, que
+ * es demasiado ancho: si dentro del import apareciera otra unicidad violada
+ * —otra tabla, otro índice—, la reintentábamos a ciegas (objeción de Codex).
+ *
+ * `meta.target` de Prisma llega como array de columnas en Postgres. Si no
+ * llega, se reintenta igual: en este camino la carrera es la causa
+ * abrumadoramente probable, y un reintento de más es inofensivo porque un
+ * conflicto real y determinista vuelve a fallar y se propaga.
+ */
+export function isDuplicateListingUrl(err: unknown): boolean {
+  const e = err as { code?: string; meta?: { target?: unknown } };
+  if (e?.code !== "P2002") return false;
+  const target = e.meta?.target;
+  if (target == null) return true;
+  const columns = Array.isArray(target) ? target.map(String) : [String(target)];
+  return columns.some((c) => c.toLowerCase().includes("url"));
+}
+
+/**
  * Importar es IDEMPOTENTE por URL, incluso contra sí mismo en paralelo.
  *
  * `importListingOnce` decide entre crear y actualizar leyendo el `Listing` por
  * su URL, pero entre esa lectura y la escritura cabe otra petición: dos toques
  * seguidos del botón "Añadir a registros", un reintento tras un timeout de red
  * que en realidad sí llegó, o la misma URL importada desde dos sitios a la vez.
- * Las dos entran por el camino de creación y, como `Listing.url` es `@unique`
- * GLOBAL, la segunda muere con P2002 dentro de la transacción — sin dejar
- * `Property` huérfano, pero devolviendo un 500 al usuario por algo que sí
+ * Las dos entran por el camino de creación y, como `Listing` es único por
+ * `[url, ownerId]`, la segunda muere con P2002 dentro de la transacción — sin
+ * dejar `Property` huérfano, pero devolviendo un 500 al usuario por algo que sí
  * había funcionado.
  *
  * Un reintento basta: quien perdió la carrera vuelve a leer, ahora encuentra el
@@ -386,7 +413,7 @@ export async function importListing(
   try {
     return await importListingOnce(rawPayload, opts);
   } catch (err) {
-    if ((err as { code?: string })?.code !== "P2002") throw err;
+    if (!isDuplicateListingUrl(err)) throw err;
     return importListingOnce(rawPayload, opts);
   }
 }
@@ -395,10 +422,23 @@ async function importListingOnce(
   rawPayload: ImportListingPayload,
   opts: { ownerId?: string | null } = {}
 ): Promise<ImportResult> {
-  // El Listing existente manda sobre la operación (un re-import no cambia un
-  // alquiler a venta) y su operación decide la banda de validación del precio.
-  const existing = await prisma.listing.findUnique({
-    where: { url: rawPayload.url },
+  const ownerId = opts.ownerId ?? null;
+
+  /**
+   * El anuncio se busca DEL USUARIO, no globalmente.
+   *
+   * Antes `Listing.url` era `@unique` global y esto era un `findUnique` por URL
+   * a secas, así que el primero que guardaba un piso se lo quedaba: al segundo
+   * usuario le saltaba `CrossOwnerError` → 403 y no podía seguirlo. Ahora la
+   * unicidad es `[url, ownerId]` y cada uno tiene su anuncio, su histórico y sus
+   * alertas sobre la misma URL.
+   *
+   * `findFirst` y no `findUnique` sobre la clave compuesta a propósito: con
+   * `ownerId` nulo (fichas heredadas sin dueño) la clave compuesta no es
+   * utilizable, y esto funciona en los dos casos.
+   */
+  const existing = await prisma.listing.findFirst({
+    where: { url: rawPayload.url, ownerId },
     include: { property: true },
   });
 
@@ -408,13 +448,14 @@ async function importListingOnce(
   const isRent = operationType === "RENT";
   const priceCents = payload.price != null ? payload.price * 100 : null;
   const depositCents = payload.deposit != null ? payload.deposit * 100 : null;
-  const ownerId = opts.ownerId ?? null;
 
   // ---------- Update path ----------
   if (existing) {
-    // Seguridad: Listing.url es @unique GLOBAL. Si la URL ya existe pero su
-    // Property es de OTRO usuario, NO tocamos su ficha (sería un IDOR de
-    // secuestro por colisión de URL). Solo el dueño re-importa su propia URL.
+    // Cinturón y tirantes. La búsqueda de arriba ya está acotada al dueño, así
+    // que esto sólo puede saltar si `Listing.ownerId` y `Property.ownerId`
+    // divergieran — no debería ocurrir nunca, pero es la frontera entre cuentas
+    // y sale barato comprobarla. Antes era la línea que devolvía el 403 a un
+    // usuario legítimo; hoy es una aserción.
     if (ownerId && existing.property.ownerId !== ownerId) {
       throw new CrossOwnerError("Este anuncio ya pertenece a otra cuenta");
     }
@@ -705,6 +746,9 @@ async function importListingOnce(
         create: {
           portal,
           operationType,
+          // Mismo dueño que la ficha: es lo que hace que `[url, ownerId]` sea
+          // único por usuario y no globalmente.
+          ownerId,
           url: payload.url,
           externalId: payload.externalId ?? null,
           lastPrice: priceCents,

@@ -9,10 +9,10 @@ import { getUserId } from "@/lib/auth-helpers";
  * búsqueda para enseñar "Ya en tus registros" ANTES de que el usuario pulse,
  * en vez de descubrirlo pulsando.
  *
- * Se filtra por `property.ownerId`, no sólo por `Listing.url`. La diferencia no
- * es cosmética: `Listing.url` es `@unique` GLOBAL, así que filtrar sólo por URL
- * respondería "ya lo tienes" por el anuncio de otra cuenta — una fuga de que
- * ese anuncio existe en el sistema, y además un botón que luego devolvería 403.
+ * Se filtra por dueño, no sólo por URL. La diferencia no es cosmética: la misma
+ * URL puede estar guardada por varios usuarios (`Listing` es único por
+ * `[url, ownerId]`), así que buscar sólo por URL respondería "ya lo tienes" por
+ * el anuncio de otra cuenta — una fuga de que ese anuncio existe en el sistema.
  * Para un anuncio ajeno esta ruta devuelve `null`, que es lo correcto: para
  * este usuario no está guardado.
  *
@@ -30,8 +30,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Falta url" }, { status: 400 });
   }
 
+  // Por la columna `ownerId` del propio anuncio, que es la que forma el índice
+  // único `[url, ownerId]`: filtrar por la relación funcionaba pero obligaba a
+  // un join que este índice ya resuelve.
   const listing = await prisma.listing.findFirst({
-    where: { url, property: { ownerId } },
+    where: { url, ownerId },
     select: { propertyId: true },
   });
 

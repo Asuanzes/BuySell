@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   detectPortal,
+  isDuplicateListingUrl,
   filterImages,
   parseFeaturesArray,
   sanitizePayload,
@@ -13,7 +14,7 @@ import {
  * Caracterización del NÚCLEO PURO de la importación de anuncios.
  *
  * `import-listing.ts` es el camino de escritura de todo inmueble del producto
- * —precios en céntimos, dedup por `Listing.url` (@unique global), guard
+ * —precios en céntimos, dedup por `Listing` único por `[url, ownerId]`, guard
  * cross-owner, snapshots, alertas y media— y hasta ahora no tenía ni una sola
  * prueba. Estas cubren sus cuatro funciones puras, que son las que deciden qué
  * dato entra en la base: no tocan Prisma ni la red.
@@ -303,5 +304,44 @@ describe("sanitizePayload — cordura del resto de campos", () => {
     const p = payload({ price: 850, operationType: "SALE" });
     sanitizePayload(p);
     assert.equal(p.price, 850, "sanitizePayload debe devolver copia, no editar el original");
+  });
+});
+
+describe("isDuplicateListingUrl — qué se considera carrera de importación", () => {
+  it("reconoce el conflicto de la clave [url, ownerId]", () => {
+    assert.equal(
+      isDuplicateListingUrl({ code: "P2002", meta: { target: ["url", "ownerId"] } }),
+      true
+    );
+    // Postgres puede devolver el nombre del índice en vez de las columnas.
+    assert.equal(
+      isDuplicateListingUrl({ code: "P2002", meta: { target: "Listing_url_ownerId_key" } }),
+      true
+    );
+  });
+
+  it("NO reintenta ante otra unicidad violada", () => {
+    // Era el riesgo del catch ancho: reintentar a ciegas un conflicto que no
+    // es la carrera y que va a volver a fallar igual.
+    assert.equal(isDuplicateListingUrl({ code: "P2002", meta: { target: ["email"] } }), false);
+    assert.equal(
+      isDuplicateListingUrl({ code: "P2002", meta: { target: ["ownerId", "symbol"] } }),
+      false
+    );
+  });
+
+  it("sin `target` reintenta igual, que es lo prudente aquí", () => {
+    // En este camino la carrera es la causa abrumadoramente probable, y un
+    // reintento de más es inofensivo: un conflicto determinista vuelve a fallar
+    // y se propaga.
+    assert.equal(isDuplicateListingUrl({ code: "P2002" }), true);
+    assert.equal(isDuplicateListingUrl({ code: "P2002", meta: {} }), true);
+  });
+
+  it("cualquier otro error no es carrera", () => {
+    assert.equal(isDuplicateListingUrl({ code: "P2025" }), false);
+    assert.equal(isDuplicateListingUrl(new Error("boom")), false);
+    assert.equal(isDuplicateListingUrl(null), false);
+    assert.equal(isDuplicateListingUrl(undefined), false);
   });
 });

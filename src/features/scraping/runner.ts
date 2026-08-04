@@ -172,9 +172,25 @@ export async function checkAllActiveListings(opts?: {
         { status: "REMOVED", lastSeenAt: { gte: removedCutoff } },
       ],
     },
-    select: { id: true },
+    select: { id: true, url: true },
     orderBy: { lastCheckedAt: { sort: "asc", nulls: "first" } },
   });
+
+  /**
+   * Desde que `Listing` es único por `[url, ownerId]`, varios usuarios pueden
+   * seguir el MISMO anuncio, y este bucle scrapea una vez por fila: N seguidores
+   * = N descargas de la misma página, con lo que eso implica en portales que ya
+   * bloquean. Agrupar por URL es la solución, pero es cirugía en el cron y hoy no
+   * ahorraría nada (cero URLs repetidas). Se instrumenta para que el día que
+   * empiece a doler se vea en el log en vez de descubrirlo por un bloqueo.
+   */
+  const distinctUrls = new Set(listings.map((l) => l.url)).size;
+  if (distinctUrls < listings.length) {
+    console.warn(
+      `[recheck] ${listings.length} anuncios sobre ${distinctUrls} URLs distintas: ` +
+        `${listings.length - distinctUrls} descargas repetidas. Toca agrupar por URL.`
+    );
+  }
   const results: CheckSummary[] = [];
   let i = 0;
   for (const { id } of listings) {

@@ -29,8 +29,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.listingId) {
-    // Re-check de UN listing: el usuario debe ser dueño del Property padre
-    // (Listing no tiene ownerId; la pertenencia se alcanza vía property.ownerId).
+    // Re-check de UN listing: el usuario debe ser dueño del Property padre. Se
+    // comprueba por la relación y no por `Listing.ownerId` a propósito: la
+    // pertenencia real la manda la ficha, y así también quedan cubiertas las
+    // filas heredadas que aún tienen el dueño a null.
     // El cron puede re-comprobar cualquiera; un usuario, solo los suyos → 404.
     if (!cron) {
       const owned = await prisma.listing.findFirst({

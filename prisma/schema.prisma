@@ -32,18 +32,18 @@ enum PropertyStatus {
 // Tipo de operación dentro de la categoría Inmuebles. SALE es el default
 // retrocompatible (todas las filas existentes son venta).
 enum OperationType {
-  SALE         // compra/venta
-  RENT         // alquiler
-  RENT_TO_OWN  // alquiler con opción a compra
+  SALE // compra/venta
+  RENT // alquiler
+  RENT_TO_OWN // alquiler con opción a compra
 }
 
 // Modalidad de contrato de alquiler (taxonomía LAU). El alquiler comercial se
 // asocia normalmente a type=LOCAL; el residencial cubre vivienda habitual.
 enum RentalContractType {
-  RESIDENTIAL  // vivienda habitual (LAU art. 2)
-  SEASONAL     // temporada / media estancia
-  ROOM         // habitación
-  COMMERCIAL   // local/oficina (uso distinto de vivienda)
+  RESIDENTIAL // vivienda habitual (LAU art. 2)
+  SEASONAL // temporada / media estancia
+  ROOM // habitación
+  COMMERCIAL // local/oficina (uso distinto de vivienda)
 }
 
 enum FurnishedState {
@@ -116,22 +116,23 @@ enum MediaSource {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  email         String     @unique
-  emailVerified DateTime?
-  name          String?
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  emailVerified         DateTime?
+  name                  String?
   // Alias público para el chat (@handle, estilo Telegram). Normalizado a
   // minúsculas; único. Opcional: sin alias, sigues localizable por email exacto.
-  username      String?    @unique
+  username              String?   @unique
   onboardingCompletedAt DateTime?
-  image         String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  image                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   accounts          Account[]
   sessions          Session[]
   apiTokens         ApiToken[]
   properties        Property[]
+  listings          Listing[]
   cryptoHoldings    CryptoHolding[]
   marketInstruments MarketInstrument[]
   jobListings       JobListing[]
@@ -148,13 +149,13 @@ model User {
   // Chat
   chatParticipations ConversationParticipant[]
   chatMessages       ChatMessage[]
-  blocksIssued       UserBlock[] @relation("blocker")
-  blocksReceived     UserBlock[] @relation("blocked")
+  blocksIssued       UserBlock[]               @relation("blocker")
+  blocksReceived     UserBlock[]               @relation("blocked")
   devices            Device[]
-  contacts           Contact[]   @relation("contactOwner")
-  contactOf          Contact[]   @relation("contactTarget")
+  contacts           Contact[]                 @relation("contactOwner")
+  contactOf          Contact[]                 @relation("contactTarget")
   chatReactions      ChatMessageReaction[]
-  chatReports        ChatReport[] @relation("reporter")
+  chatReports        ChatReport[]              @relation("reporter")
 }
 
 // Tablas estándar de NextAuth / Auth.js (Prisma adapter).
@@ -197,31 +198,31 @@ model VerificationToken {
 // Token API por usuario para los bookmarklets (cada usuario tiene el suyo).
 // Lo embebimos en el .user.js generado dinámicamente.
 model ApiToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String   @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
   label     String?
   lastUsed  DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }
 
 model Property {
-  id           String         @id @default(cuid())
-  ownerId      String?
-  owner        User?          @relation(fields: [ownerId], references: [id])
+  id      String  @id @default(cuid())
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id])
 
   // Discriminador de tipo de registro (records unificados). Aditivo: todas las
   // filas existentes son "property". Reservado para escalar a más tipos en el
   // futuro sin romper el modelo actual. Ver docs/arquitectura-records.md.
-  recordType   String         @default("property")
+  recordType String @default("property")
 
-  title        String
-  description  String?
-  type         PropertyType
-  status       PropertyStatus @default(FOR_SALE)
+  title       String
+  description String?
+  type        PropertyType
+  status      PropertyStatus @default(FOR_SALE)
 
   // Operación principal de la ficha (la del primer anuncio importado). Los
   // anuncios individuales llevan su propia operación en Listing.operationType,
@@ -234,11 +235,11 @@ model Property {
   monthlyRent  Int?
 
   // Condiciones de alquiler (todas opcionales; solo relevantes si hay renta).
-  deposit           Int?                // fianza en céntimos (valor real, no nº de meses)
+  deposit           Int? // fianza en céntimos (valor real, no nº de meses)
   minStayMonths     Int?
   maxStayMonths     Int?
   availableFrom     DateTime?
-  utilitiesIncluded Boolean?            // gastos (comunidad/suministros) incluidos
+  utilitiesIncluded Boolean? // gastos (comunidad/suministros) incluidos
   furnished         FurnishedState?
   petsAllowed       Boolean?
   contractType      RentalContractType?
@@ -246,14 +247,14 @@ model Property {
   address      String?
   city         String
   province     String
-  country      String         @default("España")
+  country      String  @default("España")
   postalCode   String?
   latitude     Float?
   longitude    Float?
   neighborhood String?
 
-  environment  String?
-  tags         String[]
+  environment String?
+  tags        String[]
 
   rooms        Int?
   bathrooms    Int?
@@ -269,7 +270,7 @@ model Property {
   hasGarden    Boolean?
   hasPool      Boolean?
   yearBuilt    Int?
-  energyRating EnergyRating   @default(UNKNOWN)
+  energyRating EnergyRating @default(UNKNOWN)
 
   cadastralRef  String?
   cadastralData Json?
@@ -278,10 +279,10 @@ model Property {
   titleSlug      String?  @db.VarChar(120)
   matchDismissed String[] @default([])
 
-  notes        String?
+  notes String?
 
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   media        Media[]
   listings     Listing[]
@@ -306,7 +307,7 @@ model Media {
   url        String
   caption    String?
   order      Int         @default(0)
-  phash      String?     // dHash 64-bit en hex (16 chars)
+  phash      String? // dHash 64-bit en hex (16 chars)
   createdAt  DateTime    @default(now())
 
   @@index([propertyId, kind])
@@ -314,28 +315,42 @@ model Media {
 }
 
 model Listing {
-  id            String          @id @default(cuid())
-  propertyId    String
-  property      Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  portal        Portal
+  id              String        @id @default(cuid())
+  propertyId      String
+  property        Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  portal          Portal
   // Operación de ESTE anuncio (un mismo inmueble puede tener anuncio de venta y
   // anuncio de alquiler en portales distintos).
-  operationType OperationType   @default(SALE)
-  url           String          @unique
-  externalId    String?
-  status        ListingStatus   @default(ACTIVE)
-  lastPrice     Int?
-  lastSeenAt    DateTime?
-  lastCheckedAt DateTime?
+  operationType   OperationType @default(SALE)
+  // Dueño del anuncio. Redundante con property.ownerId a propósito: sin él la
+  // unicidad de `url` sólo puede ser GLOBAL, y entonces el primero que guarda un
+  // piso se lo queda — el segundo usuario recibía un 403 y no podía seguirlo.
+  // Nullable como `Property.ownerId`, que también lo es (hay fichas heredadas
+  // sin dueño). Ojo: en Postgres los NULL son distintos entre sí, así que para
+  // esas filas la unicidad no aplica; las nuevas siempre traen dueño porque las
+  // rutas de importación exigen sesión.
+  ownerId         String?
+  owner           User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  url             String
+  externalId      String?
+  status          ListingStatus @default(ACTIVE)
+  lastPrice       Int?
+  lastSeenAt      DateTime?
+  lastCheckedAt   DateTime?
   // Observabilidad del recheck: resultado del último intento ("ok" | "gone" |
   // "blocked" | "error" | "manual") + detalle legible. Distingue "no pude
   // comprobar" (blocked/error) de "el anuncio ya no existe" (gone).
   lastCheckResult String?
   lastCheckDetail String?
-  createdAt     DateTime        @default(now())
+  createdAt       DateTime      @default(now())
 
-  snapshots     PriceSnapshot[]
+  snapshots PriceSnapshot[]
 
+  // La misma URL puede estar seguida por varios usuarios, cada uno con su ficha,
+  // su histórico y sus alertas — pero nunca dos veces por el mismo usuario. Eso
+  // es lo que hace idempotente la importación y lo que deja que el reintento del
+  // P2002 resuelva la carrera de dos importaciones simultáneas.
+  @@unique([url, ownerId])
   @@index([portal, status])
 }
 
@@ -354,16 +369,16 @@ model PriceSnapshot {
 }
 
 model MatchSuggestion {
-  id          String   @id @default(cuid())
-  sourceId    String
-  targetId    String
-  score       Int      // 0..100
-  reasons     String[] @default([])
-  blocked     Boolean  @default(false) // true si fue auto-merge bloqueado por safety
+  id            String    @id @default(cuid())
+  sourceId      String
+  targetId      String
+  score         Int // 0..100
+  reasons       String[]  @default([])
+  blocked       Boolean   @default(false) // true si fue auto-merge bloqueado por safety
   blockedReason String?
-  dismissedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  dismissedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([sourceId, targetId])
   @@index([sourceId, dismissedAt])
@@ -397,15 +412,15 @@ model ImportLog {
 }
 
 model SavedSearch {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   ownerId   String?
   name      String
   portal    Portal
   url       String
   filters   Json
-  active    Boolean  @default(true)
+  active    Boolean   @default(true)
   lastRunAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -416,29 +431,29 @@ model SavedSearch {
 // para esos casos se guarda el precio crudo en `meta` (futuro: Decimal).
 // ─────────────────────────────────────────────────────────────────────────
 model CryptoHolding {
-  id            String   @id @default(cuid())
-  ownerId       String?
-  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  recordType    String   @default("crypto")
+  id         String  @id @default(cuid())
+  ownerId    String?
+  owner      User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  recordType String  @default("crypto")
 
-  title         String              // "Bitcoin"
-  subtitle      String?             // "BTC · EUR"
-  status        String?             // libre: "WATCH" | "HOLDING"
-  symbol        String              // "BTC"
-  quoteCurrency String   @default("EUR")
-  quantity      Decimal? @db.Decimal(36, 18) // opcional: cantidad en cartera
-  currentValue  Int?                // precio por unidad, céntimos de quoteCurrency
-  currency      String?  @default("EUR")
+  title         String // "Bitcoin"
+  subtitle      String? // "BTC · EUR"
+  status        String? // libre: "WATCH" | "HOLDING"
+  symbol        String // "BTC"
+  quoteCurrency String    @default("EUR")
+  quantity      Decimal?  @db.Decimal(36, 18) // opcional: cantidad en cartera
+  currentValue  Int? // precio por unidad, céntimos de quoteCurrency
+  currency      String?   @default("EUR")
   imageUrl      String?
-  source        String?             // "coingecko" | "kraken" | …
-  externalId    String?             // id de CoinGecko ("bitcoin")
+  source        String? // "coingecko" | "kraken" | …
+  externalId    String? // id de CoinGecko ("bitcoin")
   lastCheckedAt DateTime?
   meta          Json?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  snapshots     CryptoSnapshot[]
+  snapshots CryptoSnapshot[]
 
   @@unique([ownerId, symbol, quoteCurrency, source])
   @@index([recordType])
@@ -449,7 +464,7 @@ model CryptoSnapshot {
   id         String        @id @default(cuid())
   holdingId  String
   holding    CryptoHolding @relation(fields: [holdingId], references: [id], onDelete: Cascade)
-  value      Int           // precio por unidad, céntimos
+  value      Int // precio por unidad, céntimos
   source     String
   observedAt DateTime      @default(now())
   meta       Json?
@@ -462,30 +477,30 @@ model CryptoSnapshot {
 // usuario. Mismo contrato común que CryptoHolding. Precio en céntimos.
 // ─────────────────────────────────────────────────────────────────────────
 model MarketInstrument {
-  id            String   @id @default(cuid())
-  ownerId       String?
-  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  recordType    String   @default("market")
+  id         String  @id @default(cuid())
+  ownerId    String?
+  owner      User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  recordType String  @default("market")
 
-  title         String              // "Apple Inc."
-  subtitle      String?             // "AAPL · NASDAQ"
-  status        String?             // libre: "WATCH" | "HOLDING"
-  symbol        String              // "AAPL"
+  title         String // "Apple Inc."
+  subtitle      String? // "AAPL · NASDAQ"
+  status        String? // libre: "WATCH" | "HOLDING"
+  symbol        String // "AAPL"
   exchange      String?
-  quoteCurrency String   @default("USD")
-  quantity      Decimal? @db.Decimal(36, 18) // opcional: cantidad en cartera
-  currentValue  Int?                // precio por unidad, céntimos de quoteCurrency
-  currency      String?  @default("USD")
+  quoteCurrency String    @default("USD")
+  quantity      Decimal?  @db.Decimal(36, 18) // opcional: cantidad en cartera
+  currentValue  Int? // precio por unidad, céntimos de quoteCurrency
+  currency      String?   @default("USD")
   imageUrl      String?
-  source        String?             // "twelvedata" | "finnhub" | …
-  externalId    String?             // símbolo normalizado
+  source        String? // "twelvedata" | "finnhub" | …
+  externalId    String? // símbolo normalizado
   lastCheckedAt DateTime?
   meta          Json?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  snapshots     MarketSnapshot[]
+  snapshots MarketSnapshot[]
 
   @@unique([ownerId, symbol, source])
   @@index([recordType])
@@ -496,7 +511,7 @@ model MarketSnapshot {
   id           String           @id @default(cuid())
   instrumentId String
   instrument   MarketInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
-  value        Int              // precio por unidad, céntimos
+  value        Int // precio por unidad, céntimos
   source       String
   observedAt   DateTime         @default(now())
   meta         Json?
@@ -510,30 +525,30 @@ model MarketSnapshot {
 // céntimos cuando se conoce. Dedup por (ownerId, externalId, source).
 // ─────────────────────────────────────────────────────────────────────────
 model JobListing {
-  id            String   @id @default(cuid())
-  ownerId       String?
-  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  recordType    String   @default("job")
+  id         String  @id @default(cuid())
+  ownerId    String?
+  owner      User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  recordType String  @default("job")
 
-  title         String              // "Frontend Developer (React)"
-  subtitle      String?             // "Empresa · Ubicación"
-  status        String?             // "OPEN" | "CLOSED"
+  title         String // "Frontend Developer (React)"
+  subtitle      String? // "Empresa · Ubicación"
+  status        String? // "OPEN" | "CLOSED"
   company       String?
   location      String?
-  currentValue  Int?                // salario (mínimo) en céntimos
-  currency      String?  @default("EUR")
-  imageUrl      String?             // logo de la empresa
-  url           String?             // URL de la oferta
-  source        String?             // "apify"
-  platform      String?             // "infojobs" | "linkedin"
-  externalId    String?             // id/URL de la oferta en la plataforma
+  currentValue  Int? // salario (mínimo) en céntimos
+  currency      String?   @default("EUR")
+  imageUrl      String? // logo de la empresa
+  url           String? // URL de la oferta
+  source        String? // "apify"
+  platform      String? // "infojobs" | "linkedin"
+  externalId    String? // id/URL de la oferta en la plataforma
   lastCheckedAt DateTime?
   meta          Json?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  snapshots     JobSnapshot[]
+  snapshots JobSnapshot[]
 
   @@unique([ownerId, externalId, source])
   @@index([recordType])
@@ -544,7 +559,7 @@ model JobSnapshot {
   id         String     @id @default(cuid())
   listingId  String
   listing    JobListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  value      Int?       // salario si se sigue, céntimos
+  value      Int? // salario si se sigue, céntimos
   status     String?
   source     String
   observedAt DateTime   @default(now())
@@ -562,26 +577,26 @@ model JobSnapshot {
 // (ownerId, externalId=volumeId, source).
 // ─────────────────────────────────────────────────────────────────────────
 model BookRecord {
-  id            String   @id @default(cuid())
-  ownerId       String?
-  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  recordType    String   @default("book")
+  id         String  @id @default(cuid())
+  ownerId    String?
+  owner      User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  recordType String  @default("book")
 
-  title         String              // título del libro
-  subtitle      String?             // "Autor · 2017"
-  status        String?             // libre: "WISHLIST" | "READING" | "READ"
-  authors       String?             // autores unidos (denormalizado para orden/búsqueda)
+  title         String // título del libro
+  subtitle      String? // "Autor · 2017"
+  status        String? // libre: "WISHLIST" | "READING" | "READ"
+  authors       String? // autores unidos (denormalizado para orden/búsqueda)
   isbn13        String?
-  currentValue  Int?                // rating medio * 100 (0–500), opcional
+  currentValue  Int? // rating medio * 100 (0–500), opcional
   currency      String?
-  imageUrl      String?             // portada (thumbnail)
-  source        String?             // "google_books"
-  externalId    String?             // volumeId de Google Books
+  imageUrl      String? // portada (thumbnail)
+  source        String? // "google_books"
+  externalId    String? // volumeId de Google Books
   lastCheckedAt DateTime?
-  meta          Json?               // { book: Book, authors, isbn13 }
+  meta          Json? // { book: Book, authors, isbn13 }
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([ownerId, externalId, source])
   @@index([recordType])
@@ -598,29 +613,29 @@ model BookRecord {
 // Dedup por (ownerId, externalId, source).
 // ─────────────────────────────────────────────────────────────────────────
 model Holiday {
-  id            String   @id @default(cuid())
-  ownerId       String?
-  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  recordType    String   @default("holiday")
+  id         String  @id @default(cuid())
+  ownerId    String?
+  owner      User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  recordType String  @default("holiday")
 
-  title         String              // "Viaje a Barcelona"
-  subtitle      String?             // "15–20 jun 2026 · 5 días"
-  status        String?             // libre: "PLANNING" | "BOOKED" | "DONE"
-  destination   String?             // ciudad/destino ("Barcelona")
+  title         String // "Viaje a Barcelona"
+  subtitle      String? // "15–20 jun 2026 · 5 días"
+  status        String? // libre: "PLANNING" | "BOOKED" | "DONE"
+  destination   String? // ciudad/destino ("Barcelona")
   startDate     DateTime?
   endDate       DateTime?
-  currentValue  Int?                // precio TOTAL del viaje, céntimos de currency
-  currency      String?  @default("EUR")
-  imageUrl      String?             // foto del destino
-  source        String?             // "amadeus" | "manual" | …
-  externalId    String?             // clave estable del viaje (ruta+fechas, etc.)
+  currentValue  Int? // precio TOTAL del viaje, céntimos de currency
+  currency      String?   @default("EUR")
+  imageUrl      String? // foto del destino
+  source        String? // "amadeus" | "manual" | …
+  externalId    String? // clave estable del viaje (ruta+fechas, etc.)
   lastCheckedAt DateTime?
-  meta          Json?               // HolidayTripMeta: transporte + alojamiento + comisión
+  meta          Json? // HolidayTripMeta: transporte + alojamiento + comisión
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  snapshots     HolidaySnapshot[]
+  snapshots HolidaySnapshot[]
 
   @@unique([ownerId, externalId, source])
   @@index([recordType])
@@ -631,7 +646,7 @@ model HolidaySnapshot {
   id         String   @id @default(cuid())
   holidayId  String
   holiday    Holiday  @relation(fields: [holidayId], references: [id], onDelete: Cascade)
-  value      Int      // precio total del viaje en céntimos
+  value      Int // precio total del viaje en céntimos
   source     String
   observedAt DateTime @default(now())
   meta       Json?
@@ -661,16 +676,16 @@ model RecordDuplicateDismissal {
 // VIVO del propietario (no es copia). Soft-ref por (recordType, recordId), sin FK
 // al registro concreto; el destinatario lo abre en modo lectura.
 model RecordShare {
-  id         String   @id @default(cuid())
-  recordType String
-  recordId   String
-  fromUserId String   // propietario que comparte
-  toUserId   String   // destinatario con acceso de lectura
+  id             String   @id @default(cuid())
+  recordType     String
+  recordId       String
+  fromUserId     String // propietario que comparte
+  toUserId       String // destinatario con acceso de lectura
   // DÓNDE se concedió: id de la conversación de grupo, o null si fue una
   // compartición individual. Sin esto, compartir en un grupo de 25 es
   // indistinguible de 25 comparticiones sueltas y no se puede retirar en bloque.
   conversationId String?
-  createdAt  DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   @@unique([recordType, recordId, toUserId])
   @@index([toUserId, createdAt])
@@ -752,12 +767,12 @@ enum FoodOrderActor {
 }
 
 model Restaurant {
-  id               String   @id @default(cuid())
-  googlePlaceId    String?  @unique
+  id               String    @id @default(cuid())
+  googlePlaceId    String?   @unique
   source           String?
   name             String
-  slug             String   @unique
-  description      String?  @db.Text
+  slug             String    @unique
+  description      String?   @db.Text
   imageUrl         String?
   phone            String?
   address          String
@@ -765,26 +780,26 @@ model Restaurant {
   postalCode       String?
   latitude         Float
   longitude        Float
-  isOpen           Boolean  @default(true)
+  isOpen           Boolean   @default(true)
   openingHours     Json?
-  minOrderCents    Int      @default(0)
-  deliveryFeeCents Int      @default(0)
-  deliveryRadiusM  Int      @default(5000)
-  currency         String   @default("EUR")
+  minOrderCents    Int       @default(0)
+  deliveryFeeCents Int       @default(0)
+  deliveryRadiusM  Int       @default(5000)
+  currency         String    @default("EUR")
   rating           Float?
   userRatingCount  Int?
   menuFetchedAt    DateTime?
-  menuSourceUrl    String?            // URL en plataforma de delivery cacheada (scraping de menú)
+  menuSourceUrl    String? // URL en plataforma de delivery cacheada (scraping de menú)
   // Cola de scraping de menú (worker desacoplado, lock entre instancias).
   // null = no-google/sin tocar · PENDING = encolado · FETCHING = worker procesando
   // (lock) · READY = carta lista · EMPTY = sin carta · FAILED = falló tras N intentos.
   menuStatus       String?
-  menuQueuedAt     DateTime?          // momento de encolado / inicio del lock (para orden y caducidad del lock)
-  menuAttempts     Int      @default(0) // intentos de scrape (cap para no reintentar webs no-scrapeables)
-  cuisineTypes     String[] @default([]) // types de Google Places (filtro: solo se scrapean cocinas de delivery)
-  active           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  menuQueuedAt     DateTime? // momento de encolado / inicio del lock (para orden y caducidad del lock)
+  menuAttempts     Int       @default(0) // intentos de scrape (cap para no reintentar webs no-scrapeables)
+  cuisineTypes     String[]  @default([]) // types de Google Places (filtro: solo se scrapean cocinas de delivery)
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   staff      RestaurantStaff[]
   categories MenuCategory[]
@@ -897,12 +912,12 @@ model FoodOrder {
   deliveryCity    String?
   deliveryLat     Float
   deliveryLng     Float
-  deliveryNotes   String?       @db.VarChar(280)
+  deliveryNotes   String? @db.VarChar(280)
 
   subtotalCents    Int
   deliveryFeeCents Int
   totalCents       Int
-  currency         String       @default("EUR")
+  currency         String @default("EUR")
 
   expiresAt    DateTime?
   paidAt       DateTime?
@@ -911,7 +926,7 @@ model FoodOrder {
   pickedUpAt   DateTime?
   deliveredAt  DateTime?
   cancelledAt  DateTime?
-  cancelReason String?          @db.VarChar(280)
+  cancelReason String?   @db.VarChar(280)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1010,8 +1025,8 @@ enum ChatMessageKind {
 model Conversation {
   id          String           @id @default(cuid())
   kind        ConversationKind
-  title       String?          // solo grupos (DIRECT deriva del otro participante)
-  imageUrl    String?          // avatar de grupo
+  title       String? // solo grupos (DIRECT deriva del otro participante)
+  imageUrl    String? // avatar de grupo
   createdById String?
   // Dedupe de 1:1: sort(userA,userB).join("|") + "|" + (contextId ?? "general").
   // Permite chat general Y chat por recurso entre las mismas dos personas.
@@ -1044,7 +1059,7 @@ model ConversationParticipant {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   role           ChatRole     @default(MEMBER)
   joinedAt       DateTime     @default(now())
-  leftAt         DateTime?    // salió del grupo (conserva historial hasta ahí)
+  leftAt         DateTime? // salió del grupo (conserva historial hasta ahí)
 
   // Read receipts baratos: un mensaje está leído por este miembro si
   // msg.createdAt <= lastReadAt (sin fila por mensaje).
@@ -1076,7 +1091,7 @@ model ChatMessage {
   clientId       String?
   editedAt       DateTime?
   deletedAt      DateTime? // borrado SUAVE ("mensaje eliminado"); purga física por cron
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime        @default(now())
 
   attachments ChatAttachment[]
   reactions   ChatMessageReaction[]
@@ -1281,18 +1296,18 @@ model PriceAlert {
   recordType String // "crypto" | "market" | "property"
   recordId   String
 
-  kind AlertKind
+  kind          AlertKind
   // Qué campo vigila. Una ficha de inmueble puede ser MIXTA (venta + alquiler),
   // así que la alerta declara cuál: "price" (currentPrice/currentValue) o "rent"
   // (monthlyRent). Cripto/mercado siempre "price".
-  field String @default("price")
+  field         String    @default("price")
   // Umbral: céntimos para PRICE_BELOW/ABOVE; porcentaje entero (5 = 5 %) para
   // PRICE_DROP_PCT; null para STATUS_CHANGE.
   threshold     Int?
   // Precio de referencia al crear/rearmar, base de las alertas porcentuales.
   baselineCents Int?
 
-  active Boolean @default(true)
+  active      Boolean   @default(true)
   // Umbrales absolutos: un solo disparo y se desactiva (se rearma desde la UI).
   // Sin esto, un precio oscilando en el umbral notificaría en cada tick del cron.
   oneShot     Boolean   @default(true)

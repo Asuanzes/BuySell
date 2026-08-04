@@ -40,7 +40,9 @@ export async function mergeProperties(sourceId: string, targetId: string): Promi
     throw new Error("mergeProperties: source y target pertenecen a usuarios distintos");
   }
 
-  // 1. Mover Listings (URL es @unique, no debería haber colisión real)
+  // 1. Mover Listings. La unicidad es `[url, ownerId]` y la fusión ya exige
+  //    mismo dueño, así que dos fichas del mismo usuario no pueden compartir
+  //    URL: no debería haber colisión real.
   const movedListings = await prisma.listing.updateMany({
     where: { propertyId: sourceId },
     data: { propertyId: targetId },
