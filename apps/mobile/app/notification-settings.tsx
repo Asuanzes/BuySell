@@ -29,6 +29,7 @@ export default function NotificationSettingsScreen() {
   const { t } = useTranslation();
   const { data, loading, refetch } = useQuery(fetchPrefs);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testOk, setTestOk] = useState(false);
@@ -59,11 +60,13 @@ export default function NotificationSettingsScreen() {
 
   async function patch(body: Partial<Prefs>) {
     setSaving(true);
+    setSaveError(null);
     try {
       await api("/api/account/notifications", { method: "PATCH", body: JSON.stringify(body) });
       void refetch();
     } catch {
-      // best-effort: al refrescar se ve el estado real
+      // El refetch repone el estado real; el aviso evita el fallo silencioso.
+      setSaveError(t("notifications.save_error"));
       void refetch();
     } finally {
       setSaving(false);
@@ -79,6 +82,9 @@ export default function NotificationSettingsScreen() {
           <ActivityIndicator color={th.primary} style={styles.loader} />
         ) : (
           <>
+            {saveError ? (
+              <Text style={[styles.saveError, { color: th.dangerFg }]}>{saveError}</Text>
+            ) : null}
             <Section label={t("notifications.channels")}>
               <Row
                 label={t("notifications.chat")}
@@ -204,6 +210,7 @@ const styles = StyleSheet.create({
   hourBox: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignItems: "center" },
   hourLabel: { fontSize: 11 },
   hourValue: { fontSize: 18, fontVariant: ["tabular-nums"], marginTop: 2 },
+  saveError: { fontSize: 12, lineHeight: 17, textAlign: "center" },
   testResult: { fontSize: 12, marginTop: 10, lineHeight: 17 },
   footer: { fontSize: 11, textAlign: "center", paddingHorizontal: 16, paddingTop: 8, lineHeight: 15 },
 });

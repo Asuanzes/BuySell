@@ -384,26 +384,29 @@ function AuthGate() {
               title: t("preview.title"),
             }}
           />
+          {/* Rutas legadas: redirigen al hub /shares (sin cabecera para no parpadear). */}
+          <Stack.Screen name="shared" options={{ headerShown: false }} />
+          <Stack.Screen name="my-shares" options={{ headerShown: false }} />
           <Stack.Screen
-            name="shared"
+            name="shares"
             options={{
               headerShown: true,
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
               headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
-              title: t("shared.title"),
+              title: t("shares.hub_title"),
             }}
           />
           <Stack.Screen
-            name="my-shares"
+            name="export-data"
             options={{
               headerShown: true,
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
               headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
-              title: t("shares.title"),
+              title: t("account.export_title"),
             }}
           />
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />

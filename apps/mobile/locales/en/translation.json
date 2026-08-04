@@ -38,7 +38,10 @@
     "truncated": "This list is truncated: there are more granted accesses than fit here.",
     "revoke": "Revoke access",
     "revoke_message": "They'll stop seeing the record and its updates. If someone already saved it to their records, that copy is theirs and isn't deleted.",
-    "error": "Couldn't complete the action"
+    "error": "Couldn't complete the action",
+    "hub_title": "Shared",
+    "tab_received": "With me",
+    "tab_mine": "Mine"
   },
   "share": {
     "title": "Send to a chat",
@@ -99,7 +102,28 @@
     "delete_body": "Your records, chats, addresses and subscription will be permanently deleted. This cannot be undone.",
     "delete_confirm": "Delete permanently",
     "delete_error": "Could not delete the account. Please try again.",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "section_account": "Account",
+    "section_subscription": "Subscription",
+    "section_preferences": "Preferences",
+    "section_organization": "Organization",
+    "section_privacy": "Privacy & data",
+    "section_session": "Session",
+    "name_label": "Name",
+    "edit_name": "Edit name",
+    "name_placeholder": "Your name",
+    "name_error": "Couldn't save the name",
+    "edit_alias": "Edit handle",
+    "alias_none": "Add a handle",
+    "premium_active": "Premium active",
+    "premium_cta": "Discover Premium perks",
+    "shared_records": "Shared",
+    "export_title": "Export my data",
+    "export_description": "Download a copy of all your data (records, chats and account) as JSON and keep it or share it wherever you want.",
+    "export_download": "Download & share",
+    "export_privacy_note": "The file contains your personal data: keep it somewhere safe.",
+    "export_error": "Couldn't generate the export. Please try again.",
+    "credits": "Icons: Solar (CC BY 4.0) · game-icons.net (CC BY 3.0) · Material Design Icons (Apache 2.0) · Phosphor (MIT)"
   },
   "theme": {
     "appearance": "Appearance",
@@ -1127,6 +1151,7 @@
     "test": "Check",
     "test_send": "Send test notification",
     "test_sent": "Sent to {{count}} device(s). If you do not see it within a few seconds, check your system permissions.",
-    "test_none": "Could not send."
+    "test_none": "Could not send.",
+    "save_error": "Couldn't save the change. Please try again."
   }
 }

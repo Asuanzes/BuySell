@@ -38,7 +38,10 @@
     "truncated": "La lista está recortada: hay más accesos concedidos de los que caben aquí.",
     "revoke": "Retirar acceso",
     "revoke_message": "Dejarán de ver la ficha y sus actualizaciones. Si alguien ya la guardó en sus registros, esa copia es suya y no se borra.",
-    "error": "No se pudo completar la acción"
+    "error": "No se pudo completar la acción",
+    "hub_title": "Compartidos",
+    "tab_received": "Conmigo",
+    "tab_mine": "Míos"
   },
   "share": {
     "title": "Enviar a un chat",
@@ -99,7 +102,28 @@
     "delete_body": "Se borrarán permanentemente tus registros, chats, direcciones y suscripción. Esta acción no se puede deshacer.",
     "delete_confirm": "Eliminar definitivamente",
     "delete_error": "No se pudo eliminar la cuenta. Inténtalo de nuevo.",
-    "notifications": "Notificaciones"
+    "notifications": "Notificaciones",
+    "section_account": "Cuenta",
+    "section_subscription": "Suscripción",
+    "section_preferences": "Preferencias",
+    "section_organization": "Organización",
+    "section_privacy": "Privacidad y datos",
+    "section_session": "Sesión",
+    "name_label": "Nombre",
+    "edit_name": "Editar nombre",
+    "name_placeholder": "Tu nombre",
+    "name_error": "No se pudo guardar el nombre",
+    "edit_alias": "Editar alias",
+    "alias_none": "Añadir alias",
+    "premium_active": "Premium activo",
+    "premium_cta": "Descubre las ventajas Premium",
+    "shared_records": "Compartidos",
+    "export_title": "Exportar mis datos",
+    "export_description": "Descarga una copia de todos tus datos (registros, chats y cuenta) en formato JSON y guárdala o compártela donde quieras.",
+    "export_download": "Descargar y compartir",
+    "export_privacy_note": "El archivo contiene tus datos personales: guárdalo en un lugar seguro.",
+    "export_error": "No se pudo generar la exportación. Inténtalo de nuevo.",
+    "credits": "Iconos: Solar (CC BY 4.0) · game-icons.net (CC BY 3.0) · Material Design Icons (Apache 2.0) · Phosphor (MIT)"
   },
   "theme": {
     "appearance": "Apariencia",
@@ -1127,6 +1151,7 @@
     "test": "Comprobar",
     "test_send": "Enviar notificación de prueba",
     "test_sent": "Enviada a {{count}} dispositivo(s). Si no la ves en unos segundos, revisa los permisos del sistema.",
-    "test_none": "No se pudo enviar."
+    "test_none": "No se pudo enviar.",
+    "save_error": "No se pudo guardar el cambio. Inténtalo de nuevo."
   }
 }
