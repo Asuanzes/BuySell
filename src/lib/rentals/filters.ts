@@ -283,19 +283,39 @@ export function buildRentalWhere(f: RentalFilters): Prisma.PropertyWhereInput {
 export function rentalOrderBy(f: RentalFilters): Prisma.PropertyOrderByWithRelationInput[] {
   const asc = { sort: "asc", nulls: "last" } as const;
   const desc = { sort: "desc", nulls: "last" } as const;
-  // ponytail: en ANY se ordena por renta y las ventas caen al final (nulls
-  // last). No se arregla aquí porque "el más barato" de una lista que mezcla
-  // 900 €/mes con 220.000 € no significa nada hasta decidir qué se compara;
-  // Prisma tampoco permite COALESCE en orderBy. Filtrar por precio en ANY sí
-  // funciona (ver buildRentalWhere); lo que queda cojo es sólo el orden.
-  const byPrice = (dir: typeof asc | typeof desc) =>
-    f.operation === "SALE" ? { currentPrice: dir } : { monthlyRent: dir };
+  /**
+   * Orden por precio. Con una sola operación es su columna y ya está.
+   *
+   * En una búsqueda MIXTA no hay una columna única: cada ficha guarda su
+   * importe en la suya (venta y alquiler-con-opción en `currentPrice`, alquiler
+   * en `monthlyRent`), y Prisma no permite un COALESCE en `orderBy`. Antes se
+   * ordenaba por `monthlyRent` a secas, así que TODAS las ventas caían al final
+   * por nulas y encima sin ordenar entre ellas — el orden que el usuario pidió
+   * no se aplicaba a la mayor parte de la lista.
+   *
+   * Se ordena por las dos columnas en cascada, y el agrupamiento sale solo de
+   * las magnitudes en vez de imponerlo: pidiendo lo más barato primero salen
+   * los alquileres (una renta es el importe pequeño) y pidiendo lo más caro
+   * salen las ventas. En los dos sentidos, lo que encabeza la lista es lo que
+   * el usuario esperaba ver ahí.
+   *
+   * No se compara una renta con un precio de compra —serían unidades distintas—:
+   * se ordena dentro de cada operación y se decide cuál va delante.
+   */
+  const byPrice = (dir: "asc" | "desc"): Prisma.PropertyOrderByWithRelationInput[] => {
+    const d = dir === "asc" ? asc : desc;
+    if (f.operation === "SALE") return [{ currentPrice: d }];
+    if (f.operation === "RENT") return [{ monthlyRent: d }];
+    return dir === "asc"
+      ? [{ monthlyRent: d }, { currentPrice: d }]
+      : [{ currentPrice: d }, { monthlyRent: d }];
+  };
 
   switch (f.sort) {
     case "price_asc":
-      return [byPrice(asc), { id: "asc" }];
+      return [...byPrice("asc"), { id: "asc" }];
     case "price_desc":
-      return [byPrice(desc), { id: "asc" }];
+      return [...byPrice("desc"), { id: "asc" }];
     case "area_desc":
       return [{ builtArea: desc }, { id: "asc" }];
     default:

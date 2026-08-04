@@ -163,6 +163,38 @@ describe("rentalOrderBy", () => {
     ]);
   });
 
+  it("en búsqueda mixta ordena por las DOS columnas, y quién va delante depende del sentido", () => {
+    // Antes iba sólo contra monthlyRent, así que las ventas caían al final por
+    // nulas y sin ordenar entre ellas: el orden pedido no se aplicaba a la
+    // mayor parte de la lista.
+    const asc = { sort: "asc", nulls: "last" };
+    const desc = { sort: "desc", nulls: "last" };
+
+    // Lo más barato primero → una renta, así que el alquiler encabeza.
+    assert.deepEqual(rentalOrderBy(parse("operation=ANY&sort=price_asc")), [
+      { monthlyRent: asc },
+      { currentPrice: asc },
+      { id: "asc" },
+    ]);
+    // Lo más caro primero → una compra, así que la venta encabeza.
+    assert.deepEqual(rentalOrderBy(parse("operation=ANY&sort=price_desc")), [
+      { currentPrice: desc },
+      { monthlyRent: desc },
+      { id: "asc" },
+    ]);
+  });
+
+  it("ninguna ficha se queda sin ordenar por no tener importe en una columna", () => {
+    // La garantía que importa: en mixta, toda ficha entra por una de las dos
+    // claves, así que nada acaba en el montón inordenado del final.
+    for (const sort of ["price_asc", "price_desc"]) {
+      const order = rentalOrderBy(parse(`operation=ANY&sort=${sort}`));
+      const keys = order.flatMap((o) => Object.keys(o));
+      assert.ok(keys.includes("monthlyRent"), `falta monthlyRent en ${sort}`);
+      assert.ok(keys.includes("currentPrice"), `falta currentPrice en ${sort}`);
+    }
+  });
+
   it("todo orden desempata por id (sin esto el cursor duplica filas)", () => {
     for (const sort of ["recent", "price_asc", "price_desc", "area_desc"]) {
       const order = rentalOrderBy(parse(`sort=${sort}`));
