@@ -1,6 +1,7 @@
 import type { ListingStatus, OperationType } from "@prisma/client";
 import { isReasonablePriceChange } from "@nidokey/shared";
 import type { ScrapeOutcome } from "./types";
+import { isGoneStatus, nextListingStatus } from "./listing-status";
 
 /**
  * DECISIÓN pura del recheck de un anuncio: qué escribir en BBDD, si hay
@@ -66,7 +67,7 @@ export type RecheckPlan = {
 };
 
 export function planRecheck(listing: ListingState, outcome: ScrapeOutcome, now: Date = new Date()): RecheckPlan {
-  const wasGone = listing.status === "REMOVED" || listing.status === "SOLD";
+  const wasGone = isGoneStatus(listing.status);
 
   if (outcome.kind === "gone") {
     return {
@@ -142,20 +143,16 @@ export function planRecheck(listing: ListingState, outcome: ScrapeOutcome, now: 
   }
 
   const priceChanged = r.price != null && r.price !== previousPrice;
-  // Primer precio CONOCIDO (lastPrice null → precio real): no es bajada ni
-  // subida — es la línea base. Sin este caso, "precio a consultar" que por fin
-  // publica precio salía etiquetado como PRICE_DROP (hallazgo de la revisión).
-  const newStatus: ListingStatus = priceChanged
-    ? previousPrice == null
-      ? wasGone
-        ? "ACTIVE"
-        : r.status
-      : r.price! < previousPrice
-      ? "PRICE_DROP"
-      : "PRICE_UP"
-    : wasGone
-    ? "ACTIVE" // reaparición: el anuncio vuelve a responder OK
-    : r.status;
+  // La regla vive en listing-status.ts porque la comparte con la importación.
+  // Aquí el estado de respaldo es el OBSERVADO en la página (`r.status`); el
+  // import no observa ninguno y pasa el que ya tenía el anuncio.
+  const newStatus: ListingStatus = nextListingStatus({
+    priceChanged,
+    previousPrice,
+    newPrice: r.price ?? null,
+    wasGone,
+    fallbackStatus: r.status,
+  });
   const isRent = listing.operationType === "RENT";
 
   return {

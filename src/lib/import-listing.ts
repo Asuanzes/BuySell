@@ -6,6 +6,7 @@ import { notifyLinkedConversations } from "@/lib/chat/context-events";
 import { dhashFromUrl } from "@/lib/dhash";
 import { slugifyTitle } from "@nidokey/shared";
 import { findSimilar } from "@/features/matching/find-similar";
+import { isGoneStatus, nextListingStatus } from "@/features/scraping/listing-status";
 import { mergeProperties } from "@/features/matching/merge";
 import { autoMergeSafety } from "@/features/matching/auto-merge-guard";
 import { borrowFieldsFromSimilar } from "@/features/matching/borrow-fields";
@@ -495,22 +496,19 @@ async function importListingOnce(
 
     const priceChanged = priceCents != null && priceCents !== previousPrice;
 
-    // Reaparición: si el anuncio estaba REMOVED/SOLD y el usuario lo re-importa,
-    // es que la página vuelve a estar viva → reactivar para que el cron lo
-    // vuelva a vigilar. Con cambio de precio, el estado ya es PRICE_*.
-    const wasGone = existing.status === "REMOVED" || existing.status === "SOLD";
-    // Primer precio conocido (previousPrice null) = línea base, no PRICE_DROP.
-    const newStatus = priceChanged
-      ? previousPrice == null
-        ? wasGone
-          ? ("ACTIVE" as const)
-          : existing.status
-        : priceCents! < previousPrice
-        ? ("PRICE_DROP" as const)
-        : ("PRICE_UP" as const)
-      : wasGone
-      ? ("ACTIVE" as const)
-      : existing.status;
+    // Misma regla que el recheck del cron, y por eso vive en un solo sitio
+    // (`listing-status.ts`): si el anuncio estaba REMOVED/SOLD y el usuario lo
+    // reimporta, la página vuelve a estar viva y se reactiva; y el primer precio
+    // conocido es línea base, no una bajada. La diferencia con el recheck es el
+    // estado de respaldo: allí es el observado en la página, aquí el que ya
+    // tenía el anuncio, porque la importación no observa estado.
+    const newStatus = nextListingStatus({
+      priceChanged,
+      previousPrice,
+      newPrice: priceCents,
+      wasGone: isGoneStatus(existing.status),
+      fallbackStatus: existing.status,
+    });
 
     // Con cambio de precio: transacción + guard optimista (mismo patrón que el
     // runner) — dos imports concurrentes de la misma URL no pueden duplicar
