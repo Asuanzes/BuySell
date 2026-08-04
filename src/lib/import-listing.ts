@@ -264,13 +264,19 @@ export function parseFeaturesArray(features: string[] | undefined): Partial<Impo
       }
       continue;
     }
-    // Habitaciones / baños
+    // Habitaciones / baños.
+    // El "ya tengo valor" se pregunta con `== null`, no con `!`: el rango
+    // acepta 0 a propósito (un estudio tiene 0 habitaciones) y `!0` es true,
+    // así que con la comprobación truthy una segunda mención sobrescribía el
+    // cero — "0 habitaciones · 2 habitaciones dobles" acababa en 2.
+    // Las superficies de arriba no tienen este problema porque sus bandas de
+    // cordura empiezan en 5 m², así que nunca llegan a valer 0.
     if (/habitaci[oó]n|dormit|\bhabs?\.?\b/i.test(low)) {
-      if (num >= 0 && num <= 50 && !out.rooms) out.rooms = num;
+      if (num >= 0 && num <= 50 && out.rooms == null) out.rooms = num;
       continue;
     }
     if (/baño|aseo/i.test(low)) {
-      if (num >= 0 && num <= 50 && !out.bathrooms) out.bathrooms = num;
+      if (num >= 0 && num <= 50 && out.bathrooms == null) out.bathrooms = num;
       continue;
     }
     if (/planta/i.test(low) && !out.floor) out.floor = t;
