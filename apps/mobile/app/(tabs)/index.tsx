@@ -111,14 +111,23 @@ export default function RecordsScreen() {
   const cfg = RECORD_TYPE_CONFIG[type];
   const trendsColor = categoryColor("trends", dark, appStyle);
   const ordered = items ?? records;
-  // Solo Inmuebles ofrece el segmento de operación. RENT cubre alquiler y
-  // alquiler con opción a compra (todo lo que no sea venta pura).
+  /**
+   * Sólo Inmuebles ofrece el segmento de operación.
+   *
+   * El alquiler con opción a compra cuenta como VENTA, no como alquiler, por
+   * más que su nombre diga lo contrario: su importe se guarda como precio de
+   * venta en `currentPrice` — misma convención que la importación, el recheck y
+   * el buscador. Antes esta lista lo metía en «Alquiler» (`op !== "SALE"`), de
+   * modo que un registro así salía aquí bajo alquiler y NO salía al buscarlo
+   * como alquiler: dos respuestas distintas a la misma pregunta según la
+   * pantalla.
+   */
   const showOpFilter = type === "property" && !editing;
   const shown =
     showOpFilter && ordered && opFilter !== "ALL"
       ? ordered.filter((r) => {
           const op = metaField<string>(r, "operationType", "SALE");
-          return opFilter === "RENT" ? op !== "SALE" : op === "SALE";
+          return opFilter === "RENT" ? op === "RENT" : op !== "RENT";
         })
       : ordered;
 

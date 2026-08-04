@@ -169,7 +169,10 @@ export default function ListingPreviewScreen() {
     .map((v) => v?.trim())
     .filter(Boolean)
     .join(" · ");
-  const isRent = (payload?.operationType ?? seed.operation) !== "SALE";
+  // `=== "RENT"` y no `!== "SALE"`: el alquiler con opción a compra guarda su
+  // importe como precio de VENTA, así que pintarlo con «/mes» mostraría algo
+  // como "220.000 €/mes". Misma convención que el resto de la app.
+  const isRent = (payload?.operationType ?? seed.operation) === "RENT";
 
   return (
     <View style={[styles.screen, { backgroundColor: th.bg }]}>
