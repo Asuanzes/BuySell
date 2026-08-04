@@ -1,4 +1,4 @@
-import type { Portal } from "@prisma/client";
+import type { Portal, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { logImportEvent } from "@/lib/import-log";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
@@ -34,6 +34,81 @@ export type CheckSummary = RecheckSummary;
 /** Ventana de vigilancia de anuncios REMOVED: si reaparecen dentro de estos
  *  días se reactivan solos; pasada la ventana dejan de comprobarse. */
 const REMOVED_WATCH_DAYS = 45;
+
+/**
+ * Presupuesto de una pasada del cron.
+ *
+ * La ruta declara `maxDuration = 300` y el workflow llama con `--max-time 320`,
+ * así que pasarse no degrada: Vercel mata la función a media petición y el job
+ * sale en rojo. Antes el bucle recorría TODOS los anuncios sin tope, de modo que
+ * el barrido completo dejaba de caber en cuanto el corpus creciera — a ~3 s por
+ * anuncio (1 s de pausa + la descarga) el techo estaba alrededor de los 100.
+ *
+ * El presupuesto no se gasta hasta el final: antes de empezar cada anuncio se
+ * reserva su PEOR coste posible (`WORST_CASE_ITEM_MS`), porque la ruta genérica
+ * puede tardar ~50 s ella sola —15 s de `fetchPage` más 35 s del navegador— y
+ * arrancar uno tarde dejaría la función muriendo a mitad. Con 280 s de
+ * presupuesto y 55 s de reserva se deja de empezar a los 225 s: en el peor caso
+ * se termina sobre los 280, y en el normal (~3 s por anuncio) da para el tope
+ * de 80 sin agotar el reloj.
+ */
+const RUN_BUDGET_MS = 280_000;
+const WORST_CASE_ITEM_MS = 55_000;
+const MAX_PER_RUN = 80;
+
+/**
+ * Un anuncio comprobado hace menos de esto no se vuelve a tocar.
+ *
+ * Es la pieza que permite correr el cron varias veces al día SIN multiplicar las
+ * descargas: las pasadas extra no repiten trabajo, sólo vacían la cola de lo que
+ * no cupo — lo pendiente sigue rancio, así que entra en la pasada siguiente sin
+ * necesidad de bajar este umbral.
+ *
+ * 22 h y no 24 para que un desfase de minutos no empuje una comprobación al día
+ * siguiente, y no menos para no acortar la cadencia: cada hora que se le quita
+ * son descargas de más contra portales que ya bloquean.
+ */
+const STALE_AFTER_HOURS = 22;
+
+/**
+ * A quién le toca recomprobación. Se extrae de la consulta porque un `AND` de
+ * dos `OR` no falla ruidosamente cuando está mal montado: devuelve el conjunto
+ * equivocado y nadie se entera — o se recomprueba todo cada dos horas, o no se
+ * recomprueba nada nunca. Aquí se puede verificar su forma sin BBDD, igual que
+ * `buildRentalWhere` en el buscador.
+ *
+ * Dos condiciones, ambas obligatorias:
+ *  1. Vigilable: activo, o retirado hace poco (para detectar reapariciones).
+ *  2. Rancio: nunca comprobado, o comprobado hace más de `staleAfterHours`.
+ */
+export function buildRecheckWhere(opts?: {
+  staleAfterHours?: number;
+  removedWatchDays?: number;
+  now?: Date;
+}): Prisma.ListingWhereInput {
+  const now = opts?.now?.getTime() ?? Date.now();
+  const staleAfterHours = opts?.staleAfterHours ?? STALE_AFTER_HOURS;
+  const removedWatchDays = opts?.removedWatchDays ?? REMOVED_WATCH_DAYS;
+  return {
+    AND: [
+      {
+        OR: [
+          { status: { in: ["ACTIVE", "PRICE_DROP", "PRICE_UP", "UNKNOWN"] } },
+          {
+            status: "REMOVED",
+            lastSeenAt: { gte: new Date(now - removedWatchDays * 24 * 3600_000) },
+          },
+        ],
+      },
+      {
+        OR: [
+          { lastCheckedAt: null },
+          { lastCheckedAt: { lt: new Date(now - staleAfterHours * 3600_000) } },
+        ],
+      },
+    ],
+  };
+}
 
 /**
  * Re-check de un listing. La DECISIÓN vive en planRecheck (pura, testeada);
@@ -163,17 +238,32 @@ async function applyRecheckPlan(
  */
 export async function checkAllActiveListings(opts?: {
   onProgress?: (idx: number, total: number, summary: CheckSummary) => void;
-}): Promise<{ total: number; results: CheckSummary[] }> {
-  const removedCutoff = new Date(Date.now() - REMOVED_WATCH_DAYS * 24 * 3600_000);
+  /** Tope de anuncios de esta pasada. Ver `MAX_PER_RUN`. */
+  limit?: number;
+  /** Presupuesto de tiempo en ms. Ver `RUN_BUDGET_MS`. */
+  budgetMs?: number;
+  /** Horas tras las que un anuncio vuelve a considerarse comprobable. */
+  staleAfterHours?: number;
+}): Promise<{
+  total: number;
+  results: CheckSummary[];
+  /** Se acabó el tiempo o el tope con anuncios aún por comprobar. */
+  stoppedEarly: boolean;
+  /** Cuántos quedaron sin tocar en esta pasada. */
+  pending: number;
+}> {
+  const limit = opts?.limit ?? MAX_PER_RUN;
+  const budgetMs = opts?.budgetMs ?? RUN_BUDGET_MS;
+  const staleAfterHours = opts?.staleAfterHours ?? STALE_AFTER_HOURS;
+  const startedAt = Date.now();
+
   const listings = await prisma.listing.findMany({
-    where: {
-      OR: [
-        { status: { in: ["ACTIVE", "PRICE_DROP", "PRICE_UP", "UNKNOWN"] } },
-        { status: "REMOVED", lastSeenAt: { gte: removedCutoff } },
-      ],
-    },
+    where: buildRecheckWhere({ staleAfterHours }),
     select: { id: true, url: true },
+    // Los más rancios primero: así la cola rota sola y nadie se queda atrás
+    // indefinidamente aunque no dé tiempo a todos en una pasada.
     orderBy: { lastCheckedAt: { sort: "asc", nulls: "first" } },
+    take: limit,
   });
 
   /**
@@ -193,12 +283,50 @@ export async function checkAllActiveListings(opts?: {
   }
   const results: CheckSummary[] = [];
   let i = 0;
+  let stoppedEarly = false;
   for (const { id } of listings) {
+    /**
+     * Corte por TIEMPO, no sólo por número. Y reservando el peor caso ANTES de
+     * empezar otro anuncio, no sólo mirando el reloj: la ruta genérica puede
+     * costar ~50 s ella sola (15 s de `fetchPage` + 35 s de `browserFetchPage`),
+     * así que arrancar uno a los 239 s lo dejaría terminando cerca del
+     * `maxDuration` de 300 (objeción de Codex).
+     *
+     * Importa porque la escritura del anuncio es atómica pero sus efectos —
+     * alertas y avisos a las conversaciones — van DESPUÉS y fuera de la
+     * transacción. Si Vercel mata la función justo ahí, el precio queda escrito
+     * sin su alerta y, como `lastCheckedAt` ya se actualizó, la siguiente pasada
+     * no lo reintenta: la notificación se pierde en silencio. Mejor dejar de
+     * empezar antes que arriesgarse a morir a mitad.
+     */
+    if (Date.now() - startedAt > budgetMs - WORST_CASE_ITEM_MS) {
+      stoppedEarly = true;
+      break;
+    }
     let summary: CheckSummary;
     try {
       summary = await checkListing(id);
     } catch (err) {
       summary = { listingId: id, outcome: "error", detail: (err as Error).message };
+      /**
+       * Sellar el intento aunque haya reventado. Sin esto, un anuncio cuyo
+       * scrape LANZA (en vez de devolver un resultado de error) nunca ve
+       * actualizado su `lastCheckedAt`, así que vuelve a encabezar la cola en
+       * cada pasada —va ordenada por el más rancio— y se come un hueco cada dos
+       * horas para siempre. Un anuncio envenenado no puede monopolizar el cupo.
+       */
+      await prisma.listing
+        .update({
+          where: { id },
+          data: {
+            lastCheckedAt: new Date(),
+            lastCheckResult: "error",
+            lastCheckDetail: String((err as Error).message ?? "").slice(0, 300),
+          },
+        })
+        .catch(() => {
+          /* si ni esto se puede escribir, la BBDD tiene un problema mayor */
+        });
     }
     results.push(summary);
     i++;
@@ -206,5 +334,23 @@ export async function checkAllActiveListings(opts?: {
     // Pequeña pausa para no martillear los portales
     await new Promise((r) => setTimeout(r, 1000));
   }
-  return { total: listings.length, results };
+
+  /**
+   * Cuántos quedan DE VERDAD esperando, no cuántos sobraron de esta página.
+   * `listings.length - results.length` daría 0 cuando el `take` llena el cupo,
+   * aunque hubiera 400 detrás — una falsa tranquilidad justo en el momento en
+   * que hace falta enterarse (objeción de Codex). Una `count` por pasada es
+   * gratis al lado de las descargas.
+   */
+  const elegibles = await prisma.listing.count({ where: buildRecheckWhere({ staleAfterHours }) });
+  const pending = Math.max(0, elegibles - results.length);
+  const hitCap = listings.length === limit;
+  if (stoppedEarly || hitCap || pending > 0) {
+    console.warn(
+      `[recheck] pasada incompleta: ${results.length} comprobados, ${pending} pendientes` +
+        (stoppedEarly ? " · cortada por tiempo" : "") +
+        (hitCap ? ` · tope de ${limit} por pasada` : "")
+    );
+  }
+  return { total: listings.length, results, stoppedEarly, pending };
 }

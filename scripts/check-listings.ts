@@ -16,7 +16,9 @@ const ICON: Record<string, string> = {
 async function main() {
   console.log("Re-check de listings activos…\n");
   const t0 = Date.now();
-  const { total, results } = await checkAllActiveListings({
+  // `total` es el tamaño del LOTE de esta pasada, no el total elegible: el
+  // runner procesa por lotes acotados y `pending` dice cuántos quedan detrás.
+  const { total, results, pending } = await checkAllActiveListings({
     onProgress: (idx, total, s) => {
       const ic = ICON[s.outcome] ?? "?";
       const detail =
@@ -35,7 +37,10 @@ async function main() {
   const priceDrops = results.filter((r) => r.outcome === "ok" && r.priceChanged).length;
 
   console.log("\nResumen:");
-  console.log(`  Total: ${total}  ·  Tiempo: ${dt}s`);
+  console.log(
+    `  Lote: ${total}  ·  Pendientes: ${pending}  ·  Tiempo: ${dt}s` +
+      (pending > 0 ? "  (vuelve a ejecutarlo para seguir)" : "")
+  );
   for (const [k, v] of Object.entries(counts)) console.log(`  ${k}: ${v}`);
   console.log(`  Precios cambiados: ${priceDrops}`);
   process.exit(0);

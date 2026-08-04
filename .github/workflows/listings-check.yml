@@ -1,18 +1,27 @@
 name: listings-check
 
-# Recheck diario de anuncios inmobiliarios. Sin este reloj el seguimiento de
-# precios de inmuebles NO corre solo: /api/listings/check existía pero nadie lo
-# llamaba (el botón manual de la ficha era el único disparador). El endpoint
-# recorre los listings activos con pausa de 1 s por anuncio y detecta bajadas,
-# subidas y desapariciones (alertas + histórico).
+# Recheck de anuncios inmobiliarios. Sin este reloj el seguimiento de precios
+# NO corre solo: /api/listings/check existía pero nadie lo llamaba (el botón
+# manual de la ficha era el único disparador). El endpoint recorre los listings
+# vigilables con pausa de 1 s por anuncio y detecta bajadas, subidas y
+# desapariciones (alertas + histórico).
 #
 # `CRON_SECRET` = secret del repo, DEBE coincidir con el env de Vercel.
-# Una vez al día basta: los portales inmobiliarios no cambian precio cada hora
-# y así no martilleamos ni sus servidores ni el presupuesto de Vercel.
+#
+# La CADENCIA por anuncio sigue siendo diaria; lo que cambió es la frecuencia
+# del reloj. Antes corría una vez al día e intentaba barrerlo TODO en una
+# petición, así que dejaba de caber en cuanto el corpus creciera (a ~3 s por
+# anuncio, unos 100 como techo). Ahora cada pasada procesa un lote acotado y las
+# demás vacían lo que no cupo.
 
 on:
   schedule:
-    - cron: "15 6 * * *" # diario a las 06:15 UTC
+    # Cada 2 h. NO significa recomprobar cada anuncio 12 veces al día: el runner
+    # ignora lo comprobado en las últimas STALE_AFTER_HOURS (22 h, ver
+    # src/features/scraping/runner.ts), así que las pasadas extra sólo drenan la
+    # cola pendiente. Cada una procesa como mucho MAX_PER_RUN anuncios y para al
+    # agotar su presupuesto de tiempo.
+    - cron: "15 */2 * * *"
   workflow_dispatch: {} # botón manual (pestaña Actions)
 
 concurrency:
