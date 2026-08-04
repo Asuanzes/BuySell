@@ -69,9 +69,40 @@ describe("parseRentalFilters", () => {
 });
 
 describe("buildRentalWhere", () => {
-  it("alquiler incluye el alquiler con opción a compra", () => {
+  it("alquiler NO incluye el alquiler con opción a compra", () => {
+    // Cambiado a propósito. Su importe se guarda como precio de VENTA en
+    // `currentPrice` (convención de import-listing, recheck y auto-merge), así
+    // que dentro de una búsqueda de alquiler salía sin precio, se esfumaba al
+    // filtrar por renta y ordenaba el último. Para el buscador es una venta
+    // mientras su precio sea de venta.
     const where = buildRentalWhere(parse("operation=RENT"));
-    assert.deepEqual(clause(where, "operationType"), { in: ["RENT", "RENT_TO_OWN"] });
+    assert.deepEqual(clause(where, "operationType"), "RENT");
+  });
+
+  it("venta sí lo incluye, que es donde vive su precio", () => {
+    const where = buildRentalWhere(parse("operation=SALE"));
+    assert.deepEqual(clause(where, "operationType"), { in: ["SALE", "RENT_TO_OWN"] });
+  });
+
+  it("una búsqueda mixta con precio mira las DOS columnas", () => {
+    // Regresión real: iba sólo contra monthlyRent, así que "Todos" + cualquier
+    // rango escondía todas las ventas, que son la mayor parte del corpus.
+    // Los importes viajan en euros y se guardan en céntimos.
+    const where = buildRentalWhere(parse("operation=ANY&minPrice=100000"));
+    assert.deepEqual(clause(where, "OR"), [
+      { monthlyRent: { gte: 10_000_000 } },
+      { currentPrice: { gte: 10_000_000 } },
+    ]);
+  });
+
+  it("con una sola operación el precio sigue yendo a su columna", () => {
+    assert.deepEqual(clause(buildRentalWhere(parse("operation=RENT&maxPrice=900")), "monthlyRent"), {
+      lte: 90_000,
+    });
+    assert.deepEqual(
+      clause(buildRentalWhere(parse("operation=SALE&maxPrice=300000")), "currentPrice"),
+      { lte: 30_000_000 }
+    );
   });
 
   it("excluye los estados terminales salvo que se pidan", () => {

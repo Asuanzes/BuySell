@@ -172,7 +172,13 @@ export function parseRentalFilters(sp: URLSearchParams): RentalFilters {
 // Consulta
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Columna de precio de esta operación. Alquiler y venta NO comparten columna. */
+/**
+ * Columna de precio de esta operación. Alquiler y venta NO comparten columna.
+ *
+ * `ANY` no tiene columna propia: una búsqueda mixta compara contra las dos (ver
+ * `buildRentalWhere`). Se devuelve `monthlyRent` sólo para no romper a quien la
+ * llame con ANY; el sitio que decide de verdad es el rango de precio.
+ */
 export function priceColumn(operation: RentalOperation): "monthlyRent" | "currentPrice" {
   return operation === "SALE" ? "currentPrice" : "monthlyRent";
 }
@@ -191,8 +197,14 @@ export function buildRentalWhere(f: RentalFilters): Prisma.PropertyWhereInput {
   const and: Prisma.PropertyWhereInput[] = [];
 
   if (f.operation === "RENT") {
-    // El alquiler con opción a compra ES alquiler para quien busca dónde vivir.
-    and.push({ operationType: { in: ["RENT", "RENT_TO_OWN"] } });
+    // El alquiler con opción a compra NO entra aquí, aunque intuitivamente sea
+    // alquiler. El motivo es de datos, no de producto: la importación guarda su
+    // importe como PRECIO DE VENTA en `currentPrice` y deja `monthlyRent` vacío
+    // (`import-listing.ts`, y lo mismo hacen el recheck y el auto-merge). Si se
+    // colara en una búsqueda de alquiler saldría sin precio, desaparecería en
+    // cuanto se filtrara por renta y ordenaría el último — que es justo lo que
+    // pasaba. Mientras su precio sea de venta, para el buscador es una venta.
+    and.push({ operationType: "RENT" });
   } else if (f.operation === "SALE") {
     and.push({ operationType: { in: ["SALE", "RENT_TO_OWN"] } });
   }
@@ -226,7 +238,18 @@ export function buildRentalWhere(f: RentalFilters): Prisma.PropertyWhereInput {
   }
 
   const price = range(f.minPrice, f.maxPrice);
-  if (price) and.push({ [priceColumn(f.operation)]: price });
+  if (price) {
+    // En una búsqueda MIXTA el precio se compara contra las dos columnas. Antes
+    // iba sólo contra `monthlyRent`, así que "Todos" + cualquier rango de precio
+    // escondía TODAS las ventas —que son la mayor parte del corpus— sin decir
+    // nada. El OR no confunde operaciones en la práctica porque las bandas no se
+    // solapan: una venta son >= 10.000 € y una renta <= 50.000 €/mes.
+    and.push(
+      f.operation === "ANY"
+        ? { OR: [{ monthlyRent: price }, { currentPrice: price }] }
+        : { [priceColumn(f.operation)]: price }
+    );
+  }
 
   const rooms = range(f.minRooms, f.maxRooms);
   if (rooms) and.push({ rooms });
@@ -260,6 +283,11 @@ export function buildRentalWhere(f: RentalFilters): Prisma.PropertyWhereInput {
 export function rentalOrderBy(f: RentalFilters): Prisma.PropertyOrderByWithRelationInput[] {
   const asc = { sort: "asc", nulls: "last" } as const;
   const desc = { sort: "desc", nulls: "last" } as const;
+  // ponytail: en ANY se ordena por renta y las ventas caen al final (nulls
+  // last). No se arregla aquí porque "el más barato" de una lista que mezcla
+  // 900 €/mes con 220.000 € no significa nada hasta decidir qué se compara;
+  // Prisma tampoco permite COALESCE en orderBy. Filtrar por precio en ANY sí
+  // funciona (ver buildRentalWhere); lo que queda cojo es sólo el orden.
   const byPrice = (dir: typeof asc | typeof desc) =>
     f.operation === "SALE" ? { currentPrice: dir } : { monthlyRent: dir };
 

@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { autoMergeSafety, type MergeGuardProperty } from "./auto-merge-guard";
+import { autoMergeSafety, comparablePrice, type MergeGuardProperty } from "./auto-merge-guard";
 
 const sale = (price: number | null, type = "PISO"): MergeGuardProperty => ({
   type,
@@ -49,4 +49,32 @@ test("dos alquileres con rentas muy distintas → bloquea por renta", () => {
   const r = autoMergeSafety(rent(85_000), rent(200_000));
   assert.equal(r.priceTooDifferent, true);
   assert.equal(r.blocked, true);
+});
+
+/**
+ * `comparablePrice` dejó de ser sólo cosa del guard de fusión: el buscador
+ * (`/api/rentals/search`) lo usa para decidir qué importe devuelve cada ficha.
+ * Antes elegía la columna por la operación BUSCADA y, en una búsqueda mixta,
+ * toda venta salía con precio null. Es la única definición del proyecto de "el
+ * precio de esta ficha", así que se prueba directamente.
+ */
+test("comparablePrice: sólo el alquiler puro vive en monthlyRent", () => {
+  const base = { type: "PISO", currentPrice: 22_000_000, monthlyRent: 90_000 };
+
+  assert.equal(comparablePrice({ ...base, operationType: "SALE" }), 22_000_000);
+  assert.equal(comparablePrice({ ...base, operationType: "RENT" }), 90_000);
+  // El alquiler con opción a compra guarda su importe como precio de venta:
+  // misma convención que import-listing, el recheck y el buscador.
+  assert.equal(comparablePrice({ ...base, operationType: "RENT_TO_OWN" }), 22_000_000);
+});
+
+test("comparablePrice: sin importe en su columna devuelve null, no el de la otra", () => {
+  assert.equal(
+    comparablePrice({ type: "PISO", operationType: "RENT", currentPrice: 22_000_000, monthlyRent: null }),
+    null
+  );
+  assert.equal(
+    comparablePrice({ type: "PISO", operationType: "SALE", currentPrice: null, monthlyRent: 90_000 }),
+    null
+  );
 });

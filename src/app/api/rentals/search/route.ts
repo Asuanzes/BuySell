@@ -3,12 +3,11 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth-helpers";
-import {
-  buildRentalWhere,
-  parseRentalFilters,
-  priceColumn,
-  rentalOrderBy,
-} from "@/lib/rentals/filters";
+import { buildRentalWhere, parseRentalFilters, rentalOrderBy } from "@/lib/rentals/filters";
+// El precio de una ficha depende de SU operación, no de la que se buscó. La
+// regla ya estaba escrita aquí y es la misma que usa el guard de fusión: una
+// sola definición para todo el proyecto en vez de una cuarta copia.
+import { comparablePrice } from "@/features/matching/auto-merge-guard";
 
 /**
  * GET /api/rentals/search — buscador de inmuebles (alquiler por defecto).
@@ -34,7 +33,6 @@ export async function GET(req: NextRequest) {
 
   const filters = parseRentalFilters(req.nextUrl.searchParams);
   const where = { ...buildRentalWhere(filters), ownerId };
-  const priceField = priceColumn(filters.operation);
 
   try {
     // Se pide una fila de más: si llega, hay página siguiente. Evita el
@@ -74,8 +72,12 @@ export async function GET(req: NextRequest) {
           type: p.type,
           status: p.status,
           operationType: p.operationType,
-          /** Céntimos, de la columna que corresponde a la operación buscada. */
-          price: p[priceField],
+          /**
+           * Céntimos, de la columna que corresponde a la operación de ESTA
+           * ficha. Antes se elegía la columna por la operación BUSCADA, así que
+           * en una búsqueda mixta ("Todos") toda venta salía con precio null.
+           */
+          price: comparablePrice(p),
           city: p.city,
           province: p.province,
           neighborhood: p.neighborhood,
