@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -80,6 +81,7 @@ export function PropertyFilterSheet({
   const { th } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
 
   const [draft, setDraft] = useState<PropertySearchFilters>(filters);
   // Los campos numéricos viven como TEXTO mientras se escriben: convertirlos en
@@ -175,7 +177,15 @@ export function PropertyFilterSheet({
       <View
         style={[
           styles.sheet,
-          { backgroundColor: th.surface, borderColor: th.border, paddingBottom: insets.bottom + 12 },
+          {
+            backgroundColor: th.surface,
+            borderColor: th.border,
+            paddingBottom: insets.bottom + 12,
+            // En píxeles, no "88%": el contenedor anclado abajo no tiene altura
+            // definida y un porcentaje ahí no limita nada — la hoja crecía hasta
+            // desbordar por arriba y ocultaba el asa y el título.
+            maxHeight: Math.min(windowHeight * 0.88, windowHeight - insets.top - 12),
+          },
         ]}
       >
         <View style={[styles.handle, { backgroundColor: th.border }]} />
@@ -262,7 +272,6 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
   docked: { position: "absolute", left: 0, right: 0, bottom: 0 },
   sheet: {
-    maxHeight: "88%",
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     borderWidth: 1,
