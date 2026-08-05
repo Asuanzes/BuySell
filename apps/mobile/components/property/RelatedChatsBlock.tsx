@@ -3,21 +3,8 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/lib/theme";
+import { newsTimeAgo } from "@/components/NewsSheet";
 import type { RelatedChat } from "@/lib/records/property";
-
-/** "ahora", "hace 5 m", "hace 3 h", "hace 2 d"… localizado. */
-function timeAgo(iso: string, locale: string): string {
-  const diff = Date.now() - Date.parse(iso);
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const min = Math.round(diff / 60000);
-  if (min < 1) return rtf.format(0, "minute");
-  if (min < 60) return rtf.format(-min, "minute");
-  const h = Math.round(min / 60);
-  if (h < 24) return rtf.format(-h, "hour");
-  const d = Math.round(h / 24);
-  if (d < 7) return rtf.format(-d, "day");
-  return new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short" });
-}
 
 /**
  * "¿Qué se ha hablado?": conversaciones vinculadas a la ficha con su último
@@ -36,7 +23,7 @@ export function RelatedChatsBlock({
   onShare: () => void;
 }) {
   const { th } = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   if (loading && !chats) {
     return (
@@ -123,7 +110,7 @@ export function RelatedChatsBlock({
                   </Text>
                   {chat.lastMessage && (
                     <Text style={[styles.time, { color: th.textSubtle }]}>
-                      {timeAgo(chat.lastMessage.createdAt, i18n.language)}
+                      {newsTimeAgo(chat.lastMessage.createdAt, t)}
                     </Text>
                   )}
                 </View>
