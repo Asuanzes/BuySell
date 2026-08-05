@@ -17,17 +17,29 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 import { formatPrice, isRentOperation } from "@nidokey/shared";
 import { useTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useRecord } from "@/lib/hooks/useRecord";
-import { fetchPropertyDetail, type PropertyDetail } from "@/lib/records/property";
+import {
+  fetchPropertyDetail,
+  fetchZoneContext,
+  fetchRelatedChats,
+  type PropertyDetail,
+  type ZoneContext,
+  type RelatedChatsResponse,
+} from "@/lib/records/property";
+import { listAlerts, type AlertsResponse } from "@/lib/alerts";
 import { toolsForType, type ToolDef } from "@/lib/records/tools";
 import { CategoryContextSheet } from "@/components/CategoryContextSheet";
 import { ResultModal } from "@/components/ui";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AlertsSheet } from "@/components/AlertsSheet";
+import { PriceHistoryBlock } from "@/components/property/PriceHistoryBlock";
+import { ZoneComparisonBlock } from "@/components/property/ZoneComparisonBlock";
+import { RelatedChatsBlock } from "@/components/property/RelatedChatsBlock";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
 
@@ -82,6 +94,10 @@ export default function PropertyDetailScreen() {
     [id],
     { enabled: !!id }
   );
+  // Pantalla de decisión: comparativa de zona, chat vinculado y alerta activa.
+  const zoneQ = useRecord<ZoneContext>(() => fetchZoneContext(id!), [id], { enabled: !!id });
+  const chatsQ = useRecord<RelatedChatsResponse>(() => fetchRelatedChats(id!), [id], { enabled: !!id });
+  const alertsQ = useRecord<AlertsResponse>(() => listAlerts("property", id!), [id], { enabled: !!id });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busyTool, setBusyTool] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -186,6 +202,11 @@ export default function PropertyDetailScreen() {
     hasBoth && p.currentPrice
       ? ((p.monthlyRent! * 12) / p.currentPrice) * 100
       : null;
+  // Campo de precio que vigila la ficha (venta vs renta) → serie del histórico.
+  const priceField: "price" | "rent" =
+    p.monthlyRent != null && p.currentPrice == null ? "rent" : "price";
+  // Alerta activa para el chip inline de la pantalla de decisión.
+  const activeAlert = (alertsQ.data?.alerts ?? []).find((a) => a.active) ?? null;
   const FURNISHED_LABEL: Record<string, string> = {
     UNFURNISHED: t("detail.property.rent_furnished_unfurnished"),
     SEMI: t("detail.property.rent_furnished_semi"),
@@ -256,6 +277,11 @@ export default function PropertyDetailScreen() {
           )}
         </View>
 
+        {/* Histórico + variación: la respuesta a "¿ha cambiado?". */}
+        <View style={styles.decisionBlock}>
+          <PriceHistoryBlock history={p.priceHistory ?? []} field={priceField} />
+        </View>
+
         {/* Acciones de la ficha, juntas: herramientas · compartir (OS) · compartir con usuario · editar. */}
         <View style={styles.actionsRow}>
           <ActionBtn icon="construct-outline" label={t("detail.property.tools_title")} onPress={() => setSheetOpen(true)} />
@@ -263,6 +289,50 @@ export default function PropertyDetailScreen() {
           <ActionBtn icon="chatbubble-ellipses-outline" label={t("share.action")} onPress={() => setShareOpen(true)} />
           <ActionBtn icon="create-outline" label={t("common.edit")} onPress={() => router.push(`/property/form?id=${p.id}` as never)} />
         </View>
+
+        {/* Comparativa de zona (Tier 1): ¿es buen precio? */}
+        <View style={styles.decisionBlock}>
+          <ZoneComparisonBlock
+            zone={zoneQ.data}
+            loading={zoneQ.loading}
+            currentPrice={isRent ? p.monthlyRent : p.currentPrice}
+            isRent={isRent}
+            typeLabel={p.type ? TYPE_LABEL[p.type] ?? undefined : undefined}
+            onOpenAlternative={(altId) => router.push(`/property/${altId}` as never)}
+            onAddAlternative={() => router.push("/property/form" as never)}
+          />
+        </View>
+
+        {/* Chat relacionado: ¿qué se ha hablado? */}
+        <View style={styles.decisionBlock}>
+          <RelatedChatsBlock
+            chats={chatsQ.data?.chats ?? null}
+            loading={chatsQ.loading}
+            onOpenChat={(cid) => router.push(`/chat/${cid}` as never)}
+            onShare={() => setShareOpen(true)}
+          />
+        </View>
+
+        {/* Alerta activa: acceso directo a la hoja de alertas. */}
+        {activeAlert && (
+          <View style={styles.decisionBlock}>
+            <Pressable
+              onPress={() => setAlertsOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t("detail.property.alert_active")}
+              style={[styles.alertChip, { backgroundColor: th.accentSoft, borderColor: th.accent }]}
+            >
+              <Ionicons name="notifications" size={16} color={th.accent} />
+              <Text style={[styles.alertChipTitle, { color: th.text }]}>
+                {t("detail.property.alert_active")}
+              </Text>
+              <Text style={[styles.alertChipBody, { color: th.textMuted }]} numberOfLines={1}>
+                {alertDescription(activeAlert, t)}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={th.accent} />
+            </Pressable>
+          </View>
+        )}
 
         {/* Anuncios vinculados ANTES de características: es lo accionable
             (precio por portal + abrir) y compacto — una fila por anuncio. */}
@@ -460,6 +530,26 @@ function Spec({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/** Descripción corta de la alerta activa para el chip de la pantalla de decisión. */
+function alertDescription(a: { kind: string; threshold: number | null }, t: TFunction): string {
+  switch (a.kind) {
+    case "PRICE_BELOW":
+      return a.threshold != null
+        ? t("detail.property.alert_below", { value: formatPrice(a.threshold) })
+        : t("detail.property.alert_status");
+    case "PRICE_ABOVE":
+      return a.threshold != null
+        ? t("detail.property.alert_above", { value: formatPrice(a.threshold) })
+        : t("detail.property.alert_status");
+    case "PRICE_DROP_PCT":
+      return a.threshold != null
+        ? t("detail.property.alert_drop_pct", { value: a.threshold })
+        : t("detail.property.alert_status");
+    default:
+      return t("detail.property.alert_status");
+  }
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 32 },
@@ -481,6 +571,18 @@ const styles = StyleSheet.create({
   actionsRow: { flexDirection: "row", gap: 8, marginHorizontal: 12, marginTop: 12 },
   actionBtn: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 10, borderWidth: 1, borderRadius: 12 },
   actionLabel: { fontSize: 11 },
+  decisionBlock: { marginHorizontal: 12, marginTop: 12 },
+  alertChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  alertChipTitle: { fontSize: 13, fontWeight: "700" },
+  alertChipBody: { flex: 1, fontSize: 12 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
   gallery: { height: SCREEN_WIDTH * 0.66, backgroundColor: "#000" },
   photoCount: {

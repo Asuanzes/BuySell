@@ -58,8 +58,77 @@ export type PropertyDetail = {
     lastCheckResult?: string | null;
     lastCheckDetail?: string | null;
   }[];
+  /** Serie de precio (PriceSnapshot). `listing.operationType` separa venta/renta. */
+  priceHistory: PriceHistoryPoint[];
+};
+
+/** Un punto del histórico de precio (PriceSnapshot). */
+export type PriceHistoryPoint = {
+  id: string;
+  price: number;
+  status: string;
+  source: string;
+  observedAt: string;
+  listing: { operationType: string } | null;
 };
 
 export function fetchPropertyDetail(id: string): Promise<PropertyDetail> {
   return api<PropertyDetail>(`/api/properties/${id}`);
+}
+
+/* ─────────── Pantalla de decisión: comparativa de zona y chat ─────────── */
+
+export type ZoneComparable = {
+  id: string;
+  title: string;
+  type: string;
+  city: string;
+  neighborhood: string | null;
+  status: string;
+  /** Renta o precio de venta en céntimos según la operación de la ficha. */
+  price: number | null;
+  builtArea: number | null;
+};
+
+export type ZoneStats = {
+  count: number;
+  min: number;
+  median: number;
+  max: number;
+  perSqm: { min: number; median: number; max: number } | null;
+};
+
+export type ZoneContext = {
+  level: "city" | "city_type" | "city_neighborhood_type";
+  scope: { city: string; neighborhood: string | null; type: string };
+  coldStart: boolean;
+  count: number;
+  stats: ZoneStats | null;
+  alternatives: ZoneComparable[];
+};
+
+export function fetchZoneContext(id: string): Promise<ZoneContext> {
+  return api<ZoneContext>(`/api/properties/${id}/zone-context`);
+}
+
+export type RelatedChatMessage = {
+  kind: string;
+  body: string | null;
+  senderName: string | null;
+  createdAt: string;
+};
+
+export type RelatedChat = {
+  conversationId: string;
+  kind: string; // "DIRECT" | "GROUP" | ...
+  title: string;
+  imageUrl: string | null;
+  lastMessage: RelatedChatMessage | null;
+  lastMessageAt: string | null;
+};
+
+export type RelatedChatsResponse = { chats: RelatedChat[] };
+
+export function fetchRelatedChats(id: string): Promise<RelatedChatsResponse> {
+  return api<RelatedChatsResponse>(`/api/properties/${id}/related-chats`);
 }
