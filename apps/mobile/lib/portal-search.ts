@@ -334,11 +334,18 @@ export function getSearchExtractorScript(
         var src = box.querySelector('source[srcset], source[data-srcset]');
         if (src) imageUrl = String(src.getAttribute('srcset') || src.getAttribute('data-srcset') || '').split(',')[0].trim().split(' ')[0] || null;
       }
-      var title = (a.innerText || '').trim() || (a.getAttribute('title') || '').trim();
-      if (!title) {
-        var h = box.querySelector('h2, h3, [class*="title"]');
-        title = h ? (h.innerText || '').trim() : '';
-      }
+      // Título: preferir el elemento de título dedicado. En Fotocasa la tarjeta
+      // entera (badges "Líder de zona", contador "1/34", "video del inmueble" y
+      // el precio) vive DENTRO del <a>, así que a.innerText mezclaba todo eso.
+      var titleEl = box.querySelector('h2, h3, [class*="title"], [class*="Title"]') || a.querySelector('h2, h3');
+      var title = titleEl ? (titleEl.innerText || '').trim() : ((a.getAttribute('title') || '').trim());
+      if (!title) title = (a.innerText || '').trim();
+      // Limpiar ruido: badges de portal, contadores de fotos y precios.
+      title = title
+        .replace(/Líder de zona|video del inmueble|tour virtual|video/i, ' ')
+        .replace(/\\d[\\d.\\s]*\\s*\\u20AC/g, ' ')
+        .replace(/\\s+/g, ' ')
+        .trim();
 
       stats.cards++;
       out.push({
@@ -396,6 +403,18 @@ export function getSearchExtractorScript(
   var tries = 0;
   var announcedChallenge = false;
   var MAX_TRIES = 25;
+  // Contenedores con scroll propio (el lazy de Milanuncios a veces vive en un
+  // div con overflow, no en la ventana). Se cachean una vez.
+  var scrollers = null;
+  var findScrollers = function() {
+    var all = document.querySelectorAll('body *');
+    var out = [];
+    for (var i = 0; i < all.length && out.length < 8; i++) {
+      var el = all[i];
+      try { if (el.scrollHeight > el.clientHeight + 40) out.push(el); } catch (e) {}
+    }
+    return out;
+  };
 
   // Cada vuelta informa de lo que ACABA de hacer: es lo que convierte la espera
   // en algo legible en vez de una ruedecita.
@@ -411,9 +430,19 @@ export function getSearchExtractorScript(
 
   var tick = function() {
     if (tries < 3 && acceptConsent()) say('consent', 0);
-    // Los listados cargan por scroll (Fotocasa carga tandas al bajar): sin esto
-    // sólo se ve la primera pantalla y salen cuatro resultados.
-    try { window.scrollTo(0, document.body.scrollHeight * Math.min(1, tries / 4)); } catch (e) {}
+    // Los listados cargan por scroll (Fotocasa carga tandas al bajar; Milanuncios
+    // solo renderiza ~5 y el resto por lazy). Se hace scroll por PASOS crecientes
+    // y además sobre los contenedores con scroll propio, no solo la ventana.
+    try {
+      if (!scrollers) scrollers = findScrollers();
+      var target = (tries + 1) * Math.max(500, window.innerHeight || 800);
+      window.scrollTo(0, target);
+      var se = document.scrollingElement || document.documentElement || document.body;
+      if (se && se.scrollTop != null) se.scrollTop = target;
+      for (var sc = 0; sc < scrollers.length; sc++) {
+        try { scrollers[sc].scrollTop = Math.min(scrollers[sc].scrollHeight, target); } catch (e) {}
+      }
+    } catch (e) {}
 
     // PRIMERO se mira si hay anuncios. Antes se preguntaba por el captcha antes
     // de recoger, y como Idealista trae DataDome en páginas normales, el bucle
