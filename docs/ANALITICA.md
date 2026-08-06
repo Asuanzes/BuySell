@@ -19,6 +19,9 @@ anonimizan (`userId → null`). Pre-login los eventos van con `deviceId` anónim
 | `login_verify_success` | OTP verificado, sesión creada | móvil | `new_user` (bool, si disponible) |
 | `onboarding_complete` | Fin del onboarding | móvil | — |
 | `record_import` | Import/alta de un registro | móvil | `type` (property/crypto/…), `kind` (url/query/isbn/manual) |
+| `listing_import` | Import de un inmueble (URL/search) — **F0 scraping** | **servidor** | `portal`, `result` (created/updated/duplicate/error), `durationMs` |
+| `listing_recheck` | Recheck de un anuncio (cron o botón manual) — **F0 scraping** | **servidor** | `listingId`, `portal`, `outcome` (ok/gone/blocked/error), `durationMs`, `priceChanged` |
+| `listing_price_change` | Cambio de precio detectado (aplicado o rechazado por cordura) — **F0 scraping** | **servidor** | `portal`, `sanityRejected` (bool), `direction` (drop/up/flat), `pct`, `previousPrice`, `newPrice`/`attempted` |
 | `bot_message_sent` | Mensaje del usuario al bot @Nidokey | móvil | — |
 | `paywall_view` | Pantalla Premium vista | móvil | `from` (account/bot_limit/…) |
 | `checkout_start` | Alta Premium iniciada (URL de checkout emitida) | **servidor** | `provider` |
@@ -125,3 +128,78 @@ LEFT JOIN "AnalyticsEvent" e
 
 > Objetivos iniciales: NO hay datos históricos; cualquier cifra objetivo es una
 > hipótesis a validar con las primeras semanas de datos reales.
+
+## Métricas operativas del scraping de inmuebles (F0)
+
+Eventos `listing_import`, `listing_recheck` y `listing_price_change` (ver
+catálogo). Son métricas de **pipeline** (el recheck del cron no tiene un usuario
+único → `userId` null). Query de referencia (Neon/Postgres):
+
+```sql
+-- 1. Tasa de éxito del recheck por portal (14 días). La base del diagnóstico.
+SELECT "props" ->> 'portal' AS portal,
+       COUNT(*) AS total,
+       COUNT(*) FILTER (WHERE "props" ->> 'outcome' = 'ok') AS ok,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE "props" ->> 'outcome' = 'ok') / NULLIF(COUNT(*), 0), 1) AS ok_pct,
+       COUNT(*) FILTER (WHERE "props" ->> 'outcome' = 'blocked') AS blocked,
+       COUNT(*) FILTER (WHERE "props" ->> 'outcome' = 'gone') AS gone,
+       COUNT(*) FILTER (WHERE "props" ->> 'outcome' = 'error') AS errores
+FROM "AnalyticsEvent"
+WHERE name = 'listing_recheck' AND "createdAt" > now() - interval '14 days'
+GROUP BY 1 ORDER BY total DESC;
+
+-- 2. Resultado de imports por portal (14 días).
+SELECT "props" ->> 'portal' AS portal, "props" ->> 'result' AS result, COUNT(*) AS n
+FROM "AnalyticsEvent"
+WHERE name = 'listing_import' AND "createdAt" > now() - interval '14 days'
+GROUP BY 1, 2 ORDER BY 1, 3 DESC;
+
+-- 3. Bloqueos por portal y día (tendencia: detecta endurecimiento del anti-bot).
+SELECT "createdAt"::date AS day, "props" ->> 'portal' AS portal, COUNT(*) AS blocked
+FROM "AnalyticsEvent"
+WHERE name = 'listing_recheck' AND "props" ->> 'outcome' = 'blocked'
+  AND "createdAt" > now() - interval '30 days'
+GROUP BY 1, 2 ORDER BY 1;
+
+-- 4. Cambios de precio: bajadas/subidas y rechazos por cordura (30 días).
+SELECT "props" ->> 'portal' AS portal,
+       COUNT(*) AS cambios,
+       COUNT(*) FILTER (WHERE "props" ->> 'direction' = 'drop') AS bajadas,
+       COUNT(*) FILTER (WHERE "props" ->> 'direction' = 'up') AS subidas,
+       COUNT(*) FILTER (WHERE ("props" ->> 'sanityRejected')::boolean) AS rechazos_sanity
+FROM "AnalyticsEvent"
+WHERE name = 'listing_price_change' AND "createdAt" > now() - interval '30 days'
+GROUP BY 1 ORDER BY 2 DESC;
+
+-- 5. Frescura: antigüedad de la última comprobación por anuncio (hoy, no evento).
+SELECT ROUND(AVG(EXTRACT(EPOCH FROM (now() - "lastCheckedAt")) / 3600), 1) AS horas_media,
+       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (now() - "lastCheckedAt")) / 3600) AS horas_mediana,
+       COUNT(*) FILTER (WHERE "lastCheckResult" NOT IN ('ok', 'gone')) AS comprobaciones_fallidas
+FROM "Listing"
+WHERE status IN ('ACTIVE', 'PRICE_DROP', 'PRICE_UP', 'UNKNOWN');
+
+-- 6. Duplicados por URL (varios seguidores del mismo anuncio → N descargas).
+SELECT url, COUNT(*) AS seguidores FROM "Listing"
+GROUP BY url HAVING COUNT(*) > 1 ORDER BY 2 DESC LIMIT 20;
+
+-- 7. Anuncios retirados detectados por día (outcome gone) y reapariciones.
+SELECT "createdAt"::date AS day, COUNT(*) AS retirados
+FROM "AnalyticsEvent"
+WHERE name = 'listing_recheck' AND "props" ->> 'outcome' = 'gone'
+  AND "createdAt" > now() - interval '30 days'
+GROUP BY 1 ORDER BY 1;
+```
+
+**Interpretación y alertas**
+
+- **Coste por anuncio**: hoy ~0 € (fetch plano + Nominatim/CartoCiudad gratuitos,
+  sin proveedor de pago). Si se introduce proxy/proveedor, coste por 1000
+  anuncios comprobados = gasto del mes / (`listing_recheck` `ok` del mes).
+- **Umbral de alerta de salud**: si la tasa `ok` de un portal cae >10 p.p. por
+  debajo de su baseline (promedio de las 2 primeras semanas de datos), revisar
+  selectores/anti-bot de ese portal. Los `blocked` sin tendencia previa suelen
+  anticipar un endurecimiento.
+- **Frescura objetivo**: mediana < 26 h (el runner marca `staleAfterHours = 22`).
+- **Cambios de precio**: ratio bajadas/subidas y el volumen de `rechazos_sanity`
+  alertan de selectores de precio rotos (un selector que lee el banner de
+  "anuncios similares" infla los rechazos).

@@ -14,6 +14,7 @@ import { geocodeAddress } from "@/lib/geocode";
 import { cartociudadCandidates, pickBestMunicipality } from "@/lib/cartociudad";
 import { isBlankGeo, isProvinceOnlyQuery } from "@/lib/geo-es";
 import { logImportEvent } from "@/lib/import-log";
+import { priceChangeDir, trackEvent } from "@/lib/analytics-events";
 import {
   isValidPriceEur,
   isValidMonthlyRentEur,
@@ -477,6 +478,20 @@ async function importListingOnce(
         where: { id: existing.id },
         data: { lastSeenAt: new Date(), lastCheckedAt: new Date() },
       });
+      // F0 · métricas: cambio de precio rechazado por cordura en un re-import.
+      const dir = priceChangeDir(previousPrice, priceCents);
+      await trackEvent("listing_price_change", {
+        userId: ownerId ?? undefined,
+        props: {
+          portal,
+          sanityRejected: true,
+          direction: dir?.direction ?? null,
+          pct: dir?.pct ?? null,
+          listingId: existing.id,
+          previousPrice,
+          attempted: priceCents,
+        },
+      });
       await logImportEvent("RECHECK", {
         propertyId: existing.propertyId,
         ok: false,
@@ -538,6 +553,22 @@ async function importListingOnce(
           },
         });
         return true;
+      });
+    }
+    // F0 · métricas: cambio de precio REAL aplicado en un re-import.
+    if (priceApplied && priceCents != null) {
+      const dir = priceChangeDir(previousPrice, priceCents);
+      await trackEvent("listing_price_change", {
+        userId: ownerId ?? undefined,
+        props: {
+          portal,
+          sanityRejected: false,
+          direction: dir?.direction ?? null,
+          pct: dir?.pct ?? null,
+          listingId: existing.id,
+          previousPrice,
+          newPrice: priceCents,
+        },
       });
     }
     if (!priceApplied) {

@@ -1,6 +1,7 @@
 import type { Portal, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { logImportEvent } from "@/lib/import-log";
+import { priceChangeDir, trackEvent } from "@/lib/analytics-events";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
 import { notifyLinkedConversations } from "@/lib/chat/context-events";
 import type { PortalAdapter } from "./types";
@@ -116,8 +117,17 @@ export function buildRecheckWhere(opts?: {
  * contra carreras) y se disparan los efectos (alertas, hilos, log).
  */
 export async function checkListing(listingId: string): Promise<CheckSummary> {
+  const startedAt = Date.now();
   const listing = await prisma.listing.findUnique({ where: { id: listingId } });
   if (!listing) throw new Error(`Listing ${listingId} no encontrado`);
+
+  // F0 · métricas: tasa de éxito del recheck por portal (cron y manual). El
+  // userId va null a propósito: es una métrica de pipeline, no de usuario.
+  const track = (outcome: string, extra: Record<string, unknown> = {}) =>
+    void trackEvent("listing_recheck", {
+      userId: null,
+      props: { listingId, portal: listing.portal, outcome, durationMs: Date.now() - startedAt, ...extra },
+    });
 
   const adapter = pickAdapter(listing.url);
   if (!adapter) {
@@ -125,6 +135,7 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
       where: { id: listingId },
       data: { lastCheckedAt: new Date(), lastCheckResult: "error", lastCheckDetail: "Sin adaptador" },
     });
+    track("error", { detail: "Sin adaptador" });
     return { listingId, outcome: "error", detail: "Sin adaptador" };
   }
 
@@ -137,6 +148,7 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
         lastCheckDetail: "Portal manual (anti-bot): re-importa desde la app para actualizar",
       },
     });
+    track("blocked", { detail: "manual" });
     return { listingId, outcome: "blocked", detail: "Manual-only (anti-bot)" };
   }
 
@@ -157,6 +169,7 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
       where: { id: listingId },
       data: { lastCheckedAt: new Date(), lastCheckResult: "ok", lastCheckDetail: null },
     });
+    track("ok", { priceChanged: false, detail: "Cambio ya aplicado por otra ejecución" });
     return {
       listingId,
       outcome: "ok",
@@ -170,6 +183,20 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
   // Efectos secundarios FUERA de la transacción (nunca deben romper el recheck;
   // evaluateAlerts y notifyLinkedConversations ya no lanzan por diseño).
   if (plan.logEvent) {
+    // F0 · métricas: cambio sospechoso rechazado por cordura (plan.logEvent
+    // solo se marca en ese caso).
+    const scraped = plan.logEvent.meta.scrapedPrice as number | null | undefined;
+    const dir = priceChangeDir(listing.lastPrice, scraped ?? null);
+    await trackEvent("listing_price_change", {
+      userId: null,
+      props: {
+        portal: listing.portal,
+        sanityRejected: true,
+        direction: dir?.direction ?? null,
+        pct: dir?.pct ?? null,
+        ...plan.logEvent.meta,
+      },
+    });
     await logImportEvent("RECHECK", {
       propertyId: listing.propertyId,
       ok: false,
@@ -188,6 +215,7 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
     await notifyLinkedConversations("property", listing.propertyId, plan.notify);
   }
 
+  track(plan.summary.outcome, { priceChanged: plan.summary.priceChanged ?? false });
   return plan.summary;
 }
 
@@ -206,7 +234,7 @@ async function applyRecheckPlan(
     await prisma.listing.update({ where: { id: listingId }, data: plan.listingData });
     return true;
   }
-  return prisma.$transaction(async (tx) => {
+  const applied = await prisma.$transaction(async (tx) => {
     const guarded =
       plan.guardPrevPrice !== undefined
         ? { id: listingId, lastPrice: plan.guardPrevPrice }
@@ -228,6 +256,23 @@ async function applyRecheckPlan(
     }
     return true;
   });
+  // F0 · métricas: cambio de precio REAL aplicado por el recheck.
+  if (applied) {
+    const dir = priceChangeDir(plan.guardPrevPrice ?? null, plan.snapshot.price);
+    await trackEvent("listing_price_change", {
+      userId: null,
+      props: {
+        portal,
+        sanityRejected: false,
+        direction: dir?.direction ?? null,
+        pct: dir?.pct ?? null,
+        listingId,
+        previousPrice: plan.guardPrevPrice ?? null,
+        newPrice: plan.snapshot.price,
+      },
+    });
+  }
+  return applied;
 }
 
 /**

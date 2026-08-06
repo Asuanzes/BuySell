@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ImportListingInput, importListing, CrossOwnerError } from "@/lib/import-listing";
 import { extractTokenFromRequest, resolveUserFromToken } from "@/lib/api-token";
 import { getUserId } from "@/lib/auth-helpers";
+import { trackEvent } from "@/lib/analytics-events";
 
 // CORS: el bookmarklet se ejecuta en idealista.com / fotocasa.es / …
 // Mantenemos CORS abierto a *, pero exigimos token Bearer en Authorization.
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
       { status: 401, headers: CORS_HEADERS }
     );
   }
+  const startedAt = Date.now();
 
   // 2. Parsear payload
   let body: unknown;
@@ -48,8 +50,26 @@ export async function POST(req: NextRequest) {
   // 3. Importar atribuido al owner
   try {
     const result = await importListing(parsed.data, { ownerId });
+    // F0 · métricas: tasa de éxito del import por portal y tipo de resultado.
+    await trackEvent("listing_import", {
+      userId: ownerId,
+      props: {
+        portal: parsed.data.portal ?? "OTHER",
+        result: result.created ? "created" : result.priceChanged ? "updated" : "duplicate",
+        durationMs: Date.now() - startedAt,
+      },
+    });
     return NextResponse.json(result, { status: result.created ? 201 : 200, headers: CORS_HEADERS });
   } catch (err) {
+    // F0 · métricas: import fallido (no rompe el flujo; trackEvent no lanza).
+    await trackEvent("listing_import", {
+      userId: ownerId,
+      props: {
+        portal: parsed.data.portal ?? "OTHER",
+        result: "error",
+        durationMs: Date.now() - startedAt,
+      },
+    });
     if (err instanceof CrossOwnerError) {
       return NextResponse.json({ error: err.message }, { status: 403, headers: CORS_HEADERS });
     }
