@@ -4,8 +4,10 @@ import { logImportEvent } from "@/lib/import-log";
 import { priceChangeDir, trackEvent } from "@/lib/analytics-events";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
 import { notifyLinkedConversations } from "@/lib/chat/context-events";
+import { notifyPriceActivity, type PriceActivity } from "@/lib/notifications/price-activity";
 import type { PortalAdapter } from "./types";
 import { planRecheck, type RecheckPlan, type RecheckSummary } from "./recheck-plan";
+import { isGoneStatus } from "./listing-status";
 import { idealistaAdapter } from "./adapters/idealista";
 import { fotocasaAdapter } from "./adapters/fotocasa";
 import { pisosAdapter } from "./adapters/pisos";
@@ -222,8 +224,12 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
       meta: { ...plan.logEvent.meta, url: listing.url },
     });
   }
+  // Alertas manuales del usuario (p. ej. "avísame si baja un 10 %"). Devuelve
+  // cuántas saltaron: si alguna cubre el cambio, no mandamos el aviso genérico
+  // del mismo tick para no spamear con dos push del mismo evento.
+  let firedAlerts = 0;
   if (plan.alert) {
-    await evaluateAlerts("property", listing.propertyId, plan.alert.field, {
+    firedAlerts = await evaluateAlerts("property", listing.propertyId, plan.alert.field, {
       oldCents: plan.alert.oldCents,
       newCents: plan.alert.newCents,
       status: plan.alert.status,
@@ -231,6 +237,27 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
   }
   if (plan.notify) {
     await notifyLinkedConversations("property", listing.propertyId, plan.notify);
+  }
+
+  // Aviso automático al dueño y a los usuarios con acceso compartido, aunque
+  // no tengan alerta configurada: cambio de precio o retirada del anuncio.
+  if (firedAlerts === 0) {
+    const wasGone = isGoneStatus(listing.status);
+    const activity: PriceActivity | null =
+      plan.summary.priceChanged && plan.snapshot
+        ? {
+            kind: "price",
+            field: plan.alert?.field ?? "price",
+            oldCents: plan.guardPrevPrice ?? listing.lastPrice,
+            newCents: plan.snapshot.price,
+            status: plan.snapshot.status,
+          }
+        : plan.summary.outcome === "gone" && !wasGone
+          ? { kind: "removed", oldCents: listing.lastPrice }
+          : null;
+    if (activity) {
+      await notifyPriceActivity(listing.propertyId, activity);
+    }
   }
 
   track(plan.summary.outcome, { priceChanged: plan.summary.priceChanged ?? false });

@@ -156,14 +156,26 @@ export async function unregisterPush(): Promise<void> {
   }
 }
 
-/** Suscribe el deep-link: al tocar una notificación de chat, abre la conversación. */
-export function useChatNotificationTap(): () => void {
+/**
+ * Suscribe el deep-link de las notificaciones al tocarlas:
+ *  - type "chat" → abre la conversación.
+ *  - type "price_activity" (cambio de precio / retirada) → abre la ficha.
+ *  - type "alert" de un inmueble (alerta manual) → abre la ficha. Otras
+ *    alertas (cripto/empleo/…) no se enrutan aquí todavía.
+ */
+export function useNotificationTap(): () => void {
   try {
     if (!Notifications) return () => {};
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data as { type?: string; conversationId?: string } | undefined;
+      const data = response.notification.request.content.data as
+        | { type?: string; conversationId?: string; recordId?: string; recordType?: string }
+        | undefined;
       if (data?.type === "chat" && data.conversationId) {
         router.push(`/chat/${data.conversationId}` as never);
+      } else if (data?.type === "price_activity" && data.recordId) {
+        router.push(`/property/${data.recordId}` as never);
+      } else if (data?.type === "alert" && data.recordType === "property" && data.recordId) {
+        router.push(`/property/${data.recordId}` as never);
       }
     });
     return () => sub.remove();

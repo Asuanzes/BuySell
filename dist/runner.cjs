@@ -35788,6 +35788,62 @@ async function notifyLinkedConversations(contextType, contextId, event) {
   }
 }
 
+// src/lib/notifications/price-activity.ts
+function priceActivityText(a, title) {
+  const prefix = title ? `\xAB${title}\xBB ` : "";
+  if (a.kind === "removed") {
+    return `${prefix}el anuncio ha desaparecido del portal (vendido o retirado).`;
+  }
+  const what = a.field === "rent" ? "la renta" : "el precio";
+  if (a.oldCents == null) {
+    return `${prefix}${what} ahora es ${fmtCents(a.newCents)}.`;
+  }
+  const verb = a.newCents < a.oldCents ? "ha bajado" : a.newCents > a.oldCents ? "ha subido" : "se mantiene en";
+  return `${prefix}${what} ${verb}: ${fmtCents(a.oldCents)} \u2192 ${fmtCents(a.newCents)}.`;
+}
+async function notifyPriceActivity(recordId, activity) {
+  try {
+    const [title, shares, prop2] = await Promise.all([
+      recordTitle("property", recordId),
+      prisma.recordShare.findMany({
+        where: { recordType: "property", recordId },
+        select: { toUserId: true }
+      }),
+      prisma.property.findUnique({ where: { id: recordId }, select: { ownerId: true } })
+    ]);
+    const userIds = [
+      ...new Set([prop2?.ownerId ?? null, ...shares.map((s) => s.toUserId)].filter((x) => !!x))
+    ];
+    if (userIds.length === 0) return 0;
+    const text3 = stripRecordLinks(priceActivityText(activity, title));
+    const tokens = await pushableTokens(userIds, "alerts");
+    if (tokens.length === 0) return 0;
+    const res = await deliverPush(
+      tokens.map((to) => ({
+        to,
+        title: activity.kind === "removed" ? "Cambio en el anuncio" : "Cambio de precio",
+        body: text3,
+        sound: "default",
+        data: { type: "price_activity", recordType: "property", recordId, kind: activity.kind },
+        channelId: "chat"
+      })),
+      "price-activity-push"
+    );
+    await prisma.analyticsEvent.create({
+      data: {
+        userId: prop2?.ownerId ?? null,
+        name: "price_change_push",
+        props: { kind: activity.kind, delivered: res.ok, errors: res.errors }
+      }
+    }).catch(() => {
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("[price-activity] notificaci\xF3n fallida:", err);
+    return 0;
+  }
+}
+
 // src/features/scraping/listing-status.ts
 function nextListingStatus(input) {
   const { priceChanged, previousPrice, newPrice, wasGone, fallbackStatus } = input;
@@ -50788,8 +50844,9 @@ async function checkListing(listingId) {
       meta: { ...plan.logEvent.meta, url: listing.url }
     });
   }
+  let firedAlerts = 0;
   if (plan.alert) {
-    await evaluateAlerts("property", listing.propertyId, plan.alert.field, {
+    firedAlerts = await evaluateAlerts("property", listing.propertyId, plan.alert.field, {
       oldCents: plan.alert.oldCents,
       newCents: plan.alert.newCents,
       status: plan.alert.status
@@ -50797,6 +50854,19 @@ async function checkListing(listingId) {
   }
   if (plan.notify) {
     await notifyLinkedConversations("property", listing.propertyId, plan.notify);
+  }
+  if (firedAlerts === 0) {
+    const wasGone = isGoneStatus(listing.status);
+    const activity = plan.summary.priceChanged && plan.snapshot ? {
+      kind: "price",
+      field: plan.alert?.field ?? "price",
+      oldCents: plan.guardPrevPrice ?? listing.lastPrice,
+      newCents: plan.snapshot.price,
+      status: plan.snapshot.status
+    } : plan.summary.outcome === "gone" && !wasGone ? { kind: "removed", oldCents: listing.lastPrice } : null;
+    if (activity) {
+      await notifyPriceActivity(listing.propertyId, activity);
+    }
   }
   track(plan.summary.outcome, { priceChanged: plan.summary.priceChanged ?? false });
   return plan.summary;

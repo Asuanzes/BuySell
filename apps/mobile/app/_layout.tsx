@@ -38,7 +38,7 @@ import { BrandLoading } from "@/components/BrandLoading";
 import { BootProvider, useBoot } from "@/lib/boot-context";
 import { CategoryPrefsProvider } from "@/lib/records/category-prefs-context";
 import { FoodCartProvider } from "@/lib/food-cart-context";
-import { useChatNotificationTap } from "@/lib/chat/push";
+import { useNotificationTap } from "@/lib/chat/push";
 import "@/lib/i18n"; // inicializa i18next (debe importarse antes de usar t())
 import { useTranslation } from "react-i18next";
 import { LanguageProvider } from "@/lib/i18n/language-context";
@@ -215,7 +215,7 @@ function AuthGate() {
   }, []);
 
   // Al tocar una notificación de chat → abrir la conversación (deep-link).
-  useEffect(() => useChatNotificationTap(), []);
+  useEffect(() => useNotificationTap(), []);
 
   // Embudo: un session_start por arranque, cuando la sesión queda resuelta.
   const sessionTracked = useRef(false);

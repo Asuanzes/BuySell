@@ -22,6 +22,7 @@ anonimizan (`userId → null`). Pre-login los eventos van con `deviceId` anónim
 | `listing_import` | Import de un inmueble (URL/search) — **F0 scraping** | **servidor** | `portal`, `result` (created/updated/duplicate/error), `durationMs` |
 | `listing_recheck` | Recheck de un anuncio (cron o botón manual) — **F0 scraping** | **servidor** | `listingId`, `portal`, `outcome` (ok/gone/blocked/error), `durationMs`, `priceChanged` |
 | `listing_price_change` | Cambio de precio detectado (aplicado o rechazado por cordura) — **F0 scraping** | **servidor** | `portal`, `sanityRejected` (bool), `direction` (drop/up/flat), `pct`, `previousPrice`, `newPrice`/`attempted` |
+| `price_change_push` | Push automático de cambio de precio o retirada al dueño + compartidos (sin alerta manual) — **F0 scraping** | **servidor** | `kind` (price/removed), `delivered`, `errors` |
 | `bot_message_sent` | Mensaje del usuario al bot @Nidokey | móvil | — |
 | `paywall_view` | Pantalla Premium vista | móvil | `from` (account/bot_limit/…) |
 | `checkout_start` | Alta Premium iniciada (URL de checkout emitida) | **servidor** | `provider` |
