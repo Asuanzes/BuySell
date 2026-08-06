@@ -217,17 +217,27 @@ export default function RecordsScreen() {
           )}
 
           {!isChat && !isFood && shown && shown.length > 0 && (
-            <View style={styles.fill}>
+            <>
               {editing && (
-                <View style={[styles.editBar, { backgroundColor: th.surfaceRaised, borderColor: th.border }]}>
+                /* Barra de salida del modo edición: fuera del scroll para que
+                   quede SIEMPRE visible (global a todas las categorías). */
+                <View style={[styles.editBar, { backgroundColor: th.surfaceRaised, borderColor: th.accent }]}>
                   <Text style={[styles.editHint, { color: th.textMuted }]} numberOfLines={1}>
                     {t("records.edit_hint")}
                   </Text>
-                  <Pressable onPress={() => setEditing(false)} hitSlop={8}>
+                  <Pressable
+                    onPress={() => setEditing(false)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("common.done")}
+                    style={[styles.editDoneBtn, { backgroundColor: th.accentSoft }]}
+                  >
                     <Text style={[styles.editDone, { color: th.accent }]}>{t("common.done")}</Text>
+                    <Ionicons name="checkmark" size={16} color={th.accent} />
                   </Pressable>
                 </View>
               )}
+              <View style={styles.fill}>
               {type === "book" && !editing ? (
                 // Libros: vista agrupada por autor (B7), plegable. El modo
                 // edición (long-press) cae a la lista plana de abajo, donde el
@@ -256,7 +266,8 @@ export default function RecordsScreen() {
                   contentStyle={styles.list}
                 />
               )}
-            </View>
+              </View>
+            </>
           )}
         </View>
 
@@ -359,6 +370,14 @@ const styles = StyleSheet.create({
   },
   editHint: { fontSize: 12, fontFamily: fonts.bodyMedium, flex: 1, marginRight: 8 },
   editDone: { fontSize: 14, fontFamily: fonts.bodyBold },
+  editDoneBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
   opFilter: {
     flexDirection: "row",
     gap: 8,
