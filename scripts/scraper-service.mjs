@@ -53,6 +53,9 @@ async function getBrowser() {
       // crashea nada más arrancar ("Target ... has been closed") → /tmp como shm.
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      // Evita que el crashpad handler falle con "--database is required"
+      // (SIGTRAP) en servicios sin HOME, aunque ya se fije HOME=/tmp.
+      "--disable-breakpad",
     ],
   });
   console.log("[scraper] browser ready");
