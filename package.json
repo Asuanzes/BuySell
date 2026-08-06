@@ -18,6 +18,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "check-listings": "tsx scripts/check-listings.ts",
+    "f0-metrics": "node --env-file=.env --import tsx scripts/f0-scraping-metrics.ts",
+    "build:runner": "node node_modules/esbuild/bin/esbuild scripts/runner-standalone.ts --bundle --platform=node --format=cjs --target=node20 --external:@prisma/client --outfile=dist/runner.cjs",
     "hash-photos": "tsx scripts/hash-existing-photos.ts",
     "fix-prices": "tsx scripts/fix-corrupt-prices.ts",
     "scraper": "node scripts/scraper-service.mjs",

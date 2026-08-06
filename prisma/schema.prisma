@@ -1,5 +1,12 @@
 generator client {
   provider = "prisma-client-js"
+  // Engines para el runner autónomo del VPS (F1 · parte 2): el cliente se
+  // genera en Windows (native) y se copia a Ubuntu. `debian-openssl-3.0.x`
+  // cubre Debian/Ubuntu con OpenSSL 3.x (22.04/24.04 y 3.x posteriores por
+  // ABI). Si la distro del VPS trae OpenSSL 4.x (26.04+), regenerar el engine
+  // EN el VPS (ver docs/DEPLOY-RUNNER.md §2) — y si Prisma aún no lo soporta,
+  // tocará subir Prisma (requiere npm, aplazado por la política de seguridad).
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

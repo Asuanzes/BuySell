@@ -1,0 +1,44 @@
+# systemd unit del runner autónomo de recheck (F1 · parte 2).
+# Instalar en /etc/systemd/system/nidokey-runner.service. Se dispara con el
+# timer `nidokey-runner.timer` (o manualmente: `systemctl start nidokey-runner`).
+# Luego:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nidokey-runner.timer
+#   sudo systemctl status nidokey-runner.timer
+#
+# Entorno en /etc/nidokey-runner.env (0600):
+#   DATABASE_URL=<Neon pooled>            # obligatoria
+#   SCRAPER_URL=http://127.0.0.1:4201     # sidecar local (default)
+#   SCRAPER_TOKEN=<token del sidecar>
+#   RUNNER_MAX_PER_RUN=1000               # 0 = sin tope (default 80)
+#   RUNNER_BUDGET_MS=0                    # 0 = sin tope de tiempo (default 280000)
+#   RUNNER_STALE_AFTER_HOURS=22
+#
+# Sin tope de tiempo: aquí no existe el maxDuration de 300 s de Vercel, así que
+# una pasada puede barrer el corpus completo. El lock interno (RUNNER_LOCK_FILE,
+# default /tmp/nidokey-runner.lock) evita pasadas solapadas.
+
+[Unit]
+Description=Nidokey listing recheck runner (standalone)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Mismo usuario de servicio que el gateway y el sidecar.
+User=nidokey
+WorkingDirectory=/opt/nidokey-runner
+EnvironmentFile=/etc/nidokey-runner.env
+ExecStart=/usr/bin/node /opt/nidokey-runner/dist/runner.cjs
+# Una pasada no debería colgarse; si pasa, la dejamos acabar en vez de matarla.
+TimeoutStartSec=0
+# Tope de RAM defensivo (el proceso solo agrega + escribe; sin navegador).
+MemoryMax=1G
+# Endurecimiento básico (igual que el sidecar).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

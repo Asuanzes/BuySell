@@ -58,6 +58,24 @@ const WORST_CASE_ITEM_MS = 55_000;
 const MAX_PER_RUN = 80;
 
 /**
+ * Lee un límite del entorno con fallback. Pensado para el runner autónomo del
+ * VPS (F1 · parte 2), donde no hay tope de 300 s y se quiere barrer más corpus:
+ *
+ *   RUNNER_MAX_PER_RUN        anuncios máx. por pasada   (0 = sin tope)
+ *   RUNNER_BUDGET_MS          presupuesto de tiempo       (0 = sin tope)
+ *   RUNNER_STALE_AFTER_HOURS  horas de ranciedad del anuncio
+ *
+ * En Vercel (cron actual) no se definen, así que el comportamiento no cambia.
+ * Un valor inválido o ausente cae al default documentado.
+ */
+function envLimit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const v = Number(raw);
+  return Number.isFinite(v) && v >= 0 ? v : fallback;
+}
+
+/**
  * Un anuncio comprobado hace menos de esto no se vuelve a tocar.
  *
  * Es la pieza que permite correr el cron varias veces al día SIN multiplicar las
@@ -297,9 +315,11 @@ export async function checkAllActiveListings(opts?: {
   /** Cuántos quedaron sin tocar en esta pasada. */
   pending: number;
 }> {
-  const limit = opts?.limit ?? MAX_PER_RUN;
-  const budgetMs = opts?.budgetMs ?? RUN_BUDGET_MS;
-  const staleAfterHours = opts?.staleAfterHours ?? STALE_AFTER_HOURS;
+  const limit = opts?.limit ?? envLimit("RUNNER_MAX_PER_RUN", MAX_PER_RUN);
+  const rawBudget = opts?.budgetMs ?? envLimit("RUNNER_BUDGET_MS", RUN_BUDGET_MS);
+  // 0 = sin tope de tiempo (runner del VPS): el bucle nunca corta por reloj.
+  const budgetMs = rawBudget === 0 ? Number.POSITIVE_INFINITY : rawBudget;
+  const staleAfterHours = opts?.staleAfterHours ?? envLimit("RUNNER_STALE_AFTER_HOURS", STALE_AFTER_HOURS);
   const startedAt = Date.now();
 
   const listings = await prisma.listing.findMany({

@@ -1,0 +1,21 @@
+# Timer del runner autónomo de recheck (F1 · parte 2).
+# Misma cadencia que el cron de GitHub Actions que sustituye (`15 */2 * * *`),
+# con un pequeño desfase y jitter para no golpear los portales siempre a la
+# misma hora. Instalar en /etc/systemd/system/nidokey-runner.timer.
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nidokey-runner.timer
+# Ver el unit de servicio: nidokey-runner.service.
+
+[Unit]
+Description=Timer del recheck de listings (cada 2 h)
+Requires=nidokey-runner.service
+
+[Timer]
+# Cada 2 h al minuto 20 (cron anterior iba al :15) + jitter aleatorio hasta 5 min.
+OnCalendar=*-*-* */2:20:00
+RandomizedDelaySec=300
+# Si el VPS estaba apagado/la pasada no corrió, ejecuta la pendiente al arrancar.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
