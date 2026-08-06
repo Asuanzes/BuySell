@@ -20,6 +20,7 @@ import {
   PORTALS,
   applyLocalFilters,
   buildSearchUrl,
+  dedupeHits,
   type PortalHit,
   type PortalKey,
   type PortalProgress,
@@ -396,7 +397,7 @@ export default function SearchScreen() {
       {isPortals ? (
         <FlatList
           data={portalHits ?? []}
-          keyExtractor={(h) => h.url}
+          keyExtractor={(h) => h.url.split(/[?#]/)[0]}
           // El check de "ya guardado" vive fuera de `data`: sin esto la fila no
           // se repinta al volver del detalle.
           extraData={savedTick}
@@ -473,7 +474,9 @@ export default function SearchScreen() {
           forceVisible={inspecting}
           onProgress={setProgress}
           onResults={(hits, debug) => {
-            const { kept, dropped } = applyLocalFilters(hits, filters);
+            const { kept: filtered, dropped } = applyLocalFilters(hits, filters);
+            // Dedup final por URL canónica (variantes de query del mismo anuncio).
+            const kept = dedupeHits(filtered);
             setPortalHits(kept);
             // Traza legible: sin esto, "0 resultados" no distingue entre página
             // no cargada, enlaces no reconocidos y filtros demasiado estrechos.

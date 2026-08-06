@@ -277,19 +277,36 @@ export function getSearchExtractorScript(
     for (var i = 0; i < anchors.length && out.length < 40; i++) {
       var a = anchors[i];
       var href = a.href;
-      if (!href || !RE.test(href) || seen[href]) continue;
+      // Dedup por URL CANÓNICA (sin query ni fragmento): Fotocasa enlaza el
+      // mismo anuncio con variantes (?from=list, ?from=srp, tracking…), y cada
+      // variante contaba como anuncio distinto → duplicados x4-5.
+      var canon = href ? href.split(/[?#]/)[0] : '';
+      if (!href || !RE.test(href) || seen[canon]) continue;
       stats.matched++;
-      seen[href] = 1;
+      seen[canon] = 1;
 
-      // Contenedor del anuncio: el ancestro más cercano que ya incluye un precio.
+      // Contenedor del anuncio: subimos SOLO hasta la tarjeta. Cruzar al grid
+      // (otro anuncio DISTINTO dentro) mezcla precios de varias fichas — el
+      // origen de "todos a 22.300 €". Se cuenta por anuncio distinto (una
+      // tarjeta puede enlazar la misma ficha varias veces: título+imagen+CTA).
       var box = a;
       for (var up = 0; up < 6 && box.parentElement; up++) {
-        if (/\\d[\\d.\\s]*\\s*\\u20AC/.test(box.innerText || '')) break;
-        box = box.parentElement;
+        var parent = box.parentElement;
+        var distinct = 0, canonSet = {};
+        var links = parent.querySelectorAll('a[href]');
+        for (var li = 0; li < links.length; li++) {
+          var c = links[li].href.split(/[?#]/)[0];
+          if (RE.test(links[li].href) && !canonSet[c]) { canonSet[c] = 1; distinct++; }
+        }
+        if (distinct > 1) break;
+        if (/\\d[\\d.\\s]*\\s*\\u20AC/.test(parent.innerText || '')) { box = parent; break; }
+        box = parent;
       }
       var text = (box.innerText || '').replace(/\\s+/g, ' ');
-      var price = priceOf(text);
-      if (price == null) price = priceFromNode(box);
+      // Preferir el nodo de precio específico (etiqueta "price") antes que el
+      // escaneo de todo el texto del cajón: menos ruido de banners.
+      var price = priceFromNode(box);
+      if (price == null) price = priceOf(text);
       if (price != null) stats.withPrice++;
       var roomsM = text.match(/(\\d+)\\s*(?:hab|dorm)/i);
       var areaM = text.match(/(\\d+)\\s*m[\\u00B22]\\b/);
@@ -297,7 +314,26 @@ export function getSearchExtractorScript(
       // Idealista aparece aunque su tarjeta no traiga el precio en texto plano.
       if (price == null && !roomsM && !areaM) { stats.noPrice++; continue; }
 
+      // Imagen: los portales cargan por lazy (data-src / data-lazy-src /
+      // data-original / <picture><source srcset>); sin esto solo Fotocasa e
+      // Idealista traían foto.
       var img = box.querySelector('img');
+      var imageUrl = null;
+      if (img) {
+        imageUrl = img.currentSrc || img.src || null;
+        if (!imageUrl) {
+          var lazy = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-original') || null;
+          if (lazy) imageUrl = lazy;
+          else {
+            var srcset = img.getAttribute('srcset') || img.getAttribute('data-srcset') || null;
+            if (srcset) imageUrl = String(srcset).split(',')[0].trim().split(' ')[0] || null;
+          }
+        }
+      }
+      if (!imageUrl) {
+        var src = box.querySelector('source[srcset], source[data-srcset]');
+        if (src) imageUrl = String(src.getAttribute('srcset') || src.getAttribute('data-srcset') || '').split(',')[0].trim().split(' ')[0] || null;
+      }
       var title = (a.innerText || '').trim() || (a.getAttribute('title') || '').trim();
       if (!title) {
         var h = box.querySelector('h2, h3, [class*="title"]');
@@ -311,7 +347,7 @@ export function getSearchExtractorScript(
         price: price,
         rooms: roomsM ? parseInt(roomsM[1], 10) : null,
         area: areaM ? parseInt(areaM[1], 10) : null,
-        imageUrl: img ? (img.currentSrc || img.src || null) : null,
+        imageUrl: imageUrl,
         portal: ${JSON.stringify(portal)}
       });
     }
@@ -486,4 +522,21 @@ export function applyLocalFilters(
     return true;
   });
   return { kept, dropped };
+}
+
+/**
+ * Dedup final por URL canónica (misma ficha enlazada con variantes de query).
+ * Doble red de seguridad: el script ya deduplica dentro de la página, pero lo
+ * que llega por `onMessage` no debe repetir anuncios entre reinyecciones.
+ */
+export function dedupeHits(hits: PortalHit[]): PortalHit[] {
+  const seen = new Set<string>();
+  const out: PortalHit[] = [];
+  for (const h of hits) {
+    const canon = h.url.split(/[?#]/)[0];
+    if (seen.has(canon)) continue;
+    seen.add(canon);
+    out.push(h);
+  }
+  return out;
 }
