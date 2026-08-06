@@ -29,8 +29,32 @@ export async function POST(req: NextRequest) {
     ? Array.from(new Set(body.ids.filter((x): x is string => typeof x === "string" && !!x)))
     : [];
 
-  if (!DEDUP_TYPES.includes(type) || ids.length < 2) {
-    return NextResponse.json({ error: "type no válido o faltan al menos 2 ids" }, { status: 400 });
+  if (type !== "property" && !DEDUP_TYPES.includes(type)) {
+    return NextResponse.json({ error: "type no válido" }, { status: 400 });
+  }
+  if (ids.length < 2) {
+    return NextResponse.json({ error: "faltan al menos 2 ids" }, { status: 400 });
+  }
+
+  // Inmuebles: el descarte vive en Property.matchDismissed (lo que respeta
+  // findSimilar y /api/properties/[id]/dismiss-match). Cada ficha se añade a
+  // la lista de descartadas de las demás.
+  if (type === "property") {
+    const props = await prisma.property.findMany({
+      where: { id: { in: ids }, ownerId },
+      select: { id: true, matchDismissed: true },
+    });
+    if (props.length !== ids.length) {
+      return NextResponse.json({ error: "No se encontraron todas las fichas" }, { status: 404 });
+    }
+    await prisma.$transaction(
+      props.map((p) => {
+        const set = new Set(p.matchDismissed);
+        for (const o of ids) if (o !== p.id) set.add(o);
+        return prisma.property.update({ where: { id: p.id }, data: { matchDismissed: [...set] } });
+      }),
+    );
+    return NextResponse.json({ ok: true, dismissed: (ids.length * (ids.length - 1)) / 2 });
   }
 
   const pairs: string[] = [];

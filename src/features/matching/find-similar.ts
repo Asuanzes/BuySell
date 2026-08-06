@@ -2,14 +2,10 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { bigrams, haversineMeters, jaccard, slugifyTitle } from "@nidokey/shared";
 import { hamming } from "@/lib/dhash";
+import { scoreCandidate, type MatchSignals } from "./score";
 
-export type MatchSignals = {
-  cadastreSame: boolean;
-  photoMatches: number; // nº de fotos coincidentes
-  titleJaccard: number; // 0..1
-  geoDistanceM: number | null;
-  builtAreaDiffPct: number | null;
-};
+export type { MatchSignals } from "./score";
+export { scoreCandidate } from "./score";
 
 export type Candidate = {
   propertyId: string;
@@ -81,6 +77,8 @@ export async function findSimilar(propertyId: string): Promise<Candidate[]> {
       titleJaccard: 0,
       geoDistanceM: null,
       builtAreaDiffPct: null,
+      rentDiffPct: null,
+      rentSameOperation: me.operationType === c.operationType,
     };
 
     // Fotos coincidentes por Hamming ≤ 8
@@ -114,6 +112,13 @@ export async function findSimilar(propertyId: string): Promise<Candidate[]> {
     if (me.builtArea && c.builtArea) {
       signals.builtAreaDiffPct =
         Math.abs(me.builtArea - c.builtArea) / Math.max(me.builtArea, c.builtArea);
+    }
+
+    // Renta mensual: señal clave para duplicados de ALQUILER (el mismo piso en
+    // dos portales suele tener la misma renta aunque el título/geo fallen).
+    if (me.monthlyRent != null && c.monthlyRent != null) {
+      signals.rentDiffPct =
+        Math.abs(me.monthlyRent - c.monthlyRent) / Math.max(me.monthlyRent, c.monthlyRent);
     }
 
     const { score, reasons } = scoreCandidate(signals);
@@ -159,53 +164,4 @@ export async function findSimilar(propertyId: string): Promise<Candidate[]> {
   }
 
   return out;
-}
-
-function scoreCandidate(s: MatchSignals): { score: number; reasons: string[] } {
-  const reasons: string[] = [];
-  let score = 0;
-
-  if (s.cadastreSame) {
-    score = Math.max(score, 100);
-    reasons.push("🏛 Misma referencia catastral");
-  }
-
-  if (s.photoMatches >= 3) {
-    score = Math.max(score, 90);
-    reasons.push(`📸 ${s.photoMatches} fotos coincidentes`);
-  } else if (s.photoMatches === 2) {
-    score = Math.max(score, 60);
-    reasons.push("📸 2 fotos coincidentes");
-  } else if (s.photoMatches === 1) {
-    score = Math.max(score, 35);
-    reasons.push("📸 1 foto coincidente");
-  }
-
-  if (s.geoDistanceM != null && s.geoDistanceM < 50) {
-    if (s.builtAreaDiffPct != null && s.builtAreaDiffPct <= 0.05) {
-      score = Math.max(score, 80);
-      reasons.push(`📍 < 50m + m² casi iguales`);
-    } else {
-      score = Math.max(score, 55);
-      reasons.push(`📍 a ${Math.round(s.geoDistanceM)}m`);
-    }
-  }
-
-  if (s.titleJaccard >= 0.7) {
-    score = Math.max(score, 75);
-    reasons.push(`📝 título ${Math.round(s.titleJaccard * 100)}% similar`);
-  } else if (s.titleJaccard >= 0.5) {
-    score = Math.max(score, 50);
-    reasons.push(`📝 título ${Math.round(s.titleJaccard * 100)}% similar`);
-  }
-
-  // Bonus: 2 señales débiles independientes suman
-  const weakHits = [
-    s.photoMatches >= 1 && s.photoMatches < 3,
-    s.titleJaccard >= 0.5,
-    s.geoDistanceM != null && s.geoDistanceM < 50,
-  ].filter(Boolean).length;
-  if (weakHits >= 2) score = Math.min(95, score + 15);
-
-  return { score: Math.min(100, score), reasons };
 }

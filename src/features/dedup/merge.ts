@@ -5,8 +5,10 @@ import {
   cryptoToBaseRecord,
   marketToBaseRecord,
   jobToBaseRecord,
+  propertyToBaseRecord,
 } from "@/lib/records/mapper";
 import { isLazyCover } from "@/features/sources/upsert";
+import { mergeProperties } from "@/features/matching/merge";
 
 /**
  * Fusión de duplicados de REGISTROS: conserva `keepId`, vuelca al superviviente
@@ -20,7 +22,7 @@ export type MergeOutcome =
   | { ok: true; record: BaseRecord; deleted: number }
   | { ok: false; code: "INVALID" | "NOT_FOUND" | "UNSUPPORTED_TYPE" };
 
-const MERGE_TYPES: RecordType[] = ["book", "crypto", "market", "job"];
+const MERGE_TYPES: RecordType[] = ["book", "crypto", "market", "job", "property"];
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +91,30 @@ export async function mergeRecords(
   const drops = Array.from(new Set(dropIds.filter((id) => typeof id === "string" && id)));
   if (!keepId || drops.length === 0 || drops.includes(keepId)) return { ok: false, code: "INVALID" };
   const ids = [keepId, ...drops];
+
+  // Inmuebles: reusa el motor inmobiliario `mergeProperties` (mueve Listings,
+  // PriceSnapshots y Media al superviviente, deduplica por phash, rellena
+  // campos vacíos y borra el origen). Owner-scoped y atómico por llamada.
+  if (type === "property") {
+    const rows = await prisma.property.findMany({ where: { id: { in: ids }, ownerId } });
+    if (rows.length !== ids.length) return { ok: false, code: "NOT_FOUND" };
+    for (const dropId of drops) {
+      try {
+        await mergeProperties(dropId, keepId);
+      } catch (e) {
+        console.error("[dedup/merge] property:", (e as Error).message);
+        return { ok: false, code: "INVALID" };
+      }
+    }
+    const survivor = await prisma.property.findUnique({
+      where: { id: keepId },
+      include: {
+        media: { orderBy: { order: "asc" }, take: 1, select: { url: true, kind: true } },
+      },
+    });
+    if (!survivor) return { ok: false, code: "NOT_FOUND" };
+    return { ok: true, record: propertyToBaseRecord(survivor), deleted: drops.length };
+  }
 
   if (type === "book") {
     const rows = await prisma.bookRecord.findMany({ where: { id: { in: ids }, ownerId } });
