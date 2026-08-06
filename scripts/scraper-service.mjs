@@ -16,6 +16,9 @@
  *
  * Entorno:
  *   SCRAPER_PORT (4201) · SCRAPER_HOST (127.0.0.1) · SCRAPER_TOKEN (opcional).
+ *   SCRAPER_CHANNEL (opcional): "chrome" usa el Google Chrome de sistema en vez
+ *   del Chromium empaquetado de Playwright — necesario en OS que Playwright aún
+ *   no soporta (p. ej. Ubuntu 26.04). Requiere `google-chrome-stable` instalado.
  * Con SCRAPER_TOKEN, /fetch exige `Authorization: Bearer <token>`.
  * Por defecto solo escucha en 127.0.0.1: nginx hace de frontera pública.
  */
@@ -25,6 +28,7 @@ import { chromium } from "playwright";
 const PORT = parseInt(process.env.SCRAPER_PORT ?? "4201", 10);
 const HOST = process.env.SCRAPER_HOST ?? "127.0.0.1";
 const TOKEN = process.env.SCRAPER_TOKEN ?? null;
+const CHANNEL = process.env.SCRAPER_CHANNEL ?? null;
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -37,8 +41,9 @@ async function getBrowser() {
     scheduleIdleClose();
     return browser;
   }
-  console.log("[scraper] launching chromium…");
+  console.log(`[scraper] launching ${CHANNEL === "chrome" ? "Google Chrome (sistema)" : "chromium"}…`);
   browser = await chromium.launch({
+    channel: CHANNEL ?? undefined,
     headless: true,
     args: [
       "--disable-blink-features=AutomationControlled",
@@ -46,7 +51,7 @@ async function getBrowser() {
       "--disable-setuid-sandbox",
     ],
   });
-  console.log("[scraper] chromium ready");
+  console.log("[scraper] browser ready");
   scheduleIdleClose();
   return browser;
 }

@@ -9,6 +9,7 @@
 #   SCRAPER_PORT=4201
 #   SCRAPER_HOST=127.0.0.1
 #   SCRAPER_TOKEN=<token compartido con Vercel>
+#   SCRAPER_CHANNEL=chrome   # si Playwright no soporta tu OS (p. ej. Ubuntu 26.04)
 #
 # Nota: si Chromium no arranca bajo el sandbox (ProtectSystem/ProtectHome),
 # comenta esas dos líneas — Playwright usa su propio user-data-dir temporal.

@@ -36,8 +36,16 @@ EOF
 
 cd /opt/nidokey-scraper
 sudo npm install --omit=dev
-# Descarga Chromium + dependencias de sistema (pide sudo por --with-deps).
-sudo npx playwright install --with-deps chromium
+
+# Camino A — OS soportado por Playwright: descarga Chromium + deps de sistema.
+#   sudo npx playwright install --with-deps chromium
+#
+# Camino B — OS NO soportado (p. ej. Ubuntu 26.04: "Playwright does not support
+# chromium on ubuntu26.04-x64"): NO ejecutes `playwright install`; usa el Google
+# Chrome de sistema con SCRAPER_CHANNEL=chrome (ver paso 2):
+#   wget -qO /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+#   sudo apt install -y /tmp/chrome.deb
+#   google-chrome --version
 
 # Prueba manual (debe imprimir "listening on http://127.0.0.1:4201").
 sudo SCRAPER_PORT=4201 SCRAPER_HOST=127.0.0.1 node scripts/scraper-service.mjs
@@ -52,6 +60,8 @@ sudo tee /etc/nidokey-scraper.env > /dev/null <<'EOF'
 SCRAPER_PORT=4201
 SCRAPER_HOST=127.0.0.1
 SCRAPER_TOKEN=REEMPLAZA_POR_UN_HEX_32
+# Solo si usas el Camino B (OS no soportado):
+# SCRAPER_CHANNEL=chrome
 EOF
 sudo chmod 600 /etc/nidokey-scraper.env
 
@@ -125,6 +135,9 @@ redeploy de las env (o el próximo push).
   idle-close (5 min) libera RAM.
 - Si Chromium no arranca bajo el sandbox del unit, comenta
   `ProtectSystem=strict` / `ProtectHome=true` en `/etc/systemd/system/nidokey-scraper.service`.
+- **Ubuntu 26.04 (OS no soportado por Playwright 1.60)**: instala
+  `google-chrome-stable` (Camino B, §1) y activa `SCRAPER_CHANNEL=chrome` en el
+  env. NO ejecutes `npx playwright install` en ese OS (falla).
 - El runner sigue en Vercel (función de 300 s). **Siguiente paso (F1-parte 2)**:
   mover el runner entero al VPS con un timer de systemd + `DATABASE_URL` de Neon
   para quitar también el límite de tiempo.
