@@ -337,7 +337,9 @@ export default function SearchScreen() {
               : t("search.portal_zone_required")}
           </Text>
           {portalDebug && (
-            <Text style={[styles.notice, { color: th.textSubtle }]}>{portalDebug}</Text>
+            // Seleccionable: el debug (p. ej. la línea "Enlaces: …") debe poder
+            // copiarse para diagnosticar portales sin pegarse capturas.
+            <Text selectable style={[styles.notice, { color: th.textSubtle }]}>{portalDebug}</Text>
           )}
         </View>
       ) : (
