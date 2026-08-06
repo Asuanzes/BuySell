@@ -49,6 +49,10 @@ async function getBrowser() {
       "--disable-blink-features=AutomationControlled",
       "--no-sandbox",
       "--disable-setuid-sandbox",
+      // En servicios systemd/containers /dev/shm suele ser pequeño y Chrome
+      // crashea nada más arrancar ("Target ... has been closed") → /tmp como shm.
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
     ],
   });
   console.log("[scraper] browser ready");
