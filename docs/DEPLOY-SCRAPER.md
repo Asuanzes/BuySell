@@ -138,6 +138,9 @@ redeploy de las env (o el próximo push).
 - **Ubuntu 26.04 (OS no soportado por Playwright 1.60)**: instala
   `google-chrome-stable` (Camino B, §1) y activa `SCRAPER_CHANNEL=chrome` en el
   env. NO ejecutes `npx playwright install` en ese OS (falla).
+- **Chrome aborta con `chrome_crashpad_handler: --database is required`**: el
+  usuario de servicio no tiene HOME. El unit ya define `HOME=/tmp` (+ XDG); si
+  editas el unit a mano, añade esas 3 líneas `Environment=` y `daemon-reload`.
 - El runner sigue en Vercel (función de 300 s). **Siguiente paso (F1-parte 2)**:
   mover el runner entero al VPS con un timer de systemd + `DATABASE_URL` de Neon
   para quitar también el límite de tiempo.

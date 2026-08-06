@@ -24,6 +24,12 @@ Type=simple
 User=nidokey
 WorkingDirectory=/opt/nidokey-scraper
 EnvironmentFile=/etc/nidokey-scraper.env
+# HOME escribible: sin él Chrome aborta al lanzar con
+# "chrome_crashpad_handler: --database is required" (el usuario no tiene home).
+# Con PrivateTmp, /tmp es un directorio privado y escribible del servicio.
+Environment=HOME=/tmp
+Environment=XDG_CONFIG_HOME=/tmp
+Environment=XDG_CACHE_HOME=/tmp
 ExecStart=/usr/bin/node /opt/nidokey-scraper/scripts/scraper-service.mjs
 Restart=always
 RestartSec=5
