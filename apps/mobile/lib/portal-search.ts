@@ -24,7 +24,7 @@ import { isRentOperation, isValidMonthlyRentEur, isValidPriceEur } from "@nidoke
  * `src/features/scraping/adapters/habitaclia.ts`; lo retirado es sólo la
  * búsqueda.
  */
-export type PortalKey = "IDEALISTA" | "FOTOCASA" | "PISOS_COM" | "MILANUNCIOS";
+export type PortalKey = "IDEALISTA" | "FOTOCASA" | "PISOS_COM";
 
 export type PortalHit = {
   url: string;
@@ -78,22 +78,11 @@ export const PORTALS: Record<PortalKey, PortalDef> = {
     saleUrl: (c) => `https://www.pisos.com/venta/pisos-${slugify(c)}/`,
     detailPattern: /-\d{5,}_\d+\/?$/,
   },
-  MILANUNCIOS: {
-    label: "Milanuncios",
-    // CIUDAD-PROVINCIA. Medido el 2026-08-03:
-    //   …-en-barcelona-barcelona/  → "Barcelona Capital"  ✅ la ciudad
-    //   …-en-barcelona/            → "Barcelona Provincia" (la provincia entera)
-    //   …-en-gijon/                → listado NACIONAL
-    //   …-en-gijon-asturias/       → "Gijón"              ✅
-    // Que en el móvil acabara en el listado nacional NO era culpa de la URL:
-    // era el aceptador de cookies de este mismo fichero clicando un botón
-    // cualquiera y navegando fuera. Desde servidor, sin nadie clicando, esta
-    // URL siempre devolvió la ciudad.
-    rentUrl: (c, p) =>
-      `https://www.milanuncios.com/alquiler-de-pisos-en-${slugify(c)}-${slugify(p)}/`,
-    saleUrl: (c, p) => `https://www.milanuncios.com/venta-de-pisos-en-${slugify(c)}-${slugify(p)}/`,
-    detailPattern: /-\d{6,}\.htm/,
-  },
+  // Milanuncios se retiró del buscador el 2026-08-06: renderiza solo ~5
+  // anuncios y el resto por lazy que el WebView no consigue cargar de forma
+  // fiable (patrón de URL correcto: /alquiler-de-pisos-en-<ciudad>-<prov>/
+  // <slug>-<id>.htm). Se mantiene su import por URL de anuncios sueltos
+  // (portal-extractors + adaptador manualOnly del servidor).
 };
 
 /**
@@ -403,8 +392,8 @@ export function getSearchExtractorScript(
   var tries = 0;
   var announcedChallenge = false;
   var MAX_TRIES = 25;
-  // Contenedores con scroll propio (el lazy de Milanuncios a veces vive en un
-  // div con overflow, no en la ventana). Se cachean una vez.
+  // Contenedores con scroll propio (el lazy a veces vive en un div con
+  // overflow, no en la ventana). Se cachean una vez.
   var scrollers = null;
   var findScrollers = function() {
     var all = document.querySelectorAll('body *');
@@ -415,6 +404,10 @@ export function getSearchExtractorScript(
     }
     return out;
   };
+  // Crecimiento de la página: sirve para saber cuándo el lazy YA cargó todo
+  // (si el scrollHeight se estanca, entregamos lo que haya; si crece, seguimos).
+  var lastHeight = 0;
+  var stableTicks = 0;
 
   // Cada vuelta informa de lo que ACABA de hacer: es lo que convierte la espera
   // en algo legible en vez de una ruedecita.
@@ -430,17 +423,17 @@ export function getSearchExtractorScript(
 
   var tick = function() {
     if (tries < 3 && acceptConsent()) say('consent', 0);
-    // Los listados cargan por scroll (Fotocasa carga tandas al bajar; Milanuncios
-    // solo renderiza ~5 y el resto por lazy). Se hace scroll por PASOS crecientes
-    // y además sobre los contenedores con scroll propio, no solo la ventana.
+    // Los listados cargan por scroll (Fotocasa/Milanuncios renderizan ~5 en el
+    // HTML y el resto por lazy). Se baja AL FONDO cada vuelta (el sentinel del
+    // lazy está abajo) y también se baja en los contenedores con scroll propio.
     try {
       if (!scrollers) scrollers = findScrollers();
-      var target = (tries + 1) * Math.max(500, window.innerHeight || 800);
-      window.scrollTo(0, target);
-      var se = document.scrollingElement || document.documentElement || document.body;
-      if (se && se.scrollTop != null) se.scrollTop = target;
+      var root = document.scrollingElement || document.documentElement || document.body;
+      var bottom = (root && root.scrollHeight) || document.body.scrollHeight || 0;
+      window.scrollTo(0, bottom);
+      if (root && root.scrollTop != null) root.scrollTop = bottom;
       for (var sc = 0; sc < scrollers.length; sc++) {
-        try { scrollers[sc].scrollTop = Math.min(scrollers[sc].scrollHeight, target); } catch (e) {}
+        try { scrollers[sc].scrollTop = scrollers[sc].scrollHeight; } catch (e) {}
       }
     } catch (e) {}
 
@@ -463,9 +456,17 @@ export function getSearchExtractorScript(
     // "slow" a partir de ~10 s: si el portal tarda, decirlo es más honesto que
     // repetir "leyendo anuncios" veinte veces.
     say(tries === 0 ? 'opening' : (Date.now() - t0 > 10000 ? 'slow' : 'scanning'), hits.length);
-    // Entrega en cuanto hay material: dos vueltas más si aún entran pocos, por
-    // si el scroll está trayendo la siguiente tanda.
-    if (hits.length >= 8 || (hits.length > 0 && tries >= 4)) return finish(hits);
+
+    // Cuándo entregar: NO basta con "tengo algo" — Fotocasa/Milanuncios
+    // renderizan ~5 y el resto por lazy; entregar con 5 cortaba la carga.
+    // Se entrega con 20+, o cuando la página deja de crecer 3 vueltas (el lazy
+    // ya cargó todo lo que iba a cargar), o al agotar el tiempo.
+    var root = document.scrollingElement || document.documentElement || document.body;
+    var height = (root && root.scrollHeight) || 0;
+    if (height <= lastHeight) stableTicks++; else { stableTicks = 0; lastHeight = height; }
+    if (hits.length >= 20 || (hits.length >= 4 && stableTicks >= 3) || (hits.length > 0 && tries >= MAX_TRIES)) {
+      return finish(hits);
+    }
     if (tries++ < MAX_TRIES) { setTimeout(tick, 1200); return; }
     finish(hits);
   };
