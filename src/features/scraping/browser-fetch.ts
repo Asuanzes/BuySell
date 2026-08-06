@@ -11,6 +11,7 @@
  */
 
 const SCRAPER_URL = process.env.SCRAPER_URL ?? "http://127.0.0.1:4201";
+const SCRAPER_TOKEN = process.env.SCRAPER_TOKEN ?? null;
 
 export type BrowserFetchResult =
   | { kind: "ok"; html: string; status: number; finalUrl: string }
@@ -22,7 +23,10 @@ export async function browserFetchPage(url: string, timeoutMs = 30000): Promise<
   try {
     const res = await fetch(`${SCRAPER_URL}/fetch`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(SCRAPER_TOKEN ? { Authorization: `Bearer ${SCRAPER_TOKEN}` } : {}),
+      },
       body: JSON.stringify({ url, timeoutMs }),
       // El sidecar puede tardar ~3-10s en respuestas complejas
       signal: AbortSignal.timeout(timeoutMs + 5000),

@@ -1,0 +1,39 @@
+# systemd unit del sidecar de scraping (Playwright). Instalar en
+# /etc/systemd/system/nidokey-scraper.service. Ajusta User/WorkingDirectory a
+# tu despliegue. Luego:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nidokey-scraper
+#   sudo systemctl status nidokey-scraper
+#
+# Entorno en /etc/nidokey-scraper.env (0600):
+#   SCRAPER_PORT=4201
+#   SCRAPER_HOST=127.0.0.1
+#   SCRAPER_TOKEN=<token compartido con Vercel>
+#
+# Nota: si Chromium no arranca bajo el sandbox (ProtectSystem/ProtectHome),
+# comenta esas dos líneas — Playwright usa su propio user-data-dir temporal.
+
+[Unit]
+Description=Nidokey scraping sidecar (Playwright)
+After=network.target
+
+[Service]
+Type=simple
+# Usuario sin privilegios (créalo: sudo useradd --system --no-create-home nidokey)
+User=nidokey
+WorkingDirectory=/opt/nidokey-scraper
+EnvironmentFile=/etc/nidokey-scraper.env
+ExecStart=/usr/bin/node /opt/nidokey-scraper/scripts/scraper-service.mjs
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+# Tope de RAM: si el proceso se descontrola, systemd lo mata y Restart lo relanza.
+MemoryMax=2G
+# Endurecimiento básico
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

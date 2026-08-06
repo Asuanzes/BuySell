@@ -14,13 +14,17 @@
  *   resp: { ok: true,  html, status, finalUrl }
  *      o { ok: false, error, code }
  *
- * Por seguridad solo escucha en 127.0.0.1.
+ * Entorno:
+ *   SCRAPER_PORT (4201) · SCRAPER_HOST (127.0.0.1) · SCRAPER_TOKEN (opcional).
+ * Con SCRAPER_TOKEN, /fetch exige `Authorization: Bearer <token>`.
+ * Por defecto solo escucha en 127.0.0.1: nginx hace de frontera pública.
  */
 import http from "node:http";
 import { chromium } from "playwright";
 
 const PORT = parseInt(process.env.SCRAPER_PORT ?? "4201", 10);
-const HOST = "127.0.0.1";
+const HOST = process.env.SCRAPER_HOST ?? "127.0.0.1";
+const TOKEN = process.env.SCRAPER_TOKEN ?? null;
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -96,9 +100,17 @@ function sendJson(res, status, body) {
   res.end(buf);
 }
 
+function authorized(req) {
+  if (!TOKEN) return true; // sin token configurado → solo acceso local
+  return (req.headers.authorization ?? "") === `Bearer ${TOKEN}`;
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/healthz") {
     return sendJson(res, 200, { ok: true, ts: Date.now() });
+  }
+  if (!authorized(req)) {
+    return sendJson(res, 401, { ok: false, error: "No autorizado" });
   }
   if (req.method !== "POST" || req.url !== "/fetch") {
     return sendJson(res, 404, { ok: false, error: "Not found" });
