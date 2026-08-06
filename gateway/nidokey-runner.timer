@@ -12,7 +12,9 @@ Requires=nidokey-runner.service
 
 [Timer]
 # Cada 2 h al minuto 20 (cron anterior iba al :15) + jitter aleatorio hasta 5 min.
-OnCalendar=*-*-* */2:20:00
+# Nota: systemd NO acepta `*/2` en la hora; la forma canónica es `0/2`
+# (empieza en hora 0 y salta de 2 en 2). Ver man systemd.time.
+OnCalendar=*-*-* 0/2:20:00
 RandomizedDelaySec=300
 # Si el VPS estaba apagado/la pasada no corrió, ejecuta la pendiente al arrancar.
 Persistent=true
