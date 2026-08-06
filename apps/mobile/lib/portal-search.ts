@@ -320,8 +320,16 @@ export function getSearchExtractorScript(
         }
       }
       if (!imageUrl) {
+        // Algunos portales (p. ej. pisos.com) pintan la foto como background o
+        // en un <picture><source>; el <img> puede ser un placeholder/icono.
+        var bgEl = box.querySelector('[style*="background"], [class*="thumb"], [class*="photo"], [class*="image"]');
+        if (bgEl) {
+          var st = bgEl.getAttribute('style') || '';
+          var m = st.match(/url\(["']?([^"')]+)["']?\)/);
+          if (m) imageUrl = m[1];
+        }
         var src = box.querySelector('source[srcset], source[data-srcset]');
-        if (src) imageUrl = String(src.getAttribute('srcset') || src.getAttribute('data-srcset') || '').split(',')[0].trim().split(' ')[0] || null;
+        if (!imageUrl && src) imageUrl = String(src.getAttribute('srcset') || src.getAttribute('data-srcset') || '').split(',')[0].trim().split(' ')[0] || null;
       }
       // Título: preferir el elemento de título dedicado. En Fotocasa la tarjeta
       // entera (badges "Líder de zona", contador "1/34", "video del inmueble" y
@@ -424,16 +432,21 @@ export function getSearchExtractorScript(
   var tick = function() {
     if (tries < 3 && acceptConsent()) say('consent', 0);
     // Los listados cargan por scroll (Fotocasa/Milanuncios renderizan ~5 en el
-    // HTML y el resto por lazy). Se baja AL FONDO cada vuelta (el sentinel del
-    // lazy está abajo) y también se baja en los contenedores con scroll propio.
+    // HTML y el resto por lazy). Scroll por PASOS de ~1 viewport: el salto
+    // directo al fondo a veces NO dispara el IntersectionObserver del lazy
+    // (pasarse del sentinel no lo re-triggerea). También en contenedores con
+    // scroll propio.
     try {
       if (!scrollers) scrollers = findScrollers();
+      var step = Math.max(600, (window.innerHeight || 800) * 0.8);
+      var target = (tries + 1) * step;
       var root = document.scrollingElement || document.documentElement || document.body;
       var bottom = (root && root.scrollHeight) || document.body.scrollHeight || 0;
-      window.scrollTo(0, bottom);
-      if (root && root.scrollTop != null) root.scrollTop = bottom;
+      if (target > bottom) target = bottom;
+      window.scrollTo(0, target);
+      if (root && root.scrollTop != null) root.scrollTop = target;
       for (var sc = 0; sc < scrollers.length; sc++) {
-        try { scrollers[sc].scrollTop = scrollers[sc].scrollHeight; } catch (e) {}
+        try { scrollers[sc].scrollTop = Math.min(scrollers[sc].scrollHeight, (tries + 1) * step); } catch (e) {}
       }
     } catch (e) {}
 
@@ -458,13 +471,14 @@ export function getSearchExtractorScript(
     say(tries === 0 ? 'opening' : (Date.now() - t0 > 10000 ? 'slow' : 'scanning'), hits.length);
 
     // Cuándo entregar: NO basta con "tengo algo" — Fotocasa/Milanuncios
-    // renderizan ~5 y el resto por lazy; entregar con 5 cortaba la carga.
-    // Se entrega con 20+, o cuando la página deja de crecer 3 vueltas (el lazy
-    // ya cargó todo lo que iba a cargar), o al agotar el tiempo.
+    // renderizan ~5 y el resto por lazy; entregar con 5 cortaba la carga. Se
+    // sigue hasta 20+, o cuando la página deja de crecer 3 vueltas (lazy
+    // agotado). Con ≥2 hallados y página estable se entrega YA (no 30 s
+    // esperando en vano cuando el portal no carga más).
     var root = document.scrollingElement || document.documentElement || document.body;
     var height = (root && root.scrollHeight) || 0;
     if (height <= lastHeight) stableTicks++; else { stableTicks = 0; lastHeight = height; }
-    if (hits.length >= 20 || (hits.length >= 4 && stableTicks >= 3) || (hits.length > 0 && tries >= MAX_TRIES)) {
+    if (hits.length >= 20 || (hits.length >= 2 && stableTicks >= 3) || (hits.length > 0 && tries >= MAX_TRIES)) {
       return finish(hits);
     }
     if (tries++ < MAX_TRIES) { setTimeout(tick, 1200); return; }
