@@ -15,13 +15,9 @@ name: listings-check
 # demás vacían lo que no cupo.
 
 on:
-  schedule:
-    # Cada 2 h. NO significa recomprobar cada anuncio 12 veces al día: el runner
-    # ignora lo comprobado en las últimas STALE_AFTER_HOURS (22 h, ver
-    # src/features/scraping/runner.ts), así que las pasadas extra sólo drenan la
-    # cola pendiente. Cada una procesa como mucho MAX_PER_RUN anuncios y para al
-    # agotar su presupuesto de tiempo.
-    - cron: "15 */2 * * *"
+  # Desactivado el 2026-08-06: el recheck corre ahora en el VPS
+  # (nidokey-runner.timer, cada 2 h) — ver docs/DEPLOY-RUNNER.md. Se conserva
+  # solo el disparo manual por si hace falta una pasada a demanda.
   workflow_dispatch: {} # botón manual (pestaña Actions)
 
 concurrency:
