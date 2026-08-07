@@ -73,3 +73,11 @@ docs/auditoria-riesgos-mejoras.pdf
 
 # Índice local compartido por Codex y Claude Code.
 .graphrag/
+
+# Tooling de skills de agentes (skills CLI: instalación local, no del producto).
+.agents/
+.claude/skills/
+skills-lock.json
+
+# Salidas de trabajo de agentes (previews de diseño, artefactos de tareas).
+artifacts/
