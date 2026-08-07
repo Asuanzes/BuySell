@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -65,12 +65,14 @@ export default function RecordsScreen() {
   // Modo edición (pulsación larga): muestra ✕ para borrar. Sale al cambiar de
   // tipo o si la lista queda vacía.
   const [editing, setEditing] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   // Filtro de operación (solo Inmuebles): Todo / Venta / Alquiler. Client-side
   // sobre meta.operationType — no necesita endpoint nuevo. Se resetea al cambiar
   // de categoría.
   const [opFilter, setOpFilter] = useState<"ALL" | "SALE" | "RENT" | "RENT_TO_OWN">("ALL");
-  useEffect(() => { setEditing(false); setOpFilter("ALL"); }, [type]);
-  useEffect(() => { if (records && records.length === 0) setEditing(false); }, [records]);
+  useEffect(() => { setEditing(false); setComparing(false); setCompareIds([]); setOpFilter("ALL"); }, [type]);
+  useEffect(() => { if (records && records.length === 0) { setEditing(false); setComparing(false); setCompareIds([]); } }, [records]);
 
   // Orden manual local: aplica el orden guardado (SecureStore) a los registros
   // traídos. `draggingRef` evita que un refetch en segundo plano pise un
@@ -106,8 +108,6 @@ export default function RecordsScreen() {
     }
   }
 
-  if (state.kind !== "authed") return null;
-
   const cfg = RECORD_TYPE_CONFIG[type];
   const trendsColor = categoryColor("trends", dark, appStyle);
   const ordered = items ?? records;
@@ -129,6 +129,37 @@ export default function RecordsScreen() {
           return !isRentOperation(op);
         })
       : ordered;
+  const canCompareShown = type === "property" && !editing && shown != null && shown.length >= 2;
+  const compareSelectedSet = useMemo(() => new Set(compareIds), [compareIds]);
+  useEffect(() => {
+    if (!shown) return;
+    const visibleIds = new Set(shown.map((r) => r.id));
+    setCompareIds((ids) => {
+      const next = ids.filter((id) => visibleIds.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [shown]);
+
+  function toggleCompare(record: BaseRecord) {
+    setCompareIds((ids) => {
+      if (ids.includes(record.id)) return ids.filter((id) => id !== record.id);
+      if (ids.length >= 3) return ids;
+      return [...ids, record.id];
+    });
+  }
+
+  function startCompareSelection() {
+    setEditing(false);
+    setComparing(true);
+    setCompareIds([]);
+  }
+
+  function openCompare() {
+    if (compareIds.length < 2) return;
+    router.push(`/property/compare?ids=${encodeURIComponent(compareIds.join(","))}` as never);
+  }
+
+  if (state.kind !== "authed") return null;
 
   return (
     <Screen background backgroundCategory={type}>
@@ -177,6 +208,24 @@ export default function RecordsScreen() {
                   </Pressable>
                 );
               })}
+            </View>
+          )}
+
+          {canCompareShown && !comparing && (
+            <View style={styles.compareStartWrap}>
+              <Pressable
+                testID="compare-start"
+                onPress={startCompareSelection}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.compareStart,
+                  { backgroundColor: th.accentSoft, borderColor: th.accent },
+                  pressed && { opacity: 0.78 },
+                ]}
+              >
+                <Ionicons name="git-compare-outline" size={17} color={th.accent} />
+                <Text style={[styles.compareStartText, { color: th.accent }]}>{t("records.compare_start")}</Text>
+              </Pressable>
             </View>
           )}
 
@@ -240,6 +289,38 @@ export default function RecordsScreen() {
                   </Pressable>
                 </View>
               )}
+              {comparing && (
+                <View style={[styles.editBar, { backgroundColor: th.surfaceRaised, borderColor: th.accent }]}>
+                  <Text style={[styles.editHint, { color: th.textMuted }]} numberOfLines={1}>
+                    {t("records.compare_hint")}
+                  </Text>
+                  <Pressable
+                    testID="compare-cta"
+                    onPress={openCompare}
+                    disabled={compareIds.length < 2}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: compareIds.length < 2 }}
+                    style={[
+                      styles.compareCta,
+                      { backgroundColor: compareIds.length >= 2 ? th.accent : th.surface, borderColor: th.accent },
+                      compareIds.length < 2 && { opacity: 0.55 },
+                    ]}
+                  >
+                    <Text style={[styles.compareCtaText, { color: compareIds.length >= 2 ? "#fff" : th.accent }]}>
+                      {t("records.compare_cta", { count: compareIds.length })}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => { setComparing(false); setCompareIds([]); }}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("common.cancel")}
+                    style={[styles.compareCancel, { backgroundColor: th.surface }]}
+                  >
+                    <Ionicons name="close" size={18} color={th.textMuted} />
+                  </Pressable>
+                </View>
+              )}
               <View style={styles.fill}>
               {type === "book" && !editing ? (
                 // Libros: vista agrupada por autor (B7), plegable. El modo
@@ -257,6 +338,10 @@ export default function RecordsScreen() {
                 <ReorderableRecordList
                   data={shown}
                   editing={editing}
+                  selecting={comparing}
+                  selectedIds={compareSelectedSet}
+                  selectionLimit={3}
+                  onToggleSelected={toggleCompare}
                   refreshing={refreshing}
                   onRefresh={refetch}
                   onEnterEdit={() => setEditing(true)}
@@ -402,6 +487,32 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   opChipText: { fontSize: 12, fontFamily: fonts.bodySemibold },
+  compareStartWrap: { paddingHorizontal: 12, paddingTop: 6 },
+  compareStart: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  compareStartText: { fontSize: 13, fontFamily: fonts.bodyBold },
+  compareCta: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  compareCtaText: { fontSize: 13, fontFamily: fonts.bodyBold },
+  compareCancel: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
   rail: {
     width: 60,

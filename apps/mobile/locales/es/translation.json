@@ -282,7 +282,35 @@
     "op_rent": "Alquiler",
     "op_rent_to_own": "Con opción",
     "filter_empty_title": "Sin resultados",
-    "filter_empty_desc": "No hay inmuebles para este filtro."
+    "filter_empty_desc": "No hay inmuebles para este filtro.",
+    "compare_start": "Comparar",
+    "compare_hint": "Elige 2 o 3 inmuebles",
+    "compare_cta": "Comparar ({{count}})",
+    "compare_selected_label": "{{title}} seleccionado para comparar",
+    "compare_unselected_label": "{{title}} no seleccionado para comparar"
+  },
+  "compare": {
+    "title": "Comparar inmuebles",
+    "insufficient_title": "Elige al menos 2 inmuebles",
+    "error_title": "No se pudo cargar la comparativa",
+    "error_message": "Error desconocido",
+    "mixed_notice": "Has mezclado venta y alquiler. Puedes compararlos, pero revisa cada fila de precio por separado.",
+    "per_sqm": "{{value}}/m²",
+    "per_sqm_month": "{{value}}/m²·mes",
+    "best_value": "Mejor valor",
+    "area_sqm": "{{value}} m²",
+    "rows": {
+      "salePrice": "Precio venta",
+      "rentPrice": "Renta mensual",
+      "pricePerSqm": "€/m²",
+      "builtArea": "Superficie",
+      "rooms": "Habitaciones",
+      "bathrooms": "Baños",
+      "floor": "Planta",
+      "location": "Ciudad y zona",
+      "status": "Estado",
+      "portal": "Portal"
+    }
   },
   "matches": {
     "load_error": "No se pudieron cargar los duplicados",

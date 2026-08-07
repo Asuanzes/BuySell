@@ -282,7 +282,35 @@
     "op_rent": "Rent",
     "op_rent_to_own": "Rent-to-own",
     "filter_empty_title": "No results",
-    "filter_empty_desc": "No properties for this filter."
+    "filter_empty_desc": "No properties for this filter.",
+    "compare_start": "Compare",
+    "compare_hint": "Choose 2 or 3 properties",
+    "compare_cta": "Compare ({{count}})",
+    "compare_selected_label": "{{title}} selected for comparison",
+    "compare_unselected_label": "{{title}} not selected for comparison"
+  },
+  "compare": {
+    "title": "Compare properties",
+    "insufficient_title": "Choose at least 2 properties",
+    "error_title": "Could not load the comparison",
+    "error_message": "Unknown error",
+    "mixed_notice": "You mixed sale and rental properties. You can compare them, but check each price row separately.",
+    "per_sqm": "{{value}}/m²",
+    "per_sqm_month": "{{value}}/m²/month",
+    "best_value": "Best value",
+    "area_sqm": "{{value}} m²",
+    "rows": {
+      "salePrice": "Sale price",
+      "rentPrice": "Monthly rent",
+      "pricePerSqm": "€/m²",
+      "builtArea": "Area",
+      "rooms": "Bedrooms",
+      "bathrooms": "Bathrooms",
+      "floor": "Floor",
+      "location": "City and area",
+      "status": "Status",
+      "portal": "Portal"
+    }
   },
   "matches": {
     "load_error": "Couldn't load duplicates",

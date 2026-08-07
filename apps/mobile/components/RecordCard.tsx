@@ -37,6 +37,11 @@ type CardProps = {
   record: BaseRecord;
   /** Modo edición: muestra el botón ✕ para borrar. */
   editing?: boolean;
+  selecting?: boolean;
+  selected?: boolean;
+  selectionDisabled?: boolean;
+  selectionTestID?: string;
+  onToggleSelected?: (record: BaseRecord) => void;
   /** Pulsación larga sobre la tarjeta (entra en modo edición). */
   onLongPress?: () => void;
   /** Borrado: lo gestiona la pantalla (confirma + llama al backend). */
@@ -68,6 +73,20 @@ function DeleteBadge({ onPress }: { onPress: () => void }) {
     >
       <Ionicons name="close" size={15} color="#fff" />
     </Pressable>
+  );
+}
+
+function SelectionBadge({ selected }: { selected: boolean }) {
+  const { th } = useTheme();
+  return (
+    <View
+      style={[
+        styles.selectionBadge,
+        { borderColor: selected ? th.accent : th.border, backgroundColor: selected ? th.accent : th.surfaceRaised },
+      ]}
+    >
+      {selected && <Ionicons name="checkmark" size={16} color="#fff" />}
+    </View>
   );
 }
 
@@ -349,7 +368,17 @@ const PORTAL_LABEL: Record<string, string> = {
   INDOMIO: "Indomio",
 };
 
-function DefaultCard({ record, editing, onLongPress, onDelete }: CardProps) {
+function DefaultCard({
+  record,
+  editing,
+  selecting,
+  selected,
+  selectionDisabled,
+  selectionTestID,
+  onToggleSelected,
+  onLongPress,
+  onDelete,
+}: CardProps) {
   const { th, dark } = useTheme();
   const { appStyle } = useAppStyle();
   const compact = appStyle === "operativo";
@@ -362,15 +391,31 @@ function DefaultCard({ record, editing, onLongPress, onDelete }: CardProps) {
 
   return (
     <Pressable
-      onPress={() => { if (!editing) router.push(`/${record.type}/${record.id}` as never); }}
+      testID={selectionTestID}
+      onPress={() => {
+        if (selecting) {
+          if (!selectionDisabled || selected) onToggleSelected?.(record);
+          return;
+        }
+        if (!editing) router.push(`/${record.type}/${record.id}` as never);
+      }}
       onLongPress={onLongPress ? () => fireLongPress(onLongPress) : undefined}
       delayLongPress={300}
+      accessibilityRole="button"
+      accessibilityLabel={
+        selecting
+          ? t(selected ? "records.compare_selected_label" : "records.compare_unselected_label", { title: record.title })
+          : undefined
+      }
+      accessibilityState={selecting ? { selected: !!selected, disabled: !!selectionDisabled && !selected } : undefined}
       style={({ pressed }) => [
         styles.card,
         styles.narrowCard,
         styles.propCard,
         th.elevation.sm,
         { backgroundColor: th.surfaceRaised, borderColor: th.border },
+        selecting && { borderColor: selected ? th.accent : th.border },
+        selectionDisabled && !selected && { opacity: 0.55 },
         compact && { borderRadius: th.radii.lg, padding: 8, gap: 10, marginBottom: 7 },
         pressed && !editing && { opacity: 0.82, transform: [{ translateY: 1 }] },
       ]}
@@ -414,6 +459,7 @@ function DefaultCard({ record, editing, onLongPress, onDelete }: CardProps) {
       </View>
 
       {editing && onDelete && <DeleteBadge onPress={() => onDelete(record)} />}
+      {selecting && <SelectionBadge selected={!!selected} />}
     </Pressable>
   );
 }
@@ -536,6 +582,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
+  },
+  selectionBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 4,
   },
   // crypto
   cryptoCard: { padding: 14 },

@@ -53,6 +53,10 @@ type Props = {
   /** Long-press sobre una ficha (entra en modo edición). */
   onEnterEdit: () => void;
   onDelete: (record: BaseRecord) => void;
+  selecting?: boolean;
+  selectedIds?: Set<string>;
+  selectionLimit?: number;
+  onToggleSelected?: (record: BaseRecord) => void;
   /** Reordenado en vivo durante el arrastre (no persiste). */
   onReorder: (next: BaseRecord[]) => void;
   /** Al soltar: persiste el orden final (lista de ids). */
@@ -77,6 +81,10 @@ export function ReorderableRecordList({
   onRefresh,
   onEnterEdit,
   onDelete,
+  selecting = false,
+  selectedIds,
+  selectionLimit = 3,
+  onToggleSelected,
   onReorder,
   onCommit,
   onDragStart,
@@ -137,6 +145,10 @@ export function ReorderableRecordList({
       dragTY={dragTY}
       onEnterEdit={onEnterEdit}
       onDelete={onDelete}
+      selecting={selecting}
+      selected={selectedIds?.has(record.id) ?? false}
+      selectionDisabled={selecting && !(selectedIds?.has(record.id) ?? false) && (selectedIds?.size ?? 0) >= selectionLimit}
+      onToggleSelected={onToggleSelected}
       onMeasure={(h) => heights.current.set(record.id, h)}
       onStart={() => startDrag(record.id)}
       onUpdate={(ty) => updateDrag(record.id, ty)}
@@ -153,7 +165,7 @@ export function ReorderableRecordList({
       // Las filas dependen de `editing` además de `data`: sin esto las celdas
       // visibles no se repintan al entrar/salir de edición. (El resaltado de la
       // ficha activa va por shared values, no necesita re-render.)
-      extraData={editing}
+      extraData={{ editing, selecting, selectedIds }}
       scrollEnabled={activeId == null}
       // En Android el clipping nativo recorta vistas TRANSFORMADAS fuera de su
       // frame original: la ficha arrastrada (translateY) desaparecería al salir
@@ -175,6 +187,10 @@ type RowProps = {
   dragTY: SharedValue<number>;
   onEnterEdit: () => void;
   onDelete: (record: BaseRecord) => void;
+  selecting: boolean;
+  selected: boolean;
+  selectionDisabled: boolean;
+  onToggleSelected?: (record: BaseRecord) => void;
   onMeasure: (height: number) => void;
   onStart: () => void;
   onUpdate: (translationY: number) => void;
@@ -188,6 +204,10 @@ function Row({
   dragTY,
   onEnterEdit,
   onDelete,
+  selecting,
+  selected,
+  selectionDisabled,
+  onToggleSelected,
   onMeasure,
   onStart,
   onUpdate,
@@ -231,7 +251,15 @@ function Row({
   if (!editing) {
     return (
       <Animated.View testID={`record-row-${id}`} onLayout={onLayout}>
-        <RecordCard record={record} onLongPress={onEnterEdit} />
+        <RecordCard
+          record={record}
+          selecting={selecting}
+          selected={selected}
+          selectionDisabled={selectionDisabled}
+          selectionTestID={`compare-select-${record.id}`}
+          onToggleSelected={onToggleSelected}
+          onLongPress={selecting ? undefined : onEnterEdit}
+        />
       </Animated.View>
     );
   }
@@ -240,7 +268,16 @@ function Row({
     <Animated.View onLayout={onLayout} style={animatedStyle}>
       <GestureDetector gesture={pan}>
         <View>
-          <RecordCard record={record} editing onDelete={onDelete} />
+          <RecordCard
+            record={record}
+            selecting={selecting}
+            selected={selected}
+            selectionDisabled={selectionDisabled}
+            selectionTestID={`compare-select-${record.id}`}
+            onToggleSelected={onToggleSelected}
+            editing
+            onDelete={onDelete}
+          />
         </View>
       </GestureDetector>
     </Animated.View>
