@@ -1,0 +1,39 @@
+# Smoke: home → detalle del primer registro → volver.
+#
+# Prerrequisitos: los de home-smoke.yaml.
+appId: es.nidokey.app
+tags:
+  - smoke
+---
+- runFlow:
+    file: flows/wait-home.yaml
+
+- tapOn:
+    id: "category-crypto"
+
+- extendedWaitUntil:
+    visible:
+      id: "records-list"
+    timeout: 10000
+
+# Primer registro visible (los testID llevan el id del registro: regex)
+- tapOn:
+    id: "record-row-.*"
+    index: 0
+
+# El detalle monta el HeaderBack global (gotcha iOS: el back nativo no funciona
+# con las tabs en <Slot>; por eso el back es JS y tiene testID propio)
+- extendedWaitUntil:
+    visible:
+      id: "header-back"
+    timeout: 10000
+
+- takeScreenshot: record-detail
+
+- tapOn:
+    id: "header-back"
+
+- extendedWaitUntil:
+    visible:
+      id: "records-list"
+    timeout: 10000

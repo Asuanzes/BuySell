@@ -250,6 +250,14 @@ procedimiento manual: reembolsar + cancelar inmediata en Stripe → el webhook
 3. `RESEND_API_KEY` activa y dominio de email verificado en Resend.
 4. Rebuild nativo Android con el package nuevo `es.nidokey.app`
    (`eas build -p android`) — el rename invalida los builds dev previos.
+   ⚠️ **Alineación 16 KB** (Google Play la exige para apps con target
+   Android 15+): RN 0.81/Expo 54 ya cumplen, pero hay que verificar las
+   dependencias con código nativo (`@shopify/react-native-skia`,
+   `react-native-view-shot`, `expo-share-intent`, `react-native-webview`).
+   Cómo: `npx expo-doctor` antes del build y, tras subir el `.aab`, el
+   informe de compatibilidad de Play Console (App bundle explorer → avisos
+   de "16 KB page size"). Si una librería falla, la solución es SUBIR su
+   versión, no parchear el binario.
 5. Play Console: ficha, política de privacidad (URL pública), data safety.
 6. Flip de la landing: en `src/app/page.tsx` cambiar `<ComingSoon/>` por
    `<Landing/>` y enlazar los badges de las tiendas (`StoreBadge`).

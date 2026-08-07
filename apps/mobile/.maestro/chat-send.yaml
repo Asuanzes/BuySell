@@ -1,0 +1,43 @@
+# Smoke: chat → abrir primera conversación → enviar mensaje (update optimista).
+#
+# Prerrequisitos: los de home-smoke.yaml + al menos una conversación en la
+# cuenta (el DM del bot @Nidokey vale).
+appId: es.nidokey.app
+tags:
+  - smoke
+---
+- runFlow:
+    file: flows/wait-home.yaml
+
+# El chat es una CATEGORÍA del raíl de la home, no una tab
+- tapOn:
+    id: "category-chat"
+
+- extendedWaitUntil:
+    visible:
+      id: "conversation-row-.*"
+    timeout: 10000
+
+- tapOn:
+    id: "conversation-row-.*"
+    index: 0
+
+- extendedWaitUntil:
+    visible:
+      id: "chat-input"
+    timeout: 10000
+
+- tapOn:
+    id: "chat-input"
+
+- inputText: "Prueba e2e Maestro"
+
+- tapOn:
+    id: "chat-send"
+
+# Update OPTIMISTA: la burbuja debe aparecer sin esperar al servidor
+- extendedWaitUntil:
+    visible: "Prueba e2e Maestro"
+    timeout: 5000
+
+- takeScreenshot: chat-sent

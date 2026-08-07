@@ -16,6 +16,7 @@ export function HeaderBack() {
   return (
     <Pressable
       onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+      testID="header-back"
       hitSlop={14}
       style={{ paddingHorizontal: 2, paddingVertical: 4 }}
     >

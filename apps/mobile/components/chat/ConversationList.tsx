@@ -324,6 +324,7 @@ function RowInner({ c, dark, onLongPress }: { c: ConversationDto; dark: boolean;
       onPress={() => router.push(`/chat/${c.id}` as never)}
       onLongPress={onLongPress}
       delayLongPress={350}
+      testID={`conversation-row-${c.id}`}
       accessibilityRole="button"
       accessibilityLabel={c.title}
       style={({ pressed }) => [

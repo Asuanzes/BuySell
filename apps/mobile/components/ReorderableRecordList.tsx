@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import {
   RefreshControl,
-  ScrollView,
   View,
   type LayoutChangeEvent,
+  type ListRenderItemInfo,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -23,11 +23,20 @@ import { RecordCard } from "@/components/RecordCard";
 /**
  * Lista de registros con reordenado por arrastre (orden local, ver
  * `lib/local-order.ts`). Reutiliza el modo edición de la pantalla:
- *  - Fuera de edición: ScrollView normal; toca para abrir, mantén pulsado para
- *    entrar en edición.
+ *  - Fuera de edición: lista virtualizada; toca para abrir, mantén pulsado
+ *    para entrar en edición.
  *  - En edición: cada ficha muestra ✕ (borrar) y, manteniéndola pulsada ~200ms,
  *    se "coge" y se arrastra; las demás se reacomodan con LinearTransition. El
  *    scroll se desactiva mientras se arrastra (sin conflicto de gestos).
+ *
+ * VIRTUALIZADA (Animated.FlatList): con decenas/cientos de registros el
+ * ScrollView original montaba todas las fichas de golpe. La animación de
+ * recolocación vive ahora en `itemLayoutAnimation` (nivel celda): dentro de una
+ * lista virtualizada el `layout` por fila no ve moverse su frame. Durante el
+ * arrastre se apaga a propósito: la compensación `accShift` del gesto asume
+ * saltos de layout instantáneos, no transiciones de 180ms. Las alturas de
+ * filas desmontadas caen al fallback DEFAULT_ROW_HEIGHT; los vecinos del
+ * arrastre siempre están en viewport (montados y medidos).
  *
  * Sin dependencias nativas nuevas: react-native-gesture-handler + reanimated ya
  * están en el build. El gesto corre en JS (runOnJS) y solo escribe el shared
@@ -120,38 +129,48 @@ export function ReorderableRecordList({
     onDragEnd?.();
   }
 
+  const renderItem = ({ item: record }: ListRenderItemInfo<BaseRecord>) => (
+    <Row
+      record={record}
+      editing={editing}
+      activeIdSV={activeIdSV}
+      dragTY={dragTY}
+      onEnterEdit={onEnterEdit}
+      onDelete={onDelete}
+      onMeasure={(h) => heights.current.set(record.id, h)}
+      onStart={() => startDrag(record.id)}
+      onUpdate={(ty) => updateDrag(record.id, ty)}
+      onEnd={endDrag}
+    />
+  );
+
   return (
-    <ScrollView
+    <Animated.FlatList
+      testID="records-list"
+      data={data}
+      keyExtractor={(record: BaseRecord) => record.id}
+      renderItem={renderItem}
+      // Las filas dependen de `editing` además de `data`: sin esto las celdas
+      // visibles no se repintan al entrar/salir de edición. (El resaltado de la
+      // ficha activa va por shared values, no necesita re-render.)
+      extraData={editing}
       scrollEnabled={activeId == null}
+      // En Android el clipping nativo recorta vistas TRANSFORMADAS fuera de su
+      // frame original: la ficha arrastrada (translateY) desaparecería al salir
+      // de sus bounds. Hallazgo derivado de la revisión Codex 2af6d5a6.
+      removeClippedSubviews={false}
       contentContainerStyle={contentStyle}
+      itemLayoutAnimation={activeId == null ? LinearTransition.duration(180) : undefined}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tintColor} />
       }
-    >
-      {data.map((record) => (
-        <Row
-          key={record.id}
-          record={record}
-          editing={editing}
-          isActive={activeId === record.id}
-          activeIdSV={activeIdSV}
-          dragTY={dragTY}
-          onEnterEdit={onEnterEdit}
-          onDelete={onDelete}
-          onMeasure={(h) => heights.current.set(record.id, h)}
-          onStart={() => startDrag(record.id)}
-          onUpdate={(ty) => updateDrag(record.id, ty)}
-          onEnd={endDrag}
-        />
-      ))}
-    </ScrollView>
+    />
   );
 }
 
 type RowProps = {
   record: BaseRecord;
   editing: boolean;
-  isActive: boolean;
   activeIdSV: SharedValue<string>;
   dragTY: SharedValue<number>;
   onEnterEdit: () => void;
@@ -165,7 +184,6 @@ type RowProps = {
 function Row({
   record,
   editing,
-  isActive,
   activeIdSV,
   dragTY,
   onEnterEdit,
@@ -212,18 +230,14 @@ function Row({
 
   if (!editing) {
     return (
-      <Animated.View layout={LinearTransition.duration(180)} onLayout={onLayout}>
+      <Animated.View testID={`record-row-${id}`} onLayout={onLayout}>
         <RecordCard record={record} onLongPress={onEnterEdit} />
       </Animated.View>
     );
   }
 
   return (
-    <Animated.View
-      onLayout={onLayout}
-      layout={isActive ? undefined : LinearTransition.duration(180)}
-      style={animatedStyle}
-    >
+    <Animated.View onLayout={onLayout} style={animatedStyle}>
       <GestureDetector gesture={pan}>
         <View>
           <RecordCard record={record} editing onDelete={onDelete} />

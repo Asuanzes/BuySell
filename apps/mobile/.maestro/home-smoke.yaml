@@ -1,0 +1,23 @@
+# Smoke: arranque → home con lista de registros virtualizada.
+#
+# Prerrequisitos:
+# - App instalada (dev build o build EAS) con sesión INICIADA (login OTP manual
+#   previo en el dispositivo; clearState no sirve: en iOS no borra el Keychain).
+# - La cuenta tiene registros de cripto (p. ej. scripts/seed-perf-records.mjs).
+appId: es.nidokey.app
+tags:
+  - smoke
+---
+- runFlow:
+    file: flows/wait-home.yaml
+
+# Ir a una categoría con datos garantizados por el seed
+- tapOn:
+    id: "category-crypto"
+
+- extendedWaitUntil:
+    visible:
+      id: "records-list"
+    timeout: 10000
+
+- takeScreenshot: home-records

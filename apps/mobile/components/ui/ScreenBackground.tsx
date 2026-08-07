@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import Animated, {
@@ -113,6 +113,27 @@ export function useReducedMotion(): boolean {
   return reduce;
 }
 
+/** Reinicia la intro al cambiar tema/categoría/dark y al reenfocar la
+ *  pantalla. El PRIMER render lo cubre ya `useFocusEffect` (el foco inicial):
+ *  el efecto de `animationKey` se salta esa ejecución para no disparar la
+ *  intro dos veces al montar. */
+function useIntroRestart(restartIntro: () => void, animationKey: string) {
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    restartIntro();
+  }, [animationKey, restartIntro]);
+
+  useFocusEffect(
+    useCallback(() => {
+      restartIntro();
+    }, [restartIntro])
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Vintage (acero y latón envejecido): tres dunas escalonadas + contornos.    */
 /* -------------------------------------------------------------------------- */
@@ -208,15 +229,7 @@ function DuneVintage({ category, color, th, dark, reduceMotion }: LayerProps) {
     });
   }, [progress, reduceMotion]);
 
-  useEffect(() => {
-    restartIntro();
-  }, [animationKey, restartIntro]);
-
-  useFocusEffect(
-    useCallback(() => {
-      restartIntro();
-    }, [restartIntro])
-  );
+  useIntroRestart(restartIntro, animationKey);
 
   const farDuneStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 1], [0, dark ? 0.32 : 0.54]),
@@ -357,15 +370,7 @@ function Wave2100({ category, color, th, dark, reduceMotion }: LayerProps) {
     });
   }, [progress, reduceMotion]);
 
-  useEffect(() => {
-    restartIntro();
-  }, [animationKey, restartIntro]);
-
-  useFocusEffect(
-    useCallback(() => {
-      restartIntro();
-    }, [restartIntro])
-  );
+  useIntroRestart(restartIntro, animationKey);
 
   const farStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 1], [0, dark ? 0.46 : 0.34]),

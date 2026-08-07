@@ -132,6 +132,9 @@ export default function RecordsScreen() {
 
   return (
     <Screen background backgroundCategory={type}>
+      {/* Marcador e2e (Maestro): solo existe con la sesión resuelta y la home
+          montada. Tamaño cero, invisible para las personas. */}
+      <View testID="auth-loaded" style={styles.e2eMarker} />
       <View style={styles.body}>
         {/* Contenido */}
         <View style={styles.main}>
@@ -283,6 +286,7 @@ export default function RecordsScreen() {
               <Pressable
                 key={cat}
                 onPress={() => setType(cat)}
+                testID={`category-${cat}`}
                 accessibilityRole="button"
                 accessibilityLabel={typeLabel(cat)}
                 accessibilityState={{ selected: active }}
@@ -352,6 +356,7 @@ export default function RecordsScreen() {
 }
 
 const styles = StyleSheet.create({
+  e2eMarker: { width: 0, height: 0 },
   body: { flex: 1, flexDirection: "row", paddingLeft: 4 },
   main: { flex: 1 },
   fill: { flex: 1 },

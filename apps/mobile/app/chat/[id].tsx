@@ -1121,6 +1121,7 @@ export default function ChatScreen() {
           <TextInput
             value={text}
             onChangeText={onChangeText}
+            testID="chat-input"
             placeholder={t("chat.composer_placeholder")}
             placeholderTextColor={th.textSubtle}
             multiline
@@ -1131,6 +1132,7 @@ export default function ChatScreen() {
           <Pressable
             onPress={() => void onSend()}
             disabled={composerDisabled}
+            testID="chat-send"
             accessibilityRole="button"
             accessibilityLabel={editing ? t("chat.msg_edit") : t("chat.send")}
             style={[styles.sendBtn, { backgroundColor: composerDisabled ? th.border : th.primary }]}

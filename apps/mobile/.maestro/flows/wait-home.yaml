@@ -1,0 +1,16 @@
+# Sub-flujo: arranca la app y espera a que la sesión esté resuelta.
+# El marcador `auth-loaded` (tamaño cero) solo existe con la home montada
+# y la sesión cargada — evita interactuar antes de tiempo.
+appId: es.nidokey.app
+---
+- launchApp
+
+# iOS: evita el crash kAXErrorInvalidUIElement del arranque frío (no-op en Android)
+- swipe:
+    direction: DOWN
+    duration: 100
+
+- extendedWaitUntil:
+    visible:
+      id: "auth-loaded"
+    timeout: 15000
