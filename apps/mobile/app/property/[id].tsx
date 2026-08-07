@@ -290,19 +290,6 @@ export default function PropertyDetailScreen() {
           <ActionBtn icon="create-outline" label={t("common.edit")} onPress={() => router.push(`/property/form?id=${p.id}` as never)} />
         </View>
 
-        {/* Comparativa de zona (Tier 1): ¿es buen precio? */}
-        <View style={styles.decisionBlock}>
-          <ZoneComparisonBlock
-            zone={zoneQ.data}
-            loading={zoneQ.loading}
-            currentPrice={isRent ? p.monthlyRent : p.currentPrice}
-            isRent={isRent}
-            typeLabel={p.type ? TYPE_LABEL[p.type] ?? undefined : undefined}
-            onOpenAlternative={(altId) => router.push(`/property/${altId}` as never)}
-            onAddAlternative={() => router.push("/property/form" as never)}
-          />
-        </View>
-
         {/* Chat relacionado: ¿qué se ha hablado? */}
         <View style={styles.decisionBlock}>
           <RelatedChatsBlock
@@ -312,27 +299,6 @@ export default function PropertyDetailScreen() {
             onShare={() => setShareOpen(true)}
           />
         </View>
-
-        {/* Alerta activa: acceso directo a la hoja de alertas. */}
-        {activeAlert && (
-          <View style={styles.decisionBlock}>
-            <Pressable
-              onPress={() => setAlertsOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel={t("detail.property.alert_active")}
-              style={[styles.alertChip, { backgroundColor: th.accentSoft, borderColor: th.accent }]}
-            >
-              <Ionicons name="notifications" size={16} color={th.accent} />
-              <Text style={[styles.alertChipTitle, { color: th.text }]}>
-                {t("detail.property.alert_active")}
-              </Text>
-              <Text style={[styles.alertChipBody, { color: th.textMuted }]} numberOfLines={1}>
-                {alertDescription(activeAlert, t)}
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={th.accent} />
-            </Pressable>
-          </View>
-        )}
 
         {/* Anuncios vinculados ANTES de características: es lo accionable
             (precio por portal + abrir) y compacto — una fila por anuncio. */}
@@ -385,6 +351,40 @@ export default function PropertyDetailScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        )}
+
+        {/* Comparativa de zona (Tier 1): ¿es buen precio? */}
+        <View style={styles.decisionBlock}>
+          <ZoneComparisonBlock
+            zone={zoneQ.data}
+            loading={zoneQ.loading}
+            currentPrice={isRent ? p.monthlyRent : p.currentPrice}
+            isRent={isRent}
+            typeLabel={p.type ? TYPE_LABEL[p.type] ?? undefined : undefined}
+            onOpenAlternative={(altId) => router.push(`/property/${altId}` as never)}
+            onAddAlternative={() => router.push("/property/form" as never)}
+          />
+        </View>
+
+        {/* Alerta activa: acceso directo a la hoja de alertas. */}
+        {activeAlert && (
+          <View style={styles.decisionBlock}>
+            <Pressable
+              onPress={() => setAlertsOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t("detail.property.alert_active")}
+              style={[styles.alertChip, { backgroundColor: th.accentSoft, borderColor: th.accent }]}
+            >
+              <Ionicons name="notifications" size={16} color={th.accent} />
+              <Text style={[styles.alertChipTitle, { color: th.text }]}>
+                {t("detail.property.alert_active")}
+              </Text>
+              <Text style={[styles.alertChipBody, { color: th.textMuted }]} numberOfLines={1}>
+                {alertDescription(activeAlert, t)}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={th.accent} />
+            </Pressable>
           </View>
         )}
 
