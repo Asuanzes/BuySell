@@ -155,14 +155,6 @@ export default function PropertyDetailScreen() {
         setSheetOpen(false);
         router.push(`/tools/mortgage?amount=${p.currentPrice ? Math.round(p.currentPrice / 100) : ""}` as never);
         return;
-      case "registro":
-        setSheetOpen(false);
-        router.push("/tools/registro" as never);
-        return;
-      case "ine":
-        setSheetOpen(false);
-        router.push(`/tools/ine?city=${encodeURIComponent(p.city ?? "")}` as never);
-        return;
       case "alert":
         setSheetOpen(false);
         setAlertsOpen(true);

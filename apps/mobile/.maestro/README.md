@@ -24,6 +24,7 @@ maestro studio                               # constructor interactivo
 2. **Cuenta con datos**: `node scripts/seed-perf-records.mjs --email <email>`
    crea ~100 registros (cripto/mercado/libros) vía la API real.
 3. Para `chat-send.yaml`: al menos una conversación (el DM de @Nidokey vale).
+4. Para `compare.yaml`: al menos 2 inmuebles guardados.
 
 ## Flujos
 
@@ -32,6 +33,7 @@ maestro studio                               # constructor interactivo
 | `home-smoke.yaml` | Arranque → sesión resuelta → lista de registros renderiza |
 | `record-detail.yaml` | Home → detalle del primer registro → volver (HeaderBack JS) |
 | `chat-send.yaml` | Categoría chat → conversación → enviar (update optimista <5s) |
+| `compare.yaml` | Categoría inmuebles → seleccionar 2 fichas → comparador → volver |
 
 ## Inventario de testIDs
 
@@ -41,6 +43,10 @@ maestro studio                               # constructor interactivo
 | `category-{type}` | raíl de la home | `category-crypto`, `category-chat`, … |
 | `records-list` | `ReorderableRecordList` | La FlatList virtualizada |
 | `record-row-{id}` | fila de registro (no-edición) | Seleccionar con regex `record-row-.*` |
+| `compare-start` | home de inmuebles | Entra en modo selección para comparar |
+| `compare-select-{id}` | ficha de inmueble en modo selección | Seleccionar con regex `compare-select-.*` |
+| `compare-cta` | barra de selección de comparador | Abre el comparador cuando hay 2-3 fichas seleccionadas |
+| `compare-screen` | `app/property/compare.tsx` | Pantalla del comparador cargada |
 | `conversation-row-{id}` | `chat/ConversationList` | Regex `conversation-row-.*` |
 | `chat-input` / `chat-send` | compositor de `chat/[id]` | |
 | `header-back` | `components/HeaderBack` | Back JS global (el nativo no funciona, gotcha iOS) |

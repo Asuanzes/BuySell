@@ -1,0 +1,48 @@
+# Smoke: home -> inmuebles -> seleccionar 2 fichas -> abrir comparador -> volver.
+#
+# Prerrequisitos:
+# - App instalada con sesion iniciada.
+# - La cuenta tiene >=2 inmuebles guardados.
+appId: es.nidokey.app
+tags:
+  - smoke
+---
+- runFlow:
+    file: flows/wait-home.yaml
+
+- tapOn:
+    id: "category-property"
+
+- extendedWaitUntil:
+    visible:
+      id: "records-list"
+    timeout: 10000
+
+- tapOn:
+    id: "compare-start"
+
+- tapOn:
+    id: "compare-select-.*"
+    index: 0
+
+- tapOn:
+    id: "compare-select-.*"
+    index: 1
+
+- tapOn:
+    id: "compare-cta"
+
+- extendedWaitUntil:
+    visible:
+      id: "compare-screen"
+    timeout: 10000
+
+- takeScreenshot: compare-open
+
+- tapOn:
+    id: "header-back"
+
+- extendedWaitUntil:
+    visible:
+      id: "records-list"
+    timeout: 10000

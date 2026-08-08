@@ -19,6 +19,7 @@ anonimizan (`userId → null`). Pre-login los eventos van con `deviceId` anónim
 | `login_verify_success` | OTP verificado, sesión creada | móvil | `new_user` (bool, si disponible) |
 | `onboarding_complete` | Fin del onboarding | móvil | — |
 | `record_import` | Import/alta de un registro | móvil | `type` (property/crypto/…), `kind` (url/query/isbn/manual) |
+| `compare_open` | Apertura real del comparador de inmuebles desde la home (valida la hipótesis del loop iter1) | móvil | `selected_count` (number, 2-3) |
 | `listing_import` | Import de un inmueble (URL/search) — **F0 scraping** | **servidor** | `portal`, `result` (created/updated/duplicate/error), `durationMs` |
 | `listing_recheck` | Recheck de un anuncio (cron o botón manual) — **F0 scraping** | **servidor** | `listingId`, `portal`, `outcome` (ok/gone/blocked/error), `durationMs`, `priceChanged` |
 | `listing_price_change` | Cambio de precio detectado (aplicado o rechazado por cordura) — **F0 scraping** | **servidor** | `portal`, `sanityRejected` (bool), `direction` (drop/up/flat), `pct`, `previousPrice`, `newPrice`/`attempted` |
@@ -115,6 +116,13 @@ FROM first_seen f
 LEFT JOIN "AnalyticsEvent" e
   ON e."userId" = f."userId" AND e.name = 'session_start'
   AND e."createdAt" BETWEEN f.d0 + interval '7 days' AND f.d0 + interval '8 days';
+
+-- Uso del comparador de inmuebles (30 días)
+SELECT COUNT(*) AS aperturas,
+  COUNT(DISTINCT COALESCE("userId", "deviceId")) AS usuarios_unicos,
+  ROUND(AVG(("props" ->> 'selected_count')::numeric), 2) AS inmuebles_por_comparacion
+FROM "AnalyticsEvent"
+WHERE name = 'compare_open' AND "createdAt" > now() - interval '30 days';
 ```
 
 ## Métricas principales (definiciones)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { isRentOperation, metaField, type BaseRecord } from "@nidokey/shared";
 import { useCategoryPrefs } from "@/lib/records/category-prefs-context";
@@ -26,6 +26,7 @@ import { ConversationList } from "@/components/chat/ConversationList";
 import { ReorderableRecordList } from "@/components/ReorderableRecordList";
 import { deleteRecord } from "@/lib/data/records-repository";
 import { getSavedOrder, saveOrder, applySavedOrder } from "@/lib/local-order";
+import { track } from "@/lib/analytics";
 import { AdBannerSlot, EmptyState, ResultModal, Screen } from "@/components/ui";
 import { NewsSheet } from "@/components/NewsSheet";
 import { FoodHome } from "@/components/food/FoodHome";
@@ -67,12 +68,18 @@ export default function RecordsScreen() {
   const [editing, setEditing] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const compareOpenLockedRef = useRef(false);
   // Filtro de operación (solo Inmuebles): Todo / Venta / Alquiler. Client-side
   // sobre meta.operationType — no necesita endpoint nuevo. Se resetea al cambiar
   // de categoría.
   const [opFilter, setOpFilter] = useState<"ALL" | "SALE" | "RENT" | "RENT_TO_OWN">("ALL");
   useEffect(() => { setEditing(false); setComparing(false); setCompareIds([]); setOpFilter("ALL"); }, [type]);
   useEffect(() => { if (records && records.length === 0) { setEditing(false); setComparing(false); setCompareIds([]); } }, [records]);
+  useFocusEffect(
+    useCallback(() => {
+      compareOpenLockedRef.current = false;
+    }, [])
+  );
 
   // Orden manual local: aplica el orden guardado (SecureStore) a los registros
   // traídos. `draggingRef` evita que un refetch en segundo plano pise un
@@ -156,6 +163,9 @@ export default function RecordsScreen() {
 
   function openCompare() {
     if (compareIds.length < 2) return;
+    if (compareOpenLockedRef.current) return;
+    compareOpenLockedRef.current = true;
+    track("compare_open", { selected_count: compareIds.length });
     router.push(`/property/compare?ids=${encodeURIComponent(compareIds.join(","))}` as never);
   }
 

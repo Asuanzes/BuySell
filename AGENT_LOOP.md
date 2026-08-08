@@ -3,7 +3,70 @@
 > Documento único de coordinación (regla 10). Cada agente lo consulta y
 > actualiza al intervenir. Historial de iteraciones al final.
 
-## Estado actual
+## Estado actual (iteración 2)
+
+```yaml
+iteracion: 2
+estado: implementacion
+responsable_actual: codex
+problema_usuario: >
+  La hipótesis de la iteración 1 (el comparador ayuda a decidir) no tiene
+  señal observable: sin instrumentación no sabremos si se usa. Además, el
+  panel del inmueble ofrece herramientas (Registro/INE) que solo llevan a
+  banners "pendiente" — promesa rota visible.
+evidencia:
+  - "AGENT_LOOP.md iter1 fase 8: 'Validación pendiente con usuarios: uso real del botón Comparar'"
+  - "Codex f80c615f: compare.tsx sin analytics; punto limpio de emisión = openCompare() en index.tsx:157-160; ANALITICA.md exige catalogar"
+  - "lib/records/tools.ts:39-40 marca Registro/INE enabled:true; tools/[tool].tsx:10-13 admite que son placeholders"
+hipotesis: >
+  Creemos que el equipo podrá validar (o refutar) el valor del comparador si
+  instrumentamos compare_open con el nº de seleccionados. Lo consideraremos
+  válido cuando el evento aparezca en AnalyticsEvent con count correcto y el
+  flujo Maestro compare.yaml sea reproducible.
+incremento_elegido: >
+  (1) Evento compare_open {selected_count} emitido en openCompare() + entrada
+  en docs/ANALITICA.md + flujo Maestro compare.yaml. LIMPIEZA COMPLEMENTARIA
+  acotada (eliminación, no funcionalidad nueva — regla 6 respetada): retirar
+  Registro/INE del panel de tools. Acordado: DeepSeek 41,7 vs 20,0 vs 2,2
+  (295e40af); Codex recomienda (1) con emisión en openCompare y sin PII
+  (f80c615f). POC multi-portal POSPUESTA formalmente.
+criterios_aceptacion:
+  - "compare_open se emite UNA vez por apertura real (en openCompare, no en useEffect), props solo {selected_count: 2|3}, sin ids/títulos/urls"
+  - "Entrada de catálogo para docs/ANALITICA.md redactada (la aplica Claude: docs está fuera del workspace de Codex)"
+  - "Flujo Maestro apps/mobile/.maestro/compare.yaml con los testIDs compare-* + README actualizado"
+  - "Panel del inmueble sin Registro/INE (tools.ts); tools/[tool].tsx queda como fallback no enlazado"
+  - "tsc móvil 0; npm test 0 fallos"
+archivos_reservados:
+  - "AGENT_LOOP.md (claude, claim 93ae2bb5)"
+  - "docs/ANALITICA.md (claude, claim e9bb9f06)"
+  - "apps/mobile/** (codex, task edit)"
+riesgos:
+  - "Evento duplicado por doble tap → RESUELTO: compareOpenLockedRef + reset por useFocusEffect (corrección ronda 1)"
+resultado_pruebas: "typecheck 0; npm test 502/502 — verificado por Codex y Claude en implementación y en corrección"
+revision_deepseek: "ataque REVISAR (ca9471fb: bloqueante doble-tap, cazado precisamente porque Maestro no cuenta eventos) → corrección Codex (43a78be1) → re-revisión APROBADO (c1696220)"
+decision: INTEGRAR
+siguiente_accion: "propietario: /ship cuando decida; tras unos días, correr el SQL de compare_open de docs/ANALITICA.md para validar la hipótesis de iter1"
+```
+
+### Iteración 2 — historia
+
+- Implementación (Codex 0dfdda98): compare_open en openCompare() con
+  {selected_count} sin PII; Registro/INE eliminados del panel (mortgage
+  intacto, [tool].tsx como fallback); .maestro/compare.yaml (index 0/1
+  correcto) + README; texto de catálogo entregado y aplicado por Claude en
+  docs/ANALITICA.md (fila + SQL de uso) respetando el workspace de Codex.
+- Ataque (DeepSeek ca9471fb): REVISAR — doble tap duplicaría el evento y el
+  flujo Maestro no lo detectaría. Corrección (Codex 43a78be1): lock por ref
+  con reset al foco (determinista, permite reaperturas legítimas).
+  Re-revisión (c1696220): APROBADO, cobertura del camino completo verificada.
+- Validación (Claude): los 5 criterios cumplidos; INTEGRAR.
+- Cierre y aprendizaje: la validación del valor ya no depende de opiniones —
+  el SQL del catálogo responde con datos; deuda: claves i18n huérfanas de
+  registro/ine (aceptado, limpieza futura); lección: el ciclo completo de la
+  iteración 2 costó ~20 minutos de pared con el pipeline sano — el cuello de
+  botella de la iteración 1 fue la infraestructura, no el proceso.
+
+## Iteración 1 — CERRADA (INTEGRAR, commit f8ecd1b)
 
 ```yaml
 iteracion: 1
