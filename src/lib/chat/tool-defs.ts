@@ -61,38 +61,8 @@ export const BOT_TOOLS = [
       parameters: { type: "object", properties: { type: { type: "string", enum: ["crypto", "market"] } }, required: ["type"] },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "buscar_restaurantes",
-      description:
-        "Restaurantes de comida a domicilio cerca. Usa la dirección guardada del usuario; si das 'ciudad', busca ahí. 'query' filtra por nombre/tipo (pizza, sushi…).",
-      parameters: {
-        type: "object",
-        properties: { query: { type: "string" }, ciudad: { type: "string", description: "Ciudad si no quiere usar su dirección guardada" } },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "buscar_platos",
-      description: "Busca platos concretos en restaurantes cercanos (p.ej. 'kebab', 'tarta de queso'). Usa dirección guardada o 'ciudad'.",
-      parameters: {
-        type: "object",
-        properties: { query: { type: "string" }, ciudad: { type: "string" } },
-        required: ["query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "carta_restaurante",
-      description: "Carta/menú de un restaurante por su id (restaurant_id sale de buscar_restaurantes/buscar_platos).",
-      parameters: { type: "object", properties: { restaurant_id: { type: "string" } }, required: ["restaurant_id"] },
-    },
-  },
+  // Fase 0 food OFF (2026-08-09): las tools de comida (buscar_restaurantes,
+  // buscar_platos, carta_restaurante) se retiraron con la vertical.
   {
     type: "function",
     function: {

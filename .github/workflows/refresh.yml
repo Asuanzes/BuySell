@@ -32,13 +32,7 @@ jobs:
             -H "Authorization: Bearer ${CRON_SECRET}" \
             "https://nidokey.es/api/cron/refresh?type=all"
 
-      # Worker de menús de comida enganchado AQUÍ porque este workflow sí corre fiable cada
-      # 5 min (el food-menus.yml nuevo no arrancaba su schedule). `|| true` + sin -f: si el
-      # worker falla, NO tumba el refresh de cripto. limit=3 para caber en el presupuesto.
-      - name: Ping worker de menús (comida)
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          curl -sS --max-time 70 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "https://nidokey.es/api/cron/food-menus?limit=3" || true
+      # Fase 0 food OFF (2026-08-09, autorizado): el paso "worker de menús de comida" que
+      # vivía aquí se retiró — era el único disparador real del scraping de pago
+      # (Apify/Firecrawl). Reactivar = restaurar el paso desde git log (guard en
+      # src/lib/chat/food-off.test.ts).

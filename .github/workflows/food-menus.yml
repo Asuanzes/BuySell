@@ -11,9 +11,10 @@ name: food-menus-worker
 # after() del open hace que la primera apertura sea rápida; este cron es la red de seguridad
 # y procesa lo encolado por la lista de restaurantes.
 
+# Fase 0 food OFF (2026-08-09, autorizado): schedule retirado — el vertical comida está
+# apagado y cada scrape gasta saldo Apify/Firecrawl. Queda workflow_dispatch por si hay
+# que procesar la cola manualmente al reactivar.
 on:
-  schedule:
-    - cron: "*/5 * * * *" # cada 5 min
   workflow_dispatch: {} # botón de ejecución manual (pestaña Actions)
 
 # Evita solapar ejecuciones si una tarda (el scrape puede ser largo).

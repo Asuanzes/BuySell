@@ -15,7 +15,12 @@ const ORDER_KEY = "nidokey.categories.order";
 const HIDDEN_KEY = "nidokey.categories.hidden";
 const START_KEY = "nidokey.categories.start";
 
-export const MANAGED_RECORD_TYPES: RecordType[] = RECORD_TYPES.filter((t) => t !== "trends");
+// "food" fuera desde la fase 0 (2026-08-09, PRODUCT_LOOP.md CICLO 2): al no estar
+// en el set gestionado desaparece de rail/ajustes/inicio y las prefs guardadas que
+// la referencien se descartan solas al validar contra este set (migración defensiva).
+export const MANAGED_RECORD_TYPES: RecordType[] = RECORD_TYPES.filter(
+  (t) => t !== "trends" && t !== "food"
+);
 
 const RECORD_TYPE_SET = new Set<string>(MANAGED_RECORD_TYPES);
 function isRecordType(x: unknown): x is RecordType {

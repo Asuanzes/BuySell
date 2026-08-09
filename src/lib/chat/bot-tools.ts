@@ -1,5 +1,4 @@
 import { issueMobileJwt } from "@/lib/mobile-jwt";
-import { geocodeAddress } from "@/lib/geocode";
 import { RECORD_TYPES, type BotRecordType as RecordType } from "@/lib/chat/tool-defs";
 
 /**
@@ -77,21 +76,8 @@ function compactRecords(data: unknown): unknown[] {
   }));
 }
 
-/** Coordenadas para las tools de comida: 'ciudad' (geocode) o la dirección guardada por defecto. */
-async function resolveCoords(args: Record<string, any>, token: string): Promise<{ lat: number; lng: number } | { error: string }> {
-  const city = args.ciudad ? String(args.ciudad).trim() : "";
-  if (city) {
-    const g = await geocodeAddress({ city, country: "España" });
-    if (g) return { lat: g.latitude, lng: g.longitude };
-    return { error: `No pude ubicar "${city}".` };
-  }
-  const data = (await apiGet("/api/food/addresses", token)) as any;
-  const addr = Array.isArray(data?.addresses) ? data.addresses[0] : null;
-  if (addr && typeof addr.latitude === "number" && typeof addr.longitude === "number") {
-    return { lat: addr.latitude, lng: addr.longitude };
-  }
-  return { error: "Necesito una ciudad o que el usuario tenga una dirección de entrega guardada." };
-}
+// Fase 0 food OFF (2026-08-09): resolveCoords y las tools de comida se retiraron
+// con la vertical (ver tool-defs.ts).
 
 /** Despacha UNA tool de la whitelist. Devuelve siempre un string (JSON) para el LLM. */
 export async function runTool(name: string | undefined, argsJson: string | undefined, token: string): Promise<string> {
@@ -134,50 +120,6 @@ export async function runTool(name: string | undefined, argsJson: string | undef
         const data = (await apiGet(`/api/news?type=${type}`, token)) as any;
         const items = (data?.items ?? []).slice(0, 10).map((n: any) => ({ title: n.title, source: n.source ?? null, url: n.url, at: n.publishedAt ?? null }));
         return cap(JSON.stringify(items));
-      }
-      case "buscar_restaurantes": {
-        const c = await resolveCoords(args, token);
-        if ("error" in c) return JSON.stringify({ error: c.error });
-        const q = args.query ? `&q=${encodeURIComponent(String(args.query))}` : "";
-        const data = (await apiGet(`/api/food/restaurants?lat=${c.lat}&lng=${c.lng}${q}`, token)) as any;
-        const items = (data?.restaurants ?? []).slice(0, 15).map((r: any) => ({
-          id: r?.id,
-          nombre: r?.name ?? r?.title,
-          direccion: r?.address ?? r?.formattedAddress ?? r?.vicinity ?? null,
-        }));
-        return cap(JSON.stringify(items));
-      }
-      case "buscar_platos": {
-        const query = String(args.query || "");
-        if (!query) return JSON.stringify({ error: "falta query" });
-        const c = await resolveCoords(args, token);
-        if ("error" in c) return JSON.stringify({ error: c.error });
-        const data = (await apiGet(`/api/food/search?lat=${c.lat}&lng=${c.lng}&q=${encodeURIComponent(query)}`, token)) as any;
-        const items = (data?.results ?? []).slice(0, 15).map((x: any) => ({
-          plato: x?.item?.name ?? x?.name,
-          precio_eur: typeof x?.item?.priceCents === "number" ? x.item.priceCents / 100 : null,
-          restaurante: x?.restaurant?.name ?? null,
-          restaurant_id: x?.restaurant?.id ?? null,
-        }));
-        return cap(JSON.stringify(items));
-      }
-      case "carta_restaurante": {
-        const id = String(args.restaurant_id || "");
-        if (!id) return JSON.stringify({ error: "falta restaurant_id" });
-        const data = (await apiGet(`/api/food/restaurants/${encodeURIComponent(id)}`, token)) as any;
-        const r = data?.restaurant;
-        if (!r) return JSON.stringify({ error: "restaurante no encontrado" });
-        const platos = (r.categories ?? [])
-          .flatMap((cat: any) =>
-            (cat?.items ?? []).map((it: any) => ({
-              plato: it?.name,
-              precio_eur: typeof it?.priceCents === "number" ? it.priceCents / 100 : null,
-              categoria: cat?.name ?? null,
-            })),
-          )
-          .slice(0, 50);
-        // menuStatus: si está "PENDING"/vacío, la carta se está scrapeando aún.
-        return cap(JSON.stringify({ restaurante: r?.name ?? null, menuStatus: data?.menuStatus ?? null, platos }), 4000);
       }
       case "crear_registro": {
         const type = String(args.type || "");

@@ -49,7 +49,10 @@ export type RecordTypeConfig = {
 // eliminaron al extraer i18n.
 export const RECORD_TYPE_CONFIG: Record<RecordType, RecordTypeConfig> = {
   property: { color: "#3A5F8A", colorDark: "#6E93C0", icon: "home-outline",        enabled: true,  addMode: "url" },
-  food:     { color: "#B85C38", colorDark: "#D98260", icon: "restaurant-outline",  enabled: true,  addMode: "soon" },
+  // Fase 0 food OFF (2026-08-09, autorizado): vertical apagada por decisión de
+  // producto (PRODUCT_LOOP.md CICLO 2). Además está fuera de MANAGED_RECORD_TYPES
+  // (category-prefs.ts), que es lo que la saca de rail/ajustes/inicio.
+  food:     { color: "#B85C38", colorDark: "#D98260", icon: "restaurant-outline",  enabled: false, addMode: "soon" },
   holiday:  { color: "#2C7A8A", colorDark: "#5FAEBE", icon: "airplane-outline",    enabled: true,  addMode: "wizard" },
   crypto:   { color: "#B5893B", colorDark: "#D4A95A", icon: "logo-bitcoin",        enabled: true,  addMode: "symbol" },
   market:   { color: "#2D6A4F", colorDark: "#5FA383", icon: "trending-up-outline", enabled: true,  addMode: "search" },

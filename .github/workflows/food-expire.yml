@@ -5,9 +5,10 @@ name: food-expire
 # `CRON_SECRET` DEBE coincidir con el env `CRON_SECRET` de Vercel (Production).
 # El endpoint /api/cron/food-expire valida `Authorization: Bearer $CRON_SECRET`.
 
+# Fase 0 food OFF (2026-08-09, autorizado): schedule retirado — con la UI de comida
+# apagada no se crean pedidos nuevos que expirar. Queda workflow_dispatch para barrer
+# manualmente pedidos pendientes antiguos si hiciera falta.
 on:
-  schedule:
-    - cron: "*/15 * * * *" # cada 15 min (TTL del pedido = 30 min)
   workflow_dispatch: {} # botón de ejecución manual (pestaña Actions)
 
 concurrency:
