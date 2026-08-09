@@ -5,8 +5,8 @@
 > Norma de estrategia: `docs/MODELO-NEGOCIO.md`.
 
 ```yaml
-ciclo: 2
-fase_global: auditoria
+ciclo: 3
+fase_global: estrategia
 iteracion: 1
 responsable: claude
 
@@ -38,7 +38,10 @@ riesgos: ejecutar todos los cambios a la vez fragmenta la percepción (DeepSeek)
 pruebas: n/a (sin cambios de código)
 revision_deepseek: entregada (task 1f39ac54)
 decision_final: AUTORIZADO por el propietario (2026-08-09) — fase 0 food OFF y fase 1 workout fuera del selector
-siguiente_accion: CICLO 3 (pilares y recorridos); fases 0-1 listas para implementar en CICLO 4 (Codex editor principal)
+fase_0_estado: IMPLEMENTADA Y DESPLEGADA (main 2866cc7 + e0ed36e; 509 tests; gasto Apify cortado)
+ciclo_3_estado: COMPLETADO (4 pilares, 7 recorridos, conexiones, arquitectura en capas, límites)
+coordinacion: Claude coordina y delega en DeepSeek (D3-01/02/02b registradas); Codex conserva sus tareas
+siguiente_accion: CICLO 4 iteración 1 = HANDOFF_A_CODEX de la fase 1 (workout fuera del selector); después M1 EventLog+Centro
 ```
 
 ---
@@ -384,8 +387,80 @@ Riesgo principal (DeepSeek): ejecutar (0)-(3) a la vez fragmenta la percepción 
 
 ---
 
+## CICLO 3 — Sistema diferencial (en curso 2026-08-09; coordinación: Claude delega en DeepSeek, Codex intacto)
+
+### PILARES_DIFERENCIALES (posición de Claude — dirección de producto)
+
+Se seleccionan **4 pilares** (de los 6 candidatos de la spec). Descartados como pilar: «Conocimiento local» (sin capacidad de curar datos locales; lo que existe —precio en tu zona, CartoCiudad— vive dentro de P1) y «Organización conectada» como pilar separado (sus piezas útiles quedan dentro de P2; calendario/notas/tareas se deciden en CICLO 6 con la regla anti-isla).
+
+**P1 · Contexto continuo** (M1 + M3)
+Problema: las decisiones largas pierden su historia entre sesiones y fuentes. Usuarios: todos, núcleo recurrente. Promesa: «Nidokey recuerda qué cambió y te lo enseña verificable». Funciones: EventLog aditivo, centro «Qué ha cambiado», Historia viva por ficha, alertas. Categorías: todas las activas. Datos: snapshots/rechecks/alertas existentes. Conexiones: fichas↔centro↔chat. Free: timeline reciente completo. Pago: historial ilimitado + export. Métrica: % usuarios que vuelve por un cambio (§11). Riesgos: timeline vacío en nuevos. No se construirá: ranking por urgencia con ML. Ventaja difícil de copiar: cruce multi-vertical + histórico acumulado.
+
+**P2 · Conversaciones accionables** (M2 + R1-Espacios + compartir/grupos)
+Problema: el chat y los registros viven separados fuera de property; la decisión no existe como objeto. Usuarios: parejas/grupos decidiendo, recurrentes. Promesa: «la conversación lleva la decisión encima». Funciones: puente universal ficha↔chat, espacios de decisión (v1 agrupar+cambios, v2 personas, v3 cierre), compartir registros. Categorías: todas. Datos: ChatMessage.contextType/Id, RecordShare, Decision (nueva). Conexiones: home↔fichas↔grupos↔alertas. Free: íntegro. Pago: espacios compartidos avanzados/historial (§5.1). Métrica: decisiones activas por MAU; % fichas no-property con chat vinculado. Riesgos: leak de contexto en compartidas (fix de membresía ANTES). No se construirá: colaboración en tiempo real más allá de aviso→refetch. Ventaja: el espacio se auto-alimenta de los trackers vivos.
+
+**P3 · Inteligencia revisable** (M4 + M5 + bot con confirmación)
+Problema: vigilar cuesta tiempo; la IA sin control destruye confianza. Usuarios: recurrentes y Premium. Promesa: «te resume y te reta, tú decides». Funciones: resumen y próximo paso (digest determinista + narración opcional), contrapunto del comparador, tools con confirmación y auditoría. Categorías: todas. Datos: EventLog + registros propios. Conexiones: bot↔centro↔fichas↔comparador. Free: resumen semanal completo. Pago: frecuencia/profundidad. Métrica: CTR resumen→ficha; % comparaciones con contrapunto. Riesgos: coste LLM (capar con cuota bot); alucinación (solo datos propios + provenance). No se construirá: agente que negocia o actúa solo. Ventaja: útil aunque la IA falle (núcleo determinista).
+
+**P4 · Confianza verificable** (MI1 + privacidad + moderación)
+Problema: sin confianza no hay recomendación ni pago; la afiliación invisible huele a agenda oculta. Usuarios: todos. Promesa: «sabes qué gana Nidokey y qué ve cada cual». Funciones: disclosure de afiliación con atribución (/go §8), timeline de hechos verificables, membresía en contexto compartido, audit log del bot, bloqueo/denuncia gratis + cierre de moderación. Categorías: todas + chat. Datos: AnalyticsEvent/CommercialAction. Conexiones: fichas↔chat↔cuenta. Free: TODO (la confianza nunca es Premium — principio 7). Pago: n/a. Métrica: quejas/denuncias resueltas; conversiones afiliado atribuidas. Riesgos: moderación exige flujo operativo (CICLO 7). No se construirá: reputación opaca por puntuación. Ventaja: honestidad estructural frente a portales con incentivos ocultos.
+
+### ARQUITECTURA_DE_PRODUCTO (capas, de abajo arriba)
+
+1. **Registros por vertical** (tablas existentes; sin migración física).
+2. **EventLog aditivo** (soft-ref recordType/recordId + idempotency; poblado desde snapshots/alerts/chat) — fundamento de P1/P3.
+3. **Objetos de decisión** (Decision faseada v1→v3) — fundamento de P2.
+4. **Superficies**: home (Decisiones+categorías), fichas (historia+chat+siguiente paso), centro «Qué ha cambiado», chat/grupos, resumen del bot.
+5. **Capa comercial §8** (CommercialAction, /go, postback) — transversal, P4.
+
+Orden de construcción (iteraciones CICLO 4, una por vez): fase 1 workout-out → M1 EventLog+Centro → MI1 CommercialAction viajes → M2 puente (tras fix membresía + audit bot) → M4 resumen plantilla → R1-Espacios v1 → M3 historia viva → M5 contrapunto → MI2 preparación de visita.
+
+### PROPUESTA_DE_VALOR
+
+«Nidokey es el expediente vivo de tus decisiones: vigila lo que sigues en todas tus fuentes, recuerda lo que hablasteis, te avisa de lo que cambia y te ayuda a dar el siguiente paso — contigo al mando y sin agendas ocultas.»
+
+### LIMITES_DEL_PRODUCTO
+
+No es un marketplace ni procesa transacciones; no vende ni cede datos del usuario; el bot no negocia ni actúa sin confirmación; no es super-app (food/workout fuera); no promete colaboración en tiempo real (aviso opaco→refetch); calendario/notas/tareas solo entrarán si superan la regla anti-isla del CICLO 6; sin moderación humana continua — la moderación se diseña como flujo mínimo con SLA honesto en CICLO 7.
+
+### Registro de delegaciones (protocolo Claude→DeepSeek)
+
+| ID | Tarea | Estado | Revisión de Claude |
+| --- | --- | --- | --- |
+| D3-01 | Recorridos R1-R4 (task `307405ae`) | COMPLETADA | ACEPTADA con correcciones: OTP en vez de SSO/emails; alertas 3/25 (no «5»); votación marcada (H) v3. Evidencia media-alta (citó capacidades reales). |
+| D3-02 | Recorridos R5-R7 + conexiones (task `643dfebd`) | PARCIAL→COMPLETADA | R5-R7 ACEPTADOS (corregido: comunicaciones por push+DM, export JSON); conexiones truncadas por el tope del runner → D3-02b. |
+| D3-02b | MAPA_DE_CONEXIONES (task `d5246813`) | COMPLETADA | ACEPTADA con 2 correcciones: «privacidad diferencial»→sin-PII server-side; compartir-al-grupo ya existe, (H) solo su agregación en espacios. |
+
+### MAPA_DE_RECORRIDOS (diseño DeepSeek D3-01/D3-02, revisado y corregido por Claude)
+
+Corrección global del revisor: el login es **OTP por email** (sin SSO ni emails de marketing — las comunicaciones son push + DM del bot); las alertas free/Premium son **3/25** (ya en producción); todo lo que dependa de Espacios v2/v3 va marcado (H).
+
+**R1 Visitante → cuenta**: landing activada → tienda → onboarding → OTP → opt-in push diferido. Errores: cuenta existente→login, push denegado→pedir después. Fin: home con estado vacío pedagógico (crear primera alerta/registro). Diferenciación: importar un anuncio real en el primer minuto. Monetización: ninguna (a propósito).
+**R2 Buscar → comparar → guardar → decidir**: búsqueda propia + externa (inmuebles) → filtros → comparador (2-3) → guardar → timeline. Errores: sin resultados→ampliar filtros; comparador lleno→aviso. Notif: alerta de precio configurable. Fin: registro guardado con ≥2 alternativas comparadas. Siguiente: compartir (R7). Diferenciación: coste total en el comparador. Monetización: ninguna directa (las alertas free son 3; Premium 25).
+**R3 Ficha → conversar → coordinar → cerrar**: «Qué se ha hablado»/discutir → chat con contexto → bot con confirmación → cierre con resumen → evento en EventLog. Errores: invitado sin app→enlace; bot caído→flujo manual. (H) votación/quórum = Espacios v3. Fin: registro «decidido» con resumen. Diferenciación: conversación pegada a la ficha.
+**R4 Recurrente → recupera contexto → continúa**: abrir app → centro «Qué ha cambiado» → registro pendiente → seguir (R2/R3). Errores: sesión expirada→re-login OTP; datos viejos→pull-to-refresh. Notif: resumen periódico (M4). Fin: retoma sin releer historial. Diferenciación: P1 entero. Monetización: el resumen frecuente es el gancho Premium.
+**R5 Free → Premium**: CTA contextual en ficha/centro («historial completo + resumen frecuente + export») → pantalla de beneficios → checkout web → webhook activa entitlement → toast «Premium activo» + DM del bot con lo desbloqueado. Errores: pago rechazado→reintento claro; webhook lento→estado «pendiente» visible. Fin: valor visible en la misma ficha donde nació el CTA. Guardarraíl: free íntegro, Premium no oculta datos. (IAP fuera de alcance hasta RevenueCat.)
+**R6 Privacidad/salida**: Cuenta → cancelar (acceso hasta fin de período) → export JSON (`/api/account/export`) → borrado total con confirmación (`DELETE /api/account`) → confirmación en pantalla. Errores: export falla→retry visible; sin obstáculos engañosos. Diferenciación: P4 — salir es fácil y completo.
+**R7 Decisión en grupo**: compartir ficha al grupo → el bot expande la tarjeta → discusión con criterios → (H) espacio de decisión v2 agrega criterios/pros-contras → consenso → cierre con acta vinculada. Errores: enlace sin acceso→pedir membresía; actualización = aviso→refetch (sin tiempo real). Diferenciación: P2. Monetización: (H) espacios múltiples/avanzados Premium.
+
+### MAPA_DE_CONEXIONES (DeepSeek D3-02b, revisado por Claude)
+
+1. alertas ↔ chat: el disparo llega como DM del bot con enlace a la ficha; el chat da la acción siguiente (P1→P2).
+2. ficha ↔ chat: la ficha pasa contexto («Qué se ha hablado») y el chat devuelve resúmenes y decisiones (P2, P3).
+3. comparador ↔ bot: criterios de comparación → contrapunto verificable sobre datos propios (P3, P4).
+4. home ↔ espacios de decisión: la home ordena por decisiones activas y el EventLog les da «cambios desde tu última visita» (P1, P2). (H v1+)
+5. compartidos ↔ grupos: compartir-al-grupo ya existe; su agregación en espacios compartidos es (H) v2 (P2, P4).
+6. afiliación ↔ analítica: /go + postback alimentan AnalyticsEvent server-side sin PII; el disclosure es visible al usuario (P4).
+7. centro-cambios ↔ fichas: cada entrada del centro enlaza a su ficha; la ficha muestra su historia viva del mismo EventLog (P1).
+8. cuenta/privacidad ↔ todo: membresía del contexto compartido, audit del bot y export/borrado gobiernan cualquier flujo (P4).
+
+---
+
 ## Registro de intervenciones
 
 - 2026-08-09 · claude · CICLO 1: mapa producto + inventarios + flujos rotos; Codex y DeepSeek despachados en paralelo.
 - 2026-08-09 · claude+codex+deepseek · CICLO 1.5: debate completo (15 propuestas → 6 críticas cruzadas → síntesis). Aprobadas 5 mejoras + 1 radical faseada + 3 monetizaciones indirectas; descartadas X-RAD y D-RAD (2 votos cada una). Siguiente: CICLO 2 con la dirección estratégica como filtro.
 - 2026-08-09 · claude+codex+deepseek · CICLO 2: matriz de 9 categorías con VE, decisiones y plan de migración flags-first en 5 fases. Unánime: apagar food y sacar workout — ELEVADO AL PROPIETARIO (condición de parada §9). Siguiente: CICLO 3 tras autorización.
+- 2026-08-09 · propietario · AUTORIZA fase 0 (food OFF) y fase 1 (workout fuera). Autoriza además la vía Codex manual al agotarse el cupo automático diario.
+- 2026-08-09 · claude+codex · FASE 0 IMPLEMENTADA Y DESPLEGADA (main 2866cc7 + e0ed36e): crons pausados (gasto Apify cortado), kill-switch FOOD_ENABLED en 6 endpoints, bot sin tools/menciones food, NAV_ALLOW limpio, 5 guards en food-off.test.ts; typecheck + 509 tests OK. Barrido Codex 8dc7280b integrado (7 hallazgos: 5 aceptados, 2 aplazados a CICLO 9).
+- 2026-08-09 · claude(coordinador)+deepseek · CICLO 3 COMPLETADO bajo el nuevo modelo de coordinación: pilares P1-P4 + arquitectura en capas + propuesta de valor + límites (Claude); recorridos R1-R7 y mapa de conexiones (DeepSeek D3-01/02/02b, revisados y corregidos). Siguiente: CICLO 4 iteración 1 (HANDOFF_A_CODEX fase 1 workout).
