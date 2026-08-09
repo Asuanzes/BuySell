@@ -6,14 +6,14 @@ import { getRelatedChatsForRecord } from "@/lib/chat/related-chats";
 type Ctx = { params: Promise<{ id: string }> };
 
 /**
- * GET /api/properties/[id]/related-chats
+ * GET /api/records/[id]/related-chats?type=X
  *
- * Wrapper legacy para clientes que aun llaman a la ruta de inmuebles.
+ * Conversaciones vinculadas a cualquier registro soportado por `RecordType`.
  */
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const viewerId = await requireUserId();
-  const result = await getRelatedChatsForRecord(viewerId, "property", id);
+  const result = await getRelatedChatsForRecord(viewerId, req.nextUrl.searchParams.get("type"), id);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
   return NextResponse.json({ chats: result.chats });
 }

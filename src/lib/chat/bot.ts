@@ -6,6 +6,7 @@ import { runTool, mintUserToken } from "@/lib/chat/bot-tools";
 import { runAgent, echoReply, HISTORY_TURNS, type Turn, type ToolRunner } from "@/lib/chat/agent";
 import { rateLimit } from "@/lib/rate-limit";
 import { botDailyLimit } from "@/lib/billing/entitlements";
+import { withBotWriteToolAudit } from "@/lib/chat/bot-audit";
 
 const MAX_REPLY_CHARS = 800;
 
@@ -182,7 +183,10 @@ export async function respondAsBot(conversationId: string, userId: string): Prom
     .filter((t) => t.text);
   const lastUser = [...history].reverse().find((t) => t.role === "user")?.text ?? null;
   const token = await mintUserToken(userId, user?.email ?? "");
-  const toolRunner: ToolRunner = (name, argsJson) => runTool(name, argsJson, token);
+  const toolRunner: ToolRunner = withBotWriteToolAudit(
+    (name, argsJson) => runTool(name, argsJson, token),
+    { userId, conversationId },
+  );
   const result = await runAgent(history, toolRunner);
   await replyAsBot(conversationId, result.text ?? echoReply(lastUser));
 }
