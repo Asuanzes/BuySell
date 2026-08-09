@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth-helpers";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { COMMERCIAL_ACTION_EVENTS } from "@/lib/commercial-actions";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +23,17 @@ export async function OPTIONS() {
  * formato de nombre, tope de lote y de tamaño de props. userId solo del token
  * (nunca del body): un cliente no puede atribuir eventos a otro usuario.
  * PII: no aceptamos props con email/nombre — el catálogo vive en docs/ANALITICA.md.
+ *
+ * Contrato comercial v1 (MODELO-NEGOCIO.md §8): el móvil puede emitir
+ * `commercial_action_view` y `commercial_action_click`; `/api/go` registra
+ * server-side `commercial_action_click` y `partner_redirect`. Conversiones e
+ * ingresos quedan reservados a postback/conciliación del proveedor.
  */
+export const COMMERCIAL_ANALYTICS_EVENT_NAMES = [
+  COMMERCIAL_ACTION_EVENTS.view,
+  COMMERCIAL_ACTION_EVENTS.click,
+] as const;
+
 const Ev = z.object({
   name: z.string().regex(/^[a-z0-9_.]{2,60}$/),
   ts: z.coerce.date().optional(),
