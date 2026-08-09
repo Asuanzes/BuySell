@@ -442,6 +442,13 @@
     "description": "Description",
     "source_web": "the web",
     "open_external": "Open external link",
+    "related_chats": {
+      "title": "What's been discussed",
+      "empty_title": "Coordinate the decision",
+      "empty_body": "Share this record in a chat and keep the decision in one place, with the linked messages.",
+      "share_cta": "Share in a chat",
+      "no_messages": "No messages yet"
+    },
     "property": {
       "tools_title": "Property tools",
       "photos_one": "📸 {{count}} photo",
@@ -550,6 +557,11 @@
       "add_comment": "Add a comment"
     },
     "holiday": {
+      "chat_title": "What's been discussed",
+      "chat_empty_title": "Coordinate the trip",
+      "chat_empty_body": "Share this trip in a chat and keep plans, bookings and next steps in one place.",
+      "chat_share_cta": "Share in a chat",
+      "chat_no_messages": "No messages yet",
       "status_booked": "Booked",
       "status_planning": "Planning",
       "ref_hotel": "Hotel {{ref}}",

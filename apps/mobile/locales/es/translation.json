@@ -442,6 +442,13 @@
     "description": "Descripción",
     "source_web": "la web",
     "open_external": "Abrir enlace externo",
+    "related_chats": {
+      "title": "Qué se ha hablado",
+      "empty_title": "Coordina la decisión",
+      "empty_body": "Comparte esta ficha en un chat y la decisión queda en un solo sitio, con los mensajes vinculados.",
+      "share_cta": "Compartir en un chat",
+      "no_messages": "Sin mensajes aún"
+    },
     "property": {
       "tools_title": "Herramientas del inmueble",
       "photos_one": "📸 {{count}} foto",
@@ -550,6 +557,11 @@
       "add_comment": "Añadir comentario"
     },
     "holiday": {
+      "chat_title": "Qué se ha hablado",
+      "chat_empty_title": "Coordina el viaje",
+      "chat_empty_body": "Comparte este viaje en un chat y deja planes, reservas y próximos pasos en un solo sitio.",
+      "chat_share_cta": "Compartir en un chat",
+      "chat_no_messages": "Sin mensajes aún",
       "status_booked": "Reservado",
       "status_planning": "Planificando",
       "ref_hotel": "Hotel {{ref}}",

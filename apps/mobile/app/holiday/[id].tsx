@@ -3,7 +3,7 @@ import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, V
 import { fonts } from "@/lib/fonts";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useTranslation } from "react-i18next";
 
@@ -22,6 +22,7 @@ import { getItem, setItem } from "@/lib/secure-store";
 import { useTheme } from "@/lib/theme";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+import { RelatedChatsBlock } from "@/components/records/RelatedChatsBlock";
 
 type Outcome = "yes" | "no" | "later";
 
@@ -44,6 +45,7 @@ export default function HolidayDetail() {
   const [showOutcomeQuestion, setShowOutcomeQuestion] = useState(false);
   const [outcomeAlreadyAnswered, setOutcomeAlreadyAnswered] = useState(false);
   const browserPendingRef = useRef(false);
+  const relatedChatOpenLockedRef = useRef(false);
 
   const accommodation = record ? metaField<AccommodationChoice | null>(record, "accommodation", null) : null;
   const transport = record ? metaField<TransportLeg | null>(record, "transport", null) : null;
@@ -56,6 +58,19 @@ export default function HolidayDetail() {
     if (!id || !hasBookingActions) return;
     track("commercial_action_view", { recordType: "holiday", recordId: id });
   }, [hasBookingActions, id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      relatedChatOpenLockedRef.current = false;
+    }, [])
+  );
+
+  const onOpenChat = useCallback((conversationId: string, hasPreview: boolean) => {
+    if (relatedChatOpenLockedRef.current) return;
+    relatedChatOpenLockedRef.current = true;
+    track("related_chat_open", { has_preview: hasPreview, recordType: "holiday" });
+    router.push(`/chat/${conversationId}` as never);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -233,6 +248,15 @@ export default function HolidayDetail() {
             ))}
           </View>
         )}
+
+        {id ? (
+          <RelatedChatsBlock
+            recordType="holiday"
+            recordId={id}
+            onOpenChat={onOpenChat}
+            onShare={() => setShareChatOpen(true)}
+          />
+        ) : null}
 
         {hasBookingActions ? (
           <View style={styles.bookingSection}>

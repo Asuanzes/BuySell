@@ -1,4 +1,9 @@
 import { api } from "@/lib/api";
+import {
+  type RelatedChat,
+  type RelatedChatMessage,
+  type RelatedChatsResponse,
+} from "@/lib/records/related-chats";
 
 /**
  * Dominio "property": tipos de detalle y fetchers específicos.
@@ -111,23 +116,7 @@ export function fetchZoneContext(id: string): Promise<ZoneContext> {
   return api<ZoneContext>(`/api/properties/${id}/zone-context`);
 }
 
-export type RelatedChatMessage = {
-  kind: string;
-  body: string | null;
-  senderName: string | null;
-  createdAt: string;
-};
-
-export type RelatedChat = {
-  conversationId: string;
-  kind: string; // "DIRECT" | "GROUP" | ...
-  title: string;
-  imageUrl: string | null;
-  lastMessage: RelatedChatMessage | null;
-  lastMessageAt: string | null;
-};
-
-export type RelatedChatsResponse = { chats: RelatedChat[] };
+export type { RelatedChat, RelatedChatMessage, RelatedChatsResponse };
 
 export function fetchRelatedChats(id: string): Promise<RelatedChatsResponse> {
   return api<RelatedChatsResponse>(`/api/properties/${id}/related-chats`);
