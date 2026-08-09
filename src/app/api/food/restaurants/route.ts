@@ -4,6 +4,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { isProviderUnavailable } from "@/features/sources/providers/availability";
 import { dbRestaurantsNearby, discoverGoogleRestaurants, googlePlacesConfigured } from "@/lib/food/google-restaurants";
 import { enqueueMenusForList, isDeliveryCuisine } from "@/lib/food/menu-scrape";
+import { foodEnabled, foodDisabledResponse } from "@/lib/food/disabled";
 
 /** Solo mostramos cocinas de delivery (pizza, burger, kebab, sushi, mexicano…). Fuera
  *  bares/sidrerías/cafés que ni se piden a domicilio ni tendrán carta. */
@@ -21,6 +22,7 @@ const Query = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  if (!foodEnabled()) return foodDisabledResponse(); // fase 0: Places + enqueue gastan
   await requireUserId();
   const parsed = Query.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) {

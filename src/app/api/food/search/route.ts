@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { isProviderUnavailable } from "@/features/sources/providers/availability";
 import { dbRestaurantsNearby, discoverGoogleRestaurants, googlePlacesConfigured } from "@/lib/food/google-restaurants";
+import { foodEnabled, foodDisabledResponse } from "@/lib/food/disabled";
 
 const Query = z.object({
   q: z.string().min(2),
@@ -14,6 +15,7 @@ const Query = z.object({
 });
 
 export async function GET(req: NextRequest) {
+  if (!foodEnabled()) return foodDisabledResponse(); // fase 0: Places gasta por petición
   await requireUserId();
   const parsed = Query.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) {

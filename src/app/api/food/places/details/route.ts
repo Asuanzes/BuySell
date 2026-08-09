@@ -4,12 +4,14 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { rateLimit } from "@/lib/rate-limit";
 import { isProviderUnavailable } from "@/features/sources/providers/availability";
 import { placeDetails } from "@/features/sources/providers/google-places";
+import { foodEnabled, foodDisabledResponse } from "@/lib/food/disabled";
 
 const Query = z.object({
   placeId: z.string().min(3).max(300),
 });
 
 export async function GET(req: NextRequest) {
+  if (!foodEnabled()) return foodDisabledResponse(); // fase 0: Places factura por petición
   const userId = await requireUserId();
   // Google Places factura por petición: tope diario por usuario.
   const limit = await rateLimit("places-details", userId, { limit: 150, windowMs: 86_400_000 });

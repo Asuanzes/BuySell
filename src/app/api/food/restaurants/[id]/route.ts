@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { enqueueMenu, menuStatusFor, processMenu } from "@/lib/food/menu-scrape";
+import { foodEnabled, foodDisabledResponse } from "@/lib/food/disabled";
 
 // El GET SIEMPRE responde rápido ("fetching") y el móvil hace polling. El scrape corre en
 // background con after() — NO con await: bloquear el GET ~20-40s hacía que iOS cancelara la
@@ -19,6 +20,7 @@ const MENU_INCLUDE = {
 };
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!foodEnabled()) return foodDisabledResponse(); // fase 0: el open dispara scrape after()
   await requireUserId();
   const { id } = await params;
   const restaurant = await prisma.restaurant.findFirst({ where: { id, active: true }, include: MENU_INCLUDE });

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { rateLimit } from "@/lib/rate-limit";
 import { processMenu } from "@/lib/food/menu-scrape";
+import { foodEnabled, foodDisabledResponse } from "@/lib/food/disabled";
 
 export const maxDuration = 300;
 
@@ -13,6 +14,7 @@ export const maxDuration = 300;
  * la red de seguridad. Solo restaurantes de Google (el seed conserva su carta manual).
  */
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!foodEnabled()) return foodDisabledResponse(); // fase 0: cada refresh gasta scrape
   const userId = await requireUserId();
   const { id } = await params;
   // Cada refresh dispara Crawl4AI/Firecrawl + LLM (coste real) y resetea
