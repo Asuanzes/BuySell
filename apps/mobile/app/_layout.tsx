@@ -410,6 +410,17 @@ function AuthGate() {
             }}
           />
           <Stack.Screen
+            name="events"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("events.title"),
+            }}
+          />
+          <Stack.Screen
             name="export-data"
             options={{
               headerShown: true,

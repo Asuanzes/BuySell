@@ -37,6 +37,11 @@ mensaje claro, en vez de disparar un aviso inmediato y desconcertante.
 Al **rearmar** se refresca `baselineCents` con el precio actual: si no, una
 alerta porcentual seguiría midiendo la caída desde un precio viejo.
 
+En el EventLog de «Novedades» (`RecordEvent`, M1) cada disparo genera un evento
+con clave `alert:{id}:{día UTC}`: **por diseño hay como máximo un evento por
+alerta y día UTC** — si el usuario rearma y la alerta vuelve a saltar el mismo
+día, el DM y el push sí llegan, pero no se añade un segundo evento al timeline.
+
 ## Campo vigilado: `price` vs `rent`
 
 Una ficha de inmueble puede ser **mixta** (venta y alquiler a la vez), así que

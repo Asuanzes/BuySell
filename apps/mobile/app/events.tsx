@@ -1,0 +1,288 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router, useFocusEffect } from "expo-router";
+import { useTranslation } from "react-i18next";
+
+import { CategoryIcon } from "@/components/CategoryIcon";
+import { Button, EmptyState, Screen } from "@/components/ui";
+import { ApiError } from "@/lib/api";
+import {
+  eventTimeAgo,
+  eventTitle,
+  fetchEvents,
+  formatRecordEventDescription,
+  isVisibleRecordEvent,
+  type RecordEventDto,
+} from "@/lib/events";
+import { fonts } from "@/lib/fonts";
+import { useLanguage } from "@/lib/i18n/language-context";
+import { useCategoryPrefs } from "@/lib/records/category-prefs-context";
+import { useTheme } from "@/lib/theme";
+import type { RecordType } from "@nidokey/shared";
+
+const PAGE_SIZE = 30;
+
+type LoadState = "loading" | "ready" | "error";
+
+export default function EventsScreen() {
+  const { th } = useTheme();
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const { orderedVisible } = useCategoryPrefs();
+  const [items, setItems] = useState<RecordEventDto[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [state, setState] = useState<LoadState>("loading");
+  const [error, setError] = useState<Error | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const firstRun = useRef(true);
+  const navigatingRef = useRef(false);
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => isVisibleRecordEvent(item, orderedVisible)),
+    [items, orderedVisible]
+  );
+
+  const loadFirst = useCallback(async () => {
+    if (firstRun.current) setState("loading");
+    else setRefreshing(true);
+    try {
+      const page = await fetchEvents(null, PAGE_SIZE);
+      setItems(page.items ?? []);
+      setNextCursor(page.nextCursor ?? null);
+      setError(null);
+      setState("ready");
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError(e);
+      setState("error");
+    } finally {
+      firstRun.current = false;
+      setRefreshing(false);
+    }
+  }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore || state !== "ready") return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchEvents(nextCursor, PAGE_SIZE);
+      setItems((prev) => mergeEvents(prev, page.items ?? []));
+      setNextCursor(page.nextCursor ?? null);
+    } catch {
+      // La paginacion conserva la lista actual; el usuario puede tirar para refrescar.
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, nextCursor, state]);
+
+  useEffect(() => {
+    void loadFirst();
+  }, [loadFirst]);
+
+  useEffect(() => {
+    if (state === "ready" && visibleItems.length === 0 && nextCursor && !loadingMore) {
+      void loadMore();
+    }
+  }, [loadMore, loadingMore, nextCursor, state, visibleItems.length]);
+
+  useFocusEffect(
+    useCallback(() => {
+      navigatingRef.current = false;
+    }, [])
+  );
+
+  const openEvent = useCallback((item: RecordEventDto & { recordType: RecordType }) => {
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
+    router.push(`/${item.recordType}/${item.recordId}` as never);
+  }, []);
+
+  const offline = error ? isOfflineError(error) : false;
+  const filteredEmpty = items.length > 0 && visibleItems.length === 0;
+
+  return (
+    <Screen title={t("events.title")} subtitle={t("events.subtitle")}>
+      {state === "loading" ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={th.primary} />
+        </View>
+      ) : state === "error" ? (
+        <View style={styles.center}>
+          <EmptyState
+            icon={offline ? "cloud-offline-outline" : "warning-outline"}
+            title={offline ? t("events.offline_title") : t("events.error_title")}
+            description={offline ? t("events.offline_desc") : t("events.error_desc")}
+            actionLabel={t("common.retry")}
+            onAction={() => void loadFirst()}
+          />
+        </View>
+      ) : (
+        <FlatList
+          data={visibleItems}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[styles.list, visibleItems.length === 0 && styles.emptyList]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void loadFirst()}
+              tintColor={th.primary}
+              colors={[th.primary]}
+            />
+          }
+          renderItem={({ item }) => (
+            <EventRow item={item} locale={language === "en" ? "en" : "es"} onPress={openEvent} />
+          )}
+          onEndReached={() => void loadMore()}
+          onEndReachedThreshold={0.45}
+          ListEmptyComponent={
+            filteredEmpty ? (
+              <View style={styles.center}>
+                <EmptyState
+                  icon="eye-off-outline"
+                  title={t("events.filtered_empty_title")}
+                  description={t("events.filtered_empty_desc")}
+                />
+                <View style={styles.emptyActions}>
+                  <Button
+                    label={t("events.filtered_empty_action")}
+                    icon="options-outline"
+                    onPress={() => router.push("/category-settings" as never)}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.center}>
+                <EmptyState
+                  icon="pulse-outline"
+                  title={t("events.empty_title")}
+                  description={t("events.empty_desc")}
+                />
+                <View style={styles.emptyActions}>
+                  <Button
+                    label={t("events.empty_import")}
+                    icon="add-circle-outline"
+                    onPress={() => router.push("/importar" as never)}
+                  />
+                  <Button
+                    label={t("events.empty_alerts")}
+                    icon="notifications-outline"
+                    variant="secondary"
+                    onPress={() => router.push("/notification-settings" as never)}
+                  />
+                </View>
+              </View>
+            )
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator color={th.primary} style={styles.footerLoader} />
+            ) : visibleItems.length > 0 && !nextCursor ? (
+              <Text style={[styles.endLabel, { color: th.textSubtle }]}>{t("events.end_of_list")}</Text>
+            ) : null
+          }
+        />
+      )}
+    </Screen>
+  );
+}
+
+function EventRow({
+  item,
+  locale,
+  onPress,
+}: {
+  item: RecordEventDto & { recordType: RecordType };
+  locale: string;
+  onPress: (item: RecordEventDto & { recordType: RecordType }) => void;
+}) {
+  const { th } = useTheme();
+  const { t } = useTranslation();
+  const description = formatRecordEventDescription(item.eventType, item.payload, t, locale);
+  const ago = eventTimeAgo(item.observedAt, t);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={eventTitle(item)}
+      onPress={() => onPress(item)}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: th.surface, borderColor: th.border },
+        th.elevation.sm,
+        pressed && { opacity: 0.76 },
+      ]}
+    >
+      <View style={[styles.iconWrap, { backgroundColor: th.surfaceRaised, borderColor: th.border }]}>
+        <CategoryIcon type={item.recordType} size={24} />
+      </View>
+      <View style={styles.rowBody}>
+        <View style={styles.rowTop}>
+          <Text style={[styles.title, { color: th.text }]} numberOfLines={1}>
+            {eventTitle(item)}
+          </Text>
+          {ago ? (
+            <Text style={[styles.time, { color: th.textSubtle }]} numberOfLines={1}>
+              {ago}
+            </Text>
+          ) : null}
+        </View>
+        <Text style={[styles.description, { color: th.textMuted }]} numberOfLines={2}>
+          {description}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={th.textSubtle} />
+    </Pressable>
+  );
+}
+
+function mergeEvents(prev: RecordEventDto[], next: RecordEventDto[]): RecordEventDto[] {
+  const seen = new Set(prev.map((item) => item.id));
+  return [...prev, ...next.filter((item) => !seen.has(item.id))];
+}
+
+function isOfflineError(error: Error): boolean {
+  if (error instanceof ApiError && error.status === 0) return true;
+  return /network|fetch|abort|sin respuesta/i.test(error.message);
+}
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 18 },
+  emptyActions: { alignSelf: "stretch", gap: 10, paddingHorizontal: 18 },
+  list: { padding: 16, gap: 10, paddingBottom: 28 },
+  emptyList: { flexGrow: 1 },
+  row: {
+    minHeight: 78,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  iconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowBody: { flex: 1, minWidth: 0 },
+  rowTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  title: { flex: 1, fontSize: 15, lineHeight: 20, fontFamily: fonts.bodySemibold },
+  time: { fontSize: 11, lineHeight: 15, fontFamily: fonts.body },
+  description: { marginTop: 3, fontSize: 13, lineHeight: 18, fontFamily: fonts.body },
+  footerLoader: { marginVertical: 18 },
+  endLabel: { marginVertical: 18, textAlign: "center", fontSize: 12, fontFamily: fonts.body },
+});

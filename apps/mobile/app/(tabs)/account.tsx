@@ -138,6 +138,12 @@ export default function AccountScreen() {
           />
           <Sep />
           <Row
+            icon="pulse-outline"
+            label={t("account.events")}
+            onPress={() => router.push("/events" as never)}
+          />
+          <Sep />
+          <Row
             icon="share-social-outline"
             label={t("account.shared_records")}
             onPress={() => router.push("/shares" as never)}
