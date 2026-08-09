@@ -5,6 +5,7 @@ import { priceChangeDir, trackEvent } from "@/lib/analytics-events";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
 import { notifyLinkedConversations } from "@/lib/chat/context-events";
 import { notifyPriceActivity, type PriceActivity } from "@/lib/notifications/price-activity";
+import { createRecordEvent, recheckEventKey } from "@/lib/record-events";
 import type { PortalAdapter } from "./types";
 import { planRecheck, type RecheckPlan, type RecheckSummary } from "./recheck-plan";
 import { isGoneStatus } from "./listing-status";
@@ -237,6 +238,30 @@ export async function checkListing(listingId: string): Promise<CheckSummary> {
   }
   if (plan.notify) {
     await notifyLinkedConversations("property", listing.propertyId, plan.notify);
+  }
+
+  if (plan.snapshot) {
+    await createRecordEvent({
+      userId: listing.ownerId,
+      recordType: "property",
+      recordId: listing.propertyId,
+      eventType: "price_changed",
+      source: "scraping.recheck",
+      idempotencyKey: recheckEventKey(
+        listing.id,
+        plan.snapshot.observedAt,
+        plan.guardPrevPrice ?? listing.lastPrice,
+        plan.snapshot.price
+      ),
+      observedAt: plan.snapshot.observedAt,
+      payload: {
+        listingId: listing.id,
+        portal: listing.portal,
+        previousCents: plan.guardPrevPrice ?? listing.lastPrice,
+        newCents: plan.snapshot.price,
+        status: plan.snapshot.status,
+      },
+    });
   }
 
   // Aviso automático al dueño y a los usuarios con acceso compartido, aunque

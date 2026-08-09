@@ -9,6 +9,7 @@ import { anyBlockBetween, getParticipantOrNull } from "@/lib/chat/guard";
 import { deliverRecordCard, deliverRecordCardToConversation } from "@/lib/chat/context-events";
 import { NIDOKEY_BOT_ID } from "@/lib/chat/bot";
 import { ownsRecord, recordTitle } from "@/lib/records/access";
+import { createRecordEvent, shareEventKey } from "@/lib/record-events";
 import { rateLimit } from "@/lib/rate-limit";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -124,6 +125,19 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       data: targets.map((toUserId) => ({ recordType: type, recordId: id, fromUserId, toUserId, conversationId })),
       skipDuplicates: true,
     });
+    await createRecordEvent({
+      userId: fromUserId,
+      recordType: type,
+      recordId: id,
+      eventType: "record_shared",
+      source: "share",
+      idempotencyKey: shareEventKey(type, id, `conversation:${conversationId}`),
+      payload: {
+        conversationId,
+        targetCount: targets.length,
+        destination: "conversation",
+      },
+    });
 
     const delivered = await deliverRecordCardToConversation(
       conversationId,
@@ -166,6 +180,19 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     where: { recordType_recordId_toUserId: { recordType: type, recordId: id, toUserId: target.id } },
     create: { recordType: type, recordId: id, fromUserId, toUserId: target.id },
     update: {},
+  });
+  await createRecordEvent({
+    userId: fromUserId,
+    recordType: type,
+    recordId: id,
+    eventType: "record_shared",
+    source: "share",
+    idempotencyKey: shareEventKey(type, id, `user:${target.id}`),
+    payload: {
+      toUserId: target.id,
+      username: target.username,
+      destination: "direct",
+    },
   });
 
   // La tarjeta va al chat DIRECTO habitual con esa persona (no al DM del bot,

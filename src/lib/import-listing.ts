@@ -15,6 +15,7 @@ import { cartociudadCandidates, pickBestMunicipality } from "@/lib/cartociudad";
 import { isBlankGeo, isProvinceOnlyQuery } from "@/lib/geo-es";
 import { logImportEvent } from "@/lib/import-log";
 import { priceChangeDir, trackEvent } from "@/lib/analytics-events";
+import { createRecordEvent, manualImportEventKey } from "@/lib/record-events";
 import {
   isValidPriceEur,
   isValidMonthlyRentEur,
@@ -570,6 +571,21 @@ async function importListingOnce(
           newPrice: priceCents,
         },
       });
+      await createRecordEvent({
+        userId: ownerId,
+        recordType: "property",
+        recordId: existing.propertyId,
+        eventType: "price_changed",
+        source: "import.manual",
+        idempotencyKey: manualImportEventKey("property", existing.propertyId, previousPrice, priceCents),
+        payload: {
+          listingId: existing.id,
+          portal,
+          previousCents: previousPrice,
+          newCents: priceCents,
+          status: newStatus,
+        },
+      });
     }
     if (!priceApplied) {
       // Sin cambio (o carrera perdida): solo marcar visto/comprobado.
@@ -803,6 +819,21 @@ async function importListingOnce(
       },
     });
   }
+  await createRecordEvent({
+    userId: ownerId,
+    recordType: "property",
+    recordId: property.id,
+    eventType: "record_imported",
+    source: "import.manual",
+    idempotencyKey: manualImportEventKey("property", property.id, null, priceCents),
+    payload: {
+      listingId: listing.id,
+      portal,
+      previousCents: null,
+      newCents: priceCents,
+      status: "ACTIVE",
+    },
+  });
 
   // Lanzar tareas de background: hash de fotos, geocode,
   // buscar duplicados y posible auto-merge.

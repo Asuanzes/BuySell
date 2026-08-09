@@ -152,6 +152,7 @@ model User {
   subscription      Subscription?
   priceAlerts       PriceAlert[]
   notificationPrefs NotificationPrefs?
+  recordEvents      RecordEvent[]
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -1292,6 +1293,31 @@ enum AlertKind {
   PRICE_ABOVE // "avísame si sube de X"
   PRICE_DROP_PCT // "avísame si cae un X% desde ahora"
   STATUS_CHANGE // solo inmuebles: vendido / retirado
+}
+
+// EventLog aditivo de M1 (PRODUCT_LOOP.md CICLO 4 iter 2): un evento por cambio
+// detectado sobre un registro (precio, estado, alerta disparada, compartido).
+// Soft-ref sin FK (patrón RecordShare/PriceAlert): apunta a tablas distintas
+// según recordType; los huérfanos se toleran (placeholder en cliente). El
+// payload lleva título/estado denormalizados en el momento del evento para
+// evitar N+1 y sobrevivir a borrados. idempotencyKey deriva de la transición
+// de valor + bucket de día (NUNCA del timestamp de detección: dos lambdas
+// concurrentes detectando el mismo cambio deben colisionar en el unique).
+model RecordEvent {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordType     String
+  recordId       String
+  eventType      String   @db.VarChar(48)
+  source         String   @db.VarChar(48)
+  idempotencyKey String   @unique @db.VarChar(180)
+  payload        Json
+  observedAt     DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([userId, observedAt(sort: Desc), id])
+  @@index([recordType, recordId])
 }
 
 model PriceAlert {

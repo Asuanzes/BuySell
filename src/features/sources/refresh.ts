@@ -4,6 +4,7 @@ import { marketData, type CoinMarket } from "@/features/sources/adapters/coingec
 import { yahooQuote } from "@/features/sources/providers/yahoo";
 import { logImportEvent } from "@/lib/import-log";
 import { evaluateAlerts } from "@/lib/alerts/evaluate";
+import { createRecordEvent, valueTransitionKey } from "@/lib/record-events";
 
 /**
  * Ids de registros de este tipo que tienen alguna alerta activa. UNA consulta
@@ -99,6 +100,21 @@ async function refreshCrypto(): Promise<RefreshSummary> {
       });
       if (changed) {
         updated++;
+        await createRecordEvent({
+          userId: h.ownerId,
+          recordType: "crypto",
+          recordId: h.id,
+          eventType: "value_changed",
+          source: "sources.crypto",
+          idempotencyKey: valueTransitionKey("sources.crypto", h.id, now, h.currentValue, cents),
+          observedAt: now,
+          payload: {
+            previousCents: h.currentValue,
+            newCents: cents,
+            currency: h.currency ?? quote,
+            externalId: h.externalId,
+          },
+        });
         if (alerted.has(h.id)) {
           await evaluateAlerts("crypto", h.id, "price", { oldCents: h.currentValue, newCents: cents });
         }
@@ -166,6 +182,21 @@ async function refreshMarket(): Promise<RefreshSummary> {
       });
       if (changed) {
         updated++;
+        await createRecordEvent({
+          userId: inst.ownerId,
+          recordType: "market",
+          recordId: inst.id,
+          eventType: "value_changed",
+          source: "sources.market",
+          idempotencyKey: valueTransitionKey("sources.market", inst.id, now, inst.currentValue, cents),
+          observedAt: now,
+          payload: {
+            previousCents: inst.currentValue,
+            newCents: cents,
+            currency: inst.currency ?? inst.quoteCurrency,
+            symbol: inst.symbol,
+          },
+        });
         if (alerted.has(inst.id)) {
           await evaluateAlerts("market", inst.id, "price", { oldCents: inst.currentValue, newCents: cents });
         }

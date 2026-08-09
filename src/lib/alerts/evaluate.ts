@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { ensureBotDm, replyAsBot } from "@/lib/chat/bot";
 import { recordTitle } from "@/lib/records/access";
 import { deliverPush, pushableTokens } from "@/lib/notifications/push";
+import { alertEventKey, createRecordEvent } from "@/lib/record-events";
 
 /**
  * Motor de alertas de precio.
@@ -205,6 +206,26 @@ export async function evaluateAlerts(
       await prisma.analyticsEvent
         .create({ data: { userId: a.userId, name: "alert_fired", props: { recordType, kind: a.kind } } })
         .catch(() => {});
+
+      await createRecordEvent({
+        userId: a.userId,
+        recordType,
+        recordId,
+        eventType: "alert_fired",
+        source: "alert",
+        idempotencyKey: alertEventKey(a.id, now),
+        observedAt: now,
+        payload: {
+          alertId: a.id,
+          kind: a.kind,
+          field: a.field,
+          threshold: a.threshold,
+          baselineCents: a.baselineCents,
+          newCents: change.newCents,
+          status: change.status ?? null,
+          message: stripRecordLinks(text),
+        },
+      });
     }
 
     return firing.length;
