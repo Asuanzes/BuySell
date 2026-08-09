@@ -11,6 +11,7 @@ import {
 import { requireUserId } from "@/lib/auth-helpers";
 import { trackEvent } from "@/lib/analytics-events";
 import { createRecordEvent } from "@/lib/record-events";
+import { rateLimit } from "@/lib/rate-limit";
 
 const Query = z.object({
   target: z.string().min(1),
@@ -18,12 +19,25 @@ const Query = z.object({
   recordId: z.string().min(1),
 });
 
+export const GO_RATE_LIMIT = { limit: 60, windowMs: 3600_000 } as const;
+
+type GoRateLimiter = typeof rateLimit;
+
+export function checkGoRateLimit(userId: string, limiter: GoRateLimiter = rateLimit) {
+  return limiter("commercial-go", userId, GO_RATE_LIMIT);
+}
+
 export async function GET(req: NextRequest) {
   let userId: string;
   try {
     userId = await requireUserId();
   } catch {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
+  const limit = await checkGoRateLimit(userId);
+  if (!limit.ok) {
+    return NextResponse.json({ error: "Demasiadas redirecciones. Inténtalo más tarde." }, { status: 429 });
   }
 
   const parsed = Query.safeParse(Object.fromEntries(req.nextUrl.searchParams));

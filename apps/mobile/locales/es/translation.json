@@ -573,6 +573,11 @@
       "transfer_fallback": "Traslado",
       "view_hotel": "Ver hotel",
       "view_flight": "Ver vuelo",
+      "affiliate_disclosure": "Enlace de afiliado: Nidokey puede recibir una comisión sin coste para ti",
+      "booking_outcome_question": "¿Llegaste a reservar?",
+      "booking_outcome_yes": "Sí",
+      "booking_outcome_no": "No",
+      "booking_outcome_later": "Aún no",
       "row_transport_return": "Vuelo de vuelta",
       "view_return_flight": "Reservar vuelta"
     },

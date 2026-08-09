@@ -46,6 +46,7 @@ export function isAllowedTravelPartnerHost(hostname: string): boolean {
     host === "www.aviasales.com" ||
     host === "aviasales.com" ||
     host === "nuitee.link" ||
+    // Nuitee controls subdomains today; review this suffix if the white-label domain changes.
     host.endsWith(".nuitee.link")
   );
 }

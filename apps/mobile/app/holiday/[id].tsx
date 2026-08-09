@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { fonts } from "@/lib/fonts";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,10 +15,17 @@ import {
   type AccommodationChoice,
 } from "@nidokey/shared";
 import { api } from "@/lib/api";
+import { resolveCommercialRedirect } from "@/lib/commercial-redirect";
 import { useRecord } from "@/lib/hooks/useRecord";
+import { track } from "@/lib/analytics";
+import { getItem, setItem } from "@/lib/secure-store";
 import { useTheme } from "@/lib/theme";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+
+type Outcome = "yes" | "no" | "later";
+
+const outcomeKey = (recordId: string) => `nidokey.holiday.bookingOutcome.${recordId}`;
 
 /**
  * Ficha de un VIAJE guardado (record `holiday`). Muestra destino, fechas,
@@ -34,6 +41,80 @@ export default function HolidayDetail() {
     [id]
   );
   const [shareChatOpen, setShareChatOpen] = useState(false);
+  const [showOutcomeQuestion, setShowOutcomeQuestion] = useState(false);
+  const [outcomeAlreadyAnswered, setOutcomeAlreadyAnswered] = useState(false);
+  const browserPendingRef = useRef(false);
+
+  const accommodation = record ? metaField<AccommodationChoice | null>(record, "accommodation", null) : null;
+  const transport = record ? metaField<TransportLeg | null>(record, "transport", null) : null;
+  const transportReturn = record ? metaField<TransportLeg | null>(record, "transportReturn", null) : null;
+  const hasBookingActions = Boolean(
+    accommodation?.affiliateUrl || transport?.affiliateUrl || transportReturn?.affiliateUrl
+  );
+
+  useEffect(() => {
+    if (!id || !hasBookingActions) return;
+    track("commercial_action_view", { recordType: "holiday", recordId: id });
+  }, [hasBookingActions, id]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!id) return () => {
+      alive = false;
+    };
+    setShowOutcomeQuestion(false);
+    setOutcomeAlreadyAnswered(false);
+    void getItem(outcomeKey(id)).then((stored) => {
+      if (alive) setOutcomeAlreadyAnswered(Boolean(stored));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  const maybeAskOutcome = useCallback(() => {
+    if (!id || outcomeAlreadyAnswered) return;
+    setShowOutcomeQuestion(true);
+  }, [id, outcomeAlreadyAnswered]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active" || !browserPendingRef.current) return;
+      browserPendingRef.current = false;
+      maybeAskOutcome();
+    });
+    return () => sub.remove();
+  }, [maybeAskOutcome]);
+
+  const openAffiliate = useCallback(
+    async (target: string) => {
+      if (!id) return;
+      browserPendingRef.current = true;
+      try {
+        const finalUrl = await resolveCommercialRedirect({ target, recordType: "holiday", recordId: id });
+        track("commercial_action_click", { recordType: "holiday", recordId: id, fallback: finalUrl.fallback });
+        const result = await WebBrowser.openBrowserAsync(finalUrl.url);
+        if (result.type !== "opened") {
+          browserPendingRef.current = false;
+          maybeAskOutcome();
+        }
+      } catch {
+        browserPendingRef.current = false;
+      }
+    },
+    [id, maybeAskOutcome]
+  );
+
+  const reportOutcome = useCallback(
+    (outcome: Outcome) => {
+      if (!id) return;
+      setOutcomeAlreadyAnswered(true);
+      setShowOutcomeQuestion(false);
+      track("booking_outcome_reported", { recordType: "holiday", recordId: id, outcome });
+      void setItem(outcomeKey(id), outcome);
+    },
+    [id]
+  );
 
   if (loading) {
     return (
@@ -53,9 +134,6 @@ export default function HolidayDetail() {
   }
 
   const destination = metaField<string | null>(record, "destination", null);
-  const accommodation = metaField<AccommodationChoice | null>(record, "accommodation", null);
-  const transport = metaField<TransportLeg | null>(record, "transport", null);
-  const transportReturn = metaField<TransportLeg | null>(record, "transportReturn", null);
   const transfer = metaField<TransportLeg | null>(record, "transfer", null);
   const tripType = metaField<string | null>(record, "tripType", null);
   const occupancy = metaField<{ adults: number; children: number[] }[] | null>(record, "occupancy", null);
@@ -156,32 +234,49 @@ export default function HolidayDetail() {
           </View>
         )}
 
-        {accommodation?.affiliateUrl ? (
-          <Pressable
-            onPress={() => void WebBrowser.openBrowserAsync(accommodation.affiliateUrl!)}
-            style={[styles.outlineBtn, { borderColor: th.border }]}
-          >
-            <Ionicons name="bed-outline" size={18} color={th.accent} />
-            <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_hotel")}</Text>
-          </Pressable>
+        {hasBookingActions ? (
+          <View style={styles.bookingSection}>
+            <Text style={[styles.disclosure, { color: th.textMuted }]}>
+              {t("detail.holiday.affiliate_disclosure")}
+            </Text>
+            {accommodation?.affiliateUrl ? (
+              <Pressable
+                onPress={() => void openAffiliate(accommodation.affiliateUrl!)}
+                style={[styles.outlineBtn, { borderColor: th.border }]}
+              >
+                <Ionicons name="bed-outline" size={18} color={th.accent} />
+                <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_hotel")}</Text>
+              </Pressable>
+            ) : null}
+            {transport?.affiliateUrl ? (
+              <Pressable
+                onPress={() => void openAffiliate(transport.affiliateUrl!)}
+                style={[styles.outlineBtn, { borderColor: th.border }]}
+              >
+                <Ionicons name="airplane-outline" size={18} color={th.accent} />
+                <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_flight")}</Text>
+              </Pressable>
+            ) : null}
+            {transportReturn?.affiliateUrl ? (
+              <Pressable
+                onPress={() => void openAffiliate(transportReturn.affiliateUrl!)}
+                style={[styles.outlineBtn, { borderColor: th.border }]}
+              >
+                <Ionicons name="airplane-outline" size={18} color={th.accent} style={{ transform: [{ scaleX: -1 }] }} />
+                <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_return_flight")}</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
-        {transport?.affiliateUrl ? (
-          <Pressable
-            onPress={() => void WebBrowser.openBrowserAsync(transport.affiliateUrl!)}
-            style={[styles.outlineBtn, { borderColor: th.border }]}
-          >
-            <Ionicons name="airplane-outline" size={18} color={th.accent} />
-            <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_flight")}</Text>
-          </Pressable>
-        ) : null}
-        {transportReturn?.affiliateUrl ? (
-          <Pressable
-            onPress={() => void WebBrowser.openBrowserAsync(transportReturn.affiliateUrl!)}
-            style={[styles.outlineBtn, { borderColor: th.border }]}
-          >
-            <Ionicons name="airplane-outline" size={18} color={th.accent} style={{ transform: [{ scaleX: -1 }] }} />
-            <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.view_return_flight")}</Text>
-          </Pressable>
+        {showOutcomeQuestion ? (
+          <View style={[styles.outcomeBox, { backgroundColor: th.surface, borderColor: th.border }]}>
+            <Text style={[styles.outcomeTitle, { color: th.text }]}>{t("detail.holiday.booking_outcome_question")}</Text>
+            <View style={styles.outcomeActions}>
+              <OutcomeButton label={t("detail.holiday.booking_outcome_yes")} onPress={() => reportOutcome("yes")} color={th.accent} />
+              <OutcomeButton label={t("detail.holiday.booking_outcome_no")} onPress={() => reportOutcome("no")} color={th.accent} />
+              <OutcomeButton label={t("detail.holiday.booking_outcome_later")} onPress={() => reportOutcome("later")} color={th.accent} />
+            </View>
+          </View>
         ) : null}
       </ScrollView>
       <ShareRecordSheet
@@ -192,6 +287,14 @@ export default function HolidayDetail() {
         preview={{ title: record.title, subtitle: record.subtitle ?? null, imageUrl: record.imageUrl ?? null }}
       />
     </>
+  );
+}
+
+function OutcomeButton({ label, onPress, color }: { label: string; onPress: () => void; color: string }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.outcomeButton, { borderColor: color }]}>
+      <Text style={{ color, fontSize: 12, fontFamily: fonts.bodySemibold }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -206,5 +309,11 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 5 },
   rowKey: { fontSize: 13 },
   rowVal: { fontSize: 13, fontFamily: fonts.bodySemibold, flexShrink: 1, textAlign: "right" },
+  bookingSection: { marginTop: 8 },
+  disclosure: { fontSize: 11, lineHeight: 15, marginBottom: 2 },
   outlineBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 46, borderRadius: 10, borderWidth: 1, marginTop: 10 },
+  outcomeBox: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 12, gap: 10 },
+  outcomeTitle: { fontSize: 13, fontFamily: fonts.bodySemibold },
+  outcomeActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  outcomeButton: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
 });
