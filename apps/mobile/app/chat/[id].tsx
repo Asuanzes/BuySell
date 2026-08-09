@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
 import { Image } from "expo-image";
-import { Stack, router, useLocalSearchParams } from "expo-router";
+import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -49,6 +49,7 @@ import {
   type ConversationDto,
   type MessageDto,
   type MessageSearchResult,
+  type RecordCardDto,
   type ReplyToDto,
   type ReportCategory,
 } from "@/lib/chat/api";
@@ -73,6 +74,7 @@ import { chatSocket } from "@/lib/chat/socket";
 import { useSocketOpen } from "@/lib/chat/use-socket-open";
 import { ResultModal, EmptyState } from "@/components/ui";
 import { useAppStyle } from "@/lib/app-style-context";
+import { track } from "@/lib/analytics";
 
 // Componentes que importan expo-audio (nativo) ESTÁTICAMENTE: se cargan en
 // perezoso solo si el binario trae el módulo — una OTA sobre un build viejo
@@ -190,6 +192,20 @@ export default function ChatScreen() {
   const awayRef = useRef(false);
   const [newWhileAway, setNewWhileAway] = useState(0);
   const lastSeenNewestIdRef = useRef<string | null>(null);
+  const cardOpenLockedRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      cardOpenLockedRef.current = false;
+    }, [])
+  );
+
+  const onOpenRecordCard = useCallback((type: string, recordId: string, statusShown: boolean) => {
+    if (cardOpenLockedRef.current) return;
+    cardOpenLockedRef.current = true;
+    track("chat_card_open", { record_type: type, status_shown: statusShown });
+    router.push(`/${type}/${recordId}` as never);
+  }, []);
 
   // Borrador persistente: se restaura al entrar y se guarda al teclear/salir.
   useEffect(() => {
@@ -957,6 +973,11 @@ export default function ChatScreen() {
                 {conversation.context.subtitle}
               </Text>
             )}
+            {conversation.context.meta && (
+              <Text style={[styles.ctxSub, { color: th.textMuted }]} numberOfLines={1}>
+                {conversation.context.meta}
+              </Text>
+            )}
           </View>
           <Ionicons name="chevron-forward" size={16} color={th.textSubtle} />
         </Pressable>
@@ -1016,6 +1037,7 @@ export default function ChatScreen() {
                 onPressQuote={() => item.m.replyTo && jumpToMessage(item.m.replyTo.id)}
                 onToggleReaction={(emoji) => void onReact(item.m, emoji)}
                 onOpenImage={(url) => setViewerUrl(url)}
+                onOpenRecordCard={onOpenRecordCard}
               />
             )
           }
@@ -1453,13 +1475,15 @@ function RecordCardBubble({
   card,
   dark,
   mine,
+  onOpen,
 }: {
   type: string;
   recordId: string;
-  card: { title: string; subtitle: string | null; meta?: string | null; imageUrl: string | null } | null;
+  card: RecordCardDto | null;
   dark: boolean;
   /** Tarjeta propia: sin botón de guardar (ya es tu registro). */
   mine: boolean;
+  onOpen: () => void;
 }) {
   const { th } = useTheme();
   const { t } = useTranslation();
@@ -1495,7 +1519,7 @@ function RecordCardBubble({
 
   return (
     <Pressable
-      onPress={() => router.push(`/${type}/${recordId}` as never)}
+      onPress={onOpen}
       accessibilityRole="button"
       accessibilityLabel={card.title}
       style={({ pressed }) => [
@@ -1668,6 +1692,7 @@ const Bubble = memo(BubbleInner, (prev, next) => {
   if (prev.senderName !== next.senderName || prev.quoteName !== next.quoteName) return false;
   if ((a.replyTo?.id ?? null) !== (b.replyTo?.id ?? null)) return false;
   if (a.contextId !== b.contextId || (a.context?.title ?? null) !== (b.context?.title ?? null)) return false;
+  if ((a.context?.statusShown ?? false) !== (b.context?.statusShown ?? false)) return false;
   if ((a.context?.meta ?? null) !== (b.context?.meta ?? null) || (a.context?.subtitle ?? null) !== (b.context?.subtitle ?? null))
     return false;
   if (prev.otherReadAt !== next.otherReadAt || prev.otherDeliveredAt !== next.otherDeliveredAt) return false;
@@ -1695,6 +1720,7 @@ function BubbleInner({
   onPressQuote,
   onToggleReaction,
   onOpenImage,
+  onOpenRecordCard,
 }: {
   m: MessageDto;
   mine: boolean;
@@ -1714,6 +1740,7 @@ function BubbleInner({
   onPressQuote: () => void;
   onToggleReaction: (emoji: string) => void;
   onOpenImage: (url: string) => void;
+  onOpenRecordCard: (type: string, recordId: string, statusShown: boolean) => void;
 }) {
   const { th } = useTheme();
   const { appStyle } = useAppStyle();
@@ -1793,7 +1820,14 @@ function BubbleInner({
             {m.contextType && m.contextId ? (
               // Tarjeta de registro: sustituye al body (que lleva "📌 Título"
               // de respaldo para clientes viejos).
-              <RecordCardBubble type={m.contextType} recordId={m.contextId} card={m.context} dark={dark} mine={mine} />
+              <RecordCardBubble
+                type={m.contextType}
+                recordId={m.contextId}
+                card={m.context}
+                dark={dark}
+                mine={mine}
+                onOpen={() => onOpenRecordCard(m.contextType!, m.contextId!, !!m.context?.statusShown)}
+              />
             ) : (
               !!m.body && <MessageBody body={m.body} color={th.text} linkColor={th.primary} />
             )}

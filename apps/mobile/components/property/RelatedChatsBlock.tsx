@@ -19,7 +19,7 @@ export function RelatedChatsBlock({
 }: {
   chats: RelatedChat[] | null;
   loading: boolean;
-  onOpenChat: (conversationId: string) => void;
+  onOpenChat: (conversationId: string, hasPreview: boolean) => void;
   onShare: () => void;
 }) {
   const { th } = useTheme();
@@ -73,6 +73,7 @@ export function RelatedChatsBlock({
       <View style={[styles.list, { borderTopColor: th.border }]}>
         {chats.map((chat, i) => {
           const body = chat.lastMessage?.body?.trim() ?? "";
+          const hasPreview = !!body;
           const from =
             chat.lastMessage && chat.lastMessage.senderName
               ? `${chat.lastMessage.senderName}: `
@@ -80,7 +81,7 @@ export function RelatedChatsBlock({
           return (
             <Pressable
               key={chat.conversationId}
-              onPress={() => onOpenChat(chat.conversationId)}
+              onPress={() => onOpenChat(chat.conversationId, hasPreview)}
               accessibilityRole="button"
               accessibilityLabel={chat.title}
               style={({ pressed }) => [

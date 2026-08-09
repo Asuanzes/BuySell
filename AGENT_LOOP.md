@@ -3,7 +3,191 @@
 > Documento único de coordinación (regla 10). Cada agente lo consulta y
 > actualiza al intervenir. Historial de iteraciones al final.
 
-## Estado actual (iteración 2)
+## Estado actual — área MENSAJERÍA, iteración 2 CERRADA (INTEGRAR)
+
+```yaml
+area: mensajeria
+iteracion: 2
+fase: cerrado
+responsable_actual: claude
+momento_del_viaje: retomar la negociación desde la ficha del inmueble
+problema_usuario: >
+  "Qué se ha hablado" (P2 de la observación) no muestra lo hablado: la ruta
+  filtra el último mensaje por contextType/contextId, pero ni los SYSTEM de
+  precio ni el mensaje libre que acompaña la tarjeta llevan contextType →
+  el preview casi siempre es el body de respaldo "📌 Título".
+evidencia:
+  - "src/app/api/properties/[id]/related-chats/route.ts:63-65 filtra por contextType"
+  - "src/lib/chat/context-events.ts:141-143 y :191-193 crean esos mensajes SIN contextType"
+  - "El docstring de la ruta (:15-16) promete lo contrario"
+hipotesis: >
+  Creemos que el dueño que retoma la decisión desde la ficha entenderá al
+  instante el estado de cada conversación si el preview muestra el último
+  mensaje real. Señal: related_chat_open {has_preview} + % con preview.
+mejora_seleccionada: >
+  Read-side (write-side DESCARTADO: estampar contextType en el mensaje libre
+  haría que el cliente lo pinte como tarjeta, [id].tsx:1820-1832). Preview =
+  último mensaje real por conversación con TRES filtros de privacidad
+  acordados: solo conversaciones donde sigo activo (leftAt null), mensajes
+  con createdAt >= mi joinedAt, deletedAt null. Sin ventana global take:200
+  (una conversación hiperactiva expulsaría a las demás — hallazgo Codex).
+  messagePreview reutilizado. + evento related_chat_open {has_preview}.
+criterios_aceptacion:
+  - "Conversaciones abandonadas no aparecen; preview respeta joinedAt y deletedAt"
+  - "Último mensaje exacto por conversación; DTO shape intacto"
+  - "related_chat_open {has_preview} sin PII con guard anti doble-tap por foco"
+  - "docstring honesto; fila+SQL en ANALITICA.md (Claude); tsc web+móvil 0; npm test 0 fallos"
+revision_deepseek: "pre-construcción CONTINUAR con condiciones (311a7b02: filtros leftAt/joinedAt exigidos — incorporados) → ataque post-impl APROBADO, 0 bloqueantes, 0 importantes, 3 opcionales de escala aceptados como riesgo bajo (3fe69132)"
+resultado_pruebas: "tsc web 0 · tsc móvil 0 · npm test 504/504 — verificado por Codex y por Claude"
+decision: INTEGRAR
+siguiente_accion: "propietario: /ship (API por push a main + OTA móvil; iter1 e iter2 salen juntas); tras unos días, SQL de related_chat_open (pct_con_preview) y chat_card_open en ANALITICA.md"
+riesgos_aceptados:
+  - "Sin tope en convIds para el Promise.all de findFirst: la cuota de compartir (20/h) y el dominio (pocas conversaciones por ficha) lo acotan; revisar si crece"
+  - "DIRECT cuyo otro participante se fue: título — y avatar null (comportamiento previo, sin regresión)"
+```
+
+### Iteración 2 (mensajería) — historia
+
+- Priorización heredada de la observación de iter1 (P2 > P3 en las tablas de
+  Claude y DeepSeek). Diseño Claude: read-side; write-side descartado con
+  evidencia (el cliente pinta como tarjeta cualquier mensaje con contextType,
+  [id].tsx:1820-1832). Convergencia a tres bandas en los filtros de privacidad:
+  Claude (lectura de ruta), DeepSeek (condiciones pre-construcción 311a7b02) y
+  Codex (bloqueante de su análisis 45a86d2d) exigieron independientemente
+  leftAt/joinedAt.
+- Implementación (Codex 66bea493 + 6a60c7cc): participante activo obligatorio,
+  findFirst exacto por conversación (sin ventana global — hallazgo Codex:
+  una conversación hiperactiva expulsaba a las demás del take:200),
+  messagePreview reutilizado (media sin body ya no sale como "sin mensajes"),
+  docstring honesto, evento related_chat_open {has_preview} con lock por foco.
+  Claude aplicó fila+SQL en ANALITICA.md.
+- Ataque (DeepSeek 3fe69132): APROBADO sin bloqueantes ni importantes a la
+  primera — las condiciones pre-construcción ya estaban dentro.
+- Aprendizaje: (1) pedir a DeepSeek "texto plano sin JSON" evita el
+  needs_input espurio del wrapper; (2) imponer la revisión pre-construcción
+  (fase 4) hizo que el ataque saliera limpio a la primera — el coste se paga
+  antes o después, y antes es más barato; (3) el preview honesto convirtió
+  además un bug latente de privacidad (conversaciones abandonadas listadas) en
+  mejora de seguridad.
+
+## Área mensajería — iteración 1 CERRADA (INTEGRAR)
+
+```yaml
+area: mensajeria
+iteracion: 1
+fase: cerrado
+responsable_actual: claude
+momento_del_viaje: retomar una negociación / entender el anuncio en el chat
+problema_usuario: >
+  La tarjeta y el banner de un inmueble en el chat no muestran el estado de la
+  operación (RESERVED/SOLD/WITHDRAWN/RENTED): property es el único tipo con
+  estado rico en BBDD y el único cuya tarjeta no lo enseña (book/holiday/job sí).
+  Quien retoma una conversación decide sobre información caduca; el SYSTEM de
+  "VENDIDO" queda enterrado por el scroll.
+evidencia:
+  - "src/lib/chat/context.ts:39-74 fetchCard property: select sin status; meta solo hab/baños"
+  - "src/lib/chat/context.ts:105-138 book/holiday/job SÍ seleccionan status y lo pintan en meta"
+  - "prisma/schema.prisma:30-39 PropertyStatus con 6 estados; el bot ya los edita (bot-tools.ts:239-252)"
+  - "Tarjeta VIVA: se re-resuelve en cada GET /messages => fix retroactivo a tarjetas ya compartidas"
+  - "Codex f87eb8fa (bloqueante): el banner móvil solo pinta title+subtitle ([id].tsx:951-959); RecordCardBubble sí pinta meta (:1524-1527)"
+usuarios_afectados: ["quien comparte/recibe fichas de inmueble en el chat y retoma la conversación días después"]
+hipotesis: >
+  Creemos que quien retoma una conversación sobre un inmueble podrá decidir sin
+  información caduca durante la negociación si la tarjeta y el banner muestran
+  el estado de la operación. Ventaja Nidokey: la ficha viva compartida es su
+  diferencial y ningún chat genérico refleja el estado real del anuncio. Señal:
+  chat_card_open {record_type, status_shown} + test unitario de la etiqueta.
+mejora_seleccionada: >
+  (1) Servidor: status en fetchCard property + etiqueta SOLO estados no activos
+  (Reservado/Vendido/Retirado/Alquilado) en meta + statusShown?: boolean aditivo
+  en el DTO + test unitario 6 estados. (2) Móvil: banner renderiza meta
+  (hallazgo Codex) + espejo DTO + evento chat_card_open {record_type,
+  status_shown} con guard anti doble-tap, sin PII, sin evento en tarjeta
+  eliminada/sin acceso. Puntuación: Claude P1=48 P2=11 P3=10; DeepSeek P1=48
+  P2=8.2 P3=6.7, veredicto CONTINUAR (e7193ea5).
+diferenciacion: >
+  Paridad interna en lo técnico, diferencial en lo funcional: la tarjeta viva
+  con estado real del anuncio dentro de la conversación no existe en chats
+  genéricos (principio 2 del loop: saber en qué estado está la operación).
+criterios_aceptacion:
+  - "Etiqueta solo para RESERVED/SOLD/WITHDRAWN/RENTED; FOR_SALE/FOR_RENT/null/legacy sin etiqueta (tarjeta idéntica a hoy)"
+  - "Banner de conversación vinculada renderiza meta cuando existe"
+  - "statusShown?: boolean aditivo en DTO servidor y espejo móvil"
+  - "chat_card_open {record_type, status_shown} solo en apertura real, guard anti doble-tap, sin ids/títulos/urls/ciudad"
+  - "Test unitario de los 6 estados + null; reglas de acceso (sharedAccess) intactas"
+  - "tsc web+móvil 0; npm test 0 fallos"
+  - "Entrada de catálogo + SQL en docs/ANALITICA.md (aplica Claude, claim 4f4d9e88)"
+metrica_principal: "chat_card_open: volumen y % con status_shown=true (engagement con tarjetas y prevalencia del estado)"
+metricas_guardarrail: ["crash/render de tarjeta y banner", "volumen anómalo de eventos (doble-tap)", "bloqueos/denuncias sin cambio"]
+archivos_reservados:
+  - "AGENT_LOOP.md (claude, claim 2bace513)"
+  - "docs/ANALITICA.md (claude, claim 4f4d9e88)"
+  - "src/lib/chat/** (codex, task edit be4d36e6)"
+  - "apps/mobile/** (codex, task edit 7e05de8a)"
+riesgos:
+  - "Etiqueta server-side en castellano: deuda i18n de DTO ya documentada (MENSAJERIA.md:218), aceptada por coherencia con book/holiday/job"
+  - "Incoherencia RENT+«En venta» imposible por diseño: los estados activos no llevan etiqueta"
+resultado_pruebas: "tsc web 0 · tsc móvil 0 · npm test 504/504 (+2 nuevos) — verificado por Codex y por Claude en implementación Y en corrección r1"
+revision_deepseek: "pre-construcción CONTINUAR (e7193ea5) → ataque APROBADO con recomendaciones (b6973f30: 0 bloqueantes, 2 importantes aceptados, 3 refutados con evidencia) → corrección r1 Codex (7061fc94 lock centralizado, 14110f94 etiqueta primero) → re-revisión APROBADO, hallazgos restantes: ninguno (d3c5a7fd)"
+decision: INTEGRAR
+siguiente_accion: "propietario: /ship cuando decida (API por push a main + OTA móvil); tras unos días, correr el SQL de chat_card_open de docs/ANALITICA.md (% con status_shown) para validar la hipótesis"
+fuera_de_alcance:
+  - "Ofertas estructuradas (vetadas: MENSAJERIA.md:122-127, sin rail C2C)"
+  - "P2 related-chats preview '📌 Título' y P3 bloqueo en reacciones/read → candidatos iter2/iter3"
+  - "Anti-fraude de enlaces; URLs planas no pulsables; Maestro para tarjetas"
+```
+
+### Iteración 1 (mensajería) — historia
+
+- Implementación (Codex be4d36e6 servidor + 7e05de8a móvil, en paralelo con
+  ámbitos disjuntos y contrato DTO fijado por adelantado): helper puro
+  `propertyStatusLabel` (solo estados no activos), `status` en el select,
+  `statusShown?: boolean` aditivo, banner con `meta`, evento `chat_card_open`,
+  test de 6 estados + null. Claude aplicó docs/ANALITICA.md (fila + SQL) y de
+  paso corrigió el catálogo `bot_message_sent`→`bot_message` (el código emite
+  `bot_message` desde servidor; renombrar el código dejaría huérfano el
+  histórico).
+- Ataque (DeepSeek b6973f30): APROBADO con recomendaciones. Aceptados: unlock
+  por timeout reabría ventana de evento duplicado; useFocusEffect por burbuja
+  = coste innecesario; etiqueta al final de meta truncable. Refutados con
+  evidencia: taps mismo-frame (ref síncrona), caché del serializador (no
+  existe), flush en beforeRemove (cola a nivel de módulo).
+- Corrección r1 (Codex): lock único a nivel de pantalla con reset solo por
+  foco + comparador del memo de Bubble ampliado con statusShown; etiqueta
+  primero ("Vendido · 3 hab · 2 baños"). Re-revisión (d3c5a7fd): APROBADO,
+  ninguno restante.
+- Validación (Claude): 7/7 criterios cumplidos; INTEGRAR. Working tree, sin
+  commit: /ship es del propietario.
+- Aprendizaje: (1) el fix es retroactivo gratis porque la tarjeta es viva —
+  elegir mejoras sobre datos re-resueltos multiplica el valor; (2) fijar el
+  contrato DTO por adelantado permitió dos tasks Codex en paralelo sin
+  conflicto; (3) la etiqueta al final de un texto truncable es un anti-patrón
+  — lo importante primero; (4) el runner de DeepSeek marca needs_input si la
+  entrega envuelve JSON — pedir "texto plano, sin JSON" en las instrucciones.
+- Siguiente fricción detectada (backlog priorizado): P2 "Qué se ha hablado"
+  enseña "📌 Título" en vez del último intercambio; P3 bloqueo incompleto en
+  reacciones/read-notify; URLs planas no pulsables + cero anti-fraude;
+  cero analítica de chat (chat_message_sent/conversation_created/record_shared);
+  notifyShare() muerto; textos SYSTEM sin i18n.
+
+### Observación (Claude) — 3 fricciones auditadas ✅ 2026-08-08
+
+Auditoría de punta a punta con 3 exploradores (UX móvil, backend, huecos de
+negociación). Base: `docs/MENSAJERIA.md` es fiel al código salvo matices; la
+mensajería ya tiene banner de contexto, eventos SYSTEM de precio/VENDIDO,
+responder-cita, edición, búsqueda por conversación y denuncias con snapshot.
+**P1** estado invisible en tarjeta property (elegido). **P2** "Qué se ha
+hablado" enseña "📌 Título" en vez del último intercambio (los SYSTEM y el
+mensaje libre se crean sin contextType — related-chats/route.ts filtra por él).
+**P3** bloqueo incompleto: reactions/route.ts sin check de bloqueo (y
+read/route.ts notifica); el share/route.ts:86-90 documenta ese mismo gotcha.
+Hallazgos extra para el backlog: cero analítica de chat; `bot_message` (código)
+vs `bot_message_sent` (catálogo); `notifyShare()` del bot es código muerto;
+ningún flujo móvil crea `Conversation.contextType` (banner sin productor);
+URLs planas no pulsables; forward/transcribe NO existen (memoria del 21-jul
+incorrecta); gateway del VPS pendiente de redeploy manual (hardening).
+
+## Área comparador — iteración 2 CERRADA (INTEGRAR, commit 54a8f54)
 
 ```yaml
 iteracion: 2

@@ -14,6 +14,7 @@ export type RecordCardDto = {
   subtitle: string | null;
   /** Segunda línea rica por categoría ("3 hab · 2 baños", "ahora 64.230 €"…). */
   meta?: string | null;
+  statusShown?: boolean;
   imageUrl: string | null;
 };
 

@@ -20,11 +20,13 @@ anonimizan (`userId → null`). Pre-login los eventos van con `deviceId` anónim
 | `onboarding_complete` | Fin del onboarding | móvil | — |
 | `record_import` | Import/alta de un registro | móvil | `type` (property/crypto/…), `kind` (url/query/isbn/manual) |
 | `compare_open` | Apertura real del comparador de inmuebles desde la home (valida la hipótesis del loop iter1) | móvil | `selected_count` (number, 2-3) |
+| `chat_card_open` | Apertura de un registro desde su tarjeta en el chat (valida la hipótesis del loop mensajería iter1: estado de la operación visible en la tarjeta) | móvil | `record_type` (property/crypto/…), `status_shown` (bool: la tarjeta mostraba etiqueta de estado) |
+| `related_chat_open` | Apertura de una conversación desde "Qué se ha hablado" de la ficha de inmueble (valida el loop mensajería iter2: preview honesto del último mensaje) | móvil | `has_preview` (bool: la fila mostraba un último mensaje con texto) |
 | `listing_import` | Import de un inmueble (URL/search) — **F0 scraping** | **servidor** | `portal`, `result` (created/updated/duplicate/error), `durationMs` |
 | `listing_recheck` | Recheck de un anuncio (cron o botón manual) — **F0 scraping** | **servidor** | `listingId`, `portal`, `outcome` (ok/gone/blocked/error), `durationMs`, `priceChanged` |
 | `listing_price_change` | Cambio de precio detectado (aplicado o rechazado por cordura) — **F0 scraping** | **servidor** | `portal`, `sanityRejected` (bool), `direction` (drop/up/flat), `pct`, `previousPrice`, `newPrice`/`attempted` |
 | `price_change_push` | Push automático de cambio de precio o retirada al dueño + compartidos (sin alerta manual) — **F0 scraping** | **servidor** | `kind` (price/removed), `delivered`, `errors` |
-| `bot_message_sent` | Mensaje del usuario al bot @Nidokey | móvil | — |
+| `bot_message` | Mensaje del usuario al bot @Nidokey (emitido al responder el bot) | **servidor** (`src/lib/chat/bot.ts`) | — |
 | `paywall_view` | Pantalla Premium vista | móvil | `from` (account/bot_limit/…) |
 | `checkout_start` | Alta Premium iniciada (URL de checkout emitida) | **servidor** | `provider` |
 | `subscribe_success` | Webhook de activación recibido | **servidor** | `provider` |
@@ -123,6 +125,24 @@ SELECT COUNT(*) AS aperturas,
   ROUND(AVG(("props" ->> 'selected_count')::numeric), 2) AS inmuebles_por_comparacion
 FROM "AnalyticsEvent"
 WHERE name = 'compare_open' AND "createdAt" > now() - interval '30 days';
+
+-- Tarjetas de registro abiertas desde el chat (30 días): engagement y
+-- prevalencia del estado de operación visible (loop mensajería iter1)
+SELECT "props" ->> 'record_type' AS tipo,
+  COUNT(*) AS aperturas,
+  COUNT(DISTINCT COALESCE("userId", "deviceId")) AS usuarios_unicos,
+  ROUND(100.0 * AVG(CASE WHEN ("props" ->> 'status_shown')::boolean THEN 1 ELSE 0 END), 1) AS pct_con_estado
+FROM "AnalyticsEvent"
+WHERE name = 'chat_card_open' AND "createdAt" > now() - interval '30 days'
+GROUP BY 1 ORDER BY aperturas DESC;
+
+-- "Qué se ha hablado" → chat (30 días): uso del puente ficha→conversación y
+-- % de filas con preview real (loop mensajería iter2)
+SELECT COUNT(*) AS aperturas,
+  COUNT(DISTINCT COALESCE("userId", "deviceId")) AS usuarios_unicos,
+  ROUND(100.0 * AVG(CASE WHEN ("props" ->> 'has_preview')::boolean THEN 1 ELSE 0 END), 1) AS pct_con_preview
+FROM "AnalyticsEvent"
+WHERE name = 'related_chat_open' AND "createdAt" > now() - interval '30 days';
 ```
 
 ## Métricas principales (definiciones)

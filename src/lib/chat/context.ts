@@ -27,6 +27,7 @@ export type ContextCard = {
   subtitle: string | null;
   /** Segunda línea rica por categoría ("3 hab · 2 baños", "ahora 64.230 €"…). */
   meta?: string | null;
+  statusShown?: boolean;
 };
 
 type CardWithOwner = (ContextCard & { ownerId: string | null }) | null;
@@ -35,6 +36,21 @@ const fmtPrice = (cents: number | null | undefined, currency = "EUR"): string | 
   cents == null
     ? null
     : (cents / 100).toLocaleString("es-ES", { style: "currency", currency, maximumFractionDigits: 2 });
+
+export function propertyStatusLabel(status: string | null | undefined): string | null {
+  switch (status) {
+    case "RESERVED":
+      return "Reservado";
+    case "SOLD":
+      return "Vendido";
+    case "WITHDRAWN":
+      return "Retirado";
+    case "RENTED":
+      return "Alquilado";
+    default:
+      return null;
+  }
+}
 
 async function fetchCard(contextType: string, contextId: string): Promise<CardWithOwner> {
   if (contextType === "property") {
@@ -47,6 +63,7 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
         currentPrice: true,
         monthlyRent: true,
         operationType: true,
+        status: true,
         rooms: true,
         bathrooms: true,
         media: { take: 1, where: { kind: "PHOTO" }, orderBy: { order: "asc" }, select: { url: true } },
@@ -69,7 +86,8 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
       title: p.title,
       imageUrl: p.media[0]?.url ?? null,
       subtitle: [p.city, price].filter(Boolean).join(" · ") || null,
-      meta: feats || null,
+      meta: [propertyStatusLabel(p.status), feats || null].filter(Boolean).join(" · ") || null,
+      ...(propertyStatusLabel(p.status) ? { statusShown: true } : {}),
     };
   }
   if (contextType === "crypto") {
@@ -176,7 +194,13 @@ export async function contextCard(
     if (viewerId && card.ownerId !== viewerId) {
       if (!(await sharedAccess(contextType as RecordType, contextId, viewerId))) return null;
     }
-    return { title: card.title, imageUrl: card.imageUrl, subtitle: card.subtitle, meta: card.meta ?? null };
+    return {
+      title: card.title,
+      imageUrl: card.imageUrl,
+      subtitle: card.subtitle,
+      meta: card.meta ?? null,
+      ...(card.statusShown ? { statusShown: true } : {}),
+    };
   } catch {
     // El banner es decorativo: nunca rompe el detalle del chat.
     return null;

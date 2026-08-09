@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { fonts } from "@/lib/fonts";
 import {
   ActivityIndicator,
@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
-import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -40,6 +40,7 @@ import { AlertsSheet } from "@/components/AlertsSheet";
 import { PriceHistoryBlock } from "@/components/property/PriceHistoryBlock";
 import { ZoneComparisonBlock } from "@/components/property/ZoneComparisonBlock";
 import { RelatedChatsBlock } from "@/components/property/RelatedChatsBlock";
+import { track } from "@/lib/analytics";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
 
@@ -101,6 +102,20 @@ export default function PropertyDetailScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busyTool, setBusyTool] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const relatedChatOpenLockedRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      relatedChatOpenLockedRef.current = false;
+    }, [])
+  );
+
+  const onOpenChat = useCallback((conversationId: string, hasPreview: boolean) => {
+    if (relatedChatOpenLockedRef.current) return;
+    relatedChatOpenLockedRef.current = true;
+    track("related_chat_open", { has_preview: hasPreview });
+    router.push(`/chat/${conversationId}` as never);
+  }, []);
 
   // Re-check: re-consulta cada anuncio vinculado y refresca el detalle.
   async function recheck() {
@@ -287,7 +302,7 @@ export default function PropertyDetailScreen() {
           <RelatedChatsBlock
             chats={chatsQ.data?.chats ?? null}
             loading={chatsQ.loading}
-            onOpenChat={(cid) => router.push(`/chat/${cid}` as never)}
+            onOpenChat={onOpenChat}
             onShare={() => setShareOpen(true)}
           />
         </View>

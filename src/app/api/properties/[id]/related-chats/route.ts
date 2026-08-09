@@ -2,18 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { avatarUrl, displayName, groupImageUrl } from "@/lib/chat/serialize";
+import { messagePreview } from "@/lib/chat/util";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /**
  * GET /api/properties/[id]/related-chats
  *
- * Conversaciones vinculadas a la ficha (el "¿qué se ha hablado?" de la
- * pantalla de decisión):
- *  - `Conversation.contextType/contextId` = "property" (vínculo de contexto), y
- *  - `ChatMessage.contextType/contextId` = "property" (tarjetas "📌" compartidas).
- * Por hilo devuelve el ÚLTIMO mensaje relevante (el SYSTEM de cambio de precio
- * o el mensaje que acompañó a la tarjeta). Solo lectura; dueño del registro.
+ * Conversaciones vinculadas a la ficha (el "Que se ha hablado" de la pantalla
+ * de decision):
+ *  - `Conversation.contextType/contextId` = "property" (vinculo de contexto), o
+ *  - `ChatMessage.contextType/contextId` = "property" (tarjetas compartidas).
+ * Por hilo devuelve el ultimo mensaje real de la conversacion (excluye borrados
+ * y respeta tu salida/joinedAt); las conversaciones que abandonaste no aparecen.
+ * Solo lectura; dueno del registro.
  */
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
@@ -42,46 +44,58 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   ];
   if (convIds.length === 0) return NextResponse.json({ chats: [] });
 
-  const [conversations, msgs] = await Promise.all([
-    prisma.conversation.findMany({
-      where: { id: { in: convIds } },
-      select: {
-        id: true,
-        kind: true,
-        title: true,
-        imageUrl: true,
-        lastMessageAt: true,
-        // En un DIRECT el título/avatar se derivan del OTRO participante.
-        participants: {
-          where: { leftAt: null, userId: { not: ownerId } },
-          select: {
-            user: { select: { id: true, name: true, username: true, email: true, image: true } },
-          },
+  const conversations = await prisma.conversation.findMany({
+    where: {
+      id: { in: convIds },
+      participants: { some: { userId: ownerId, leftAt: null } },
+    },
+    select: {
+      id: true,
+      kind: true,
+      title: true,
+      imageUrl: true,
+      lastMessageAt: true,
+      // En un DIRECT el titulo/avatar se derivan del OTRO participante.
+      participants: {
+        where: { leftAt: null },
+        select: {
+          userId: true,
+          joinedAt: true,
+          user: { select: { id: true, name: true, username: true, email: true, image: true } },
         },
       },
-    }),
-    prisma.chatMessage.findMany({
-      where: { conversationId: { in: convIds }, contextType: "property", contextId: id, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      select: {
-        id: true,
-        conversationId: true,
-        kind: true,
-        body: true,
-        createdAt: true,
-        sender: { select: { id: true, name: true, username: true, email: true, image: true } },
-      },
-    }),
-  ]);
+    },
+  });
 
-  // Último mensaje relevante por conversación (los que referencian la ficha).
-  const lastByConv = new Map<string, (typeof msgs)[number]>();
-  for (const m of msgs) if (!lastByConv.has(m.conversationId)) lastByConv.set(m.conversationId, m);
+  const msgs = await Promise.all(
+    conversations.map((c) => {
+      const me = c.participants.find((p) => p.userId === ownerId);
+      return prisma.chatMessage.findFirst({
+        where: {
+          conversationId: c.id,
+          deletedAt: null,
+          ...(me?.joinedAt ? { createdAt: { gte: me.joinedAt } } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          conversationId: true,
+          kind: true,
+          body: true,
+          createdAt: true,
+          sender: { select: { id: true, name: true, username: true, email: true, image: true } },
+        },
+      });
+    }),
+  );
+
+  // Ultimo mensaje real por conversacion, exacto por hilo.
+  const lastByConv = new Map<string, NonNullable<(typeof msgs)[number]>>();
+  for (const m of msgs) if (m) lastByConv.set(m.conversationId, m);
 
   const chats = conversations
     .map((c) => {
-      const other = c.participants[0]?.user ?? null;
+      const other = c.participants.find((p) => p.userId !== ownerId)?.user ?? null;
       const last = lastByConv.get(c.id) ?? null;
       return {
         conversationId: c.id,
@@ -91,7 +105,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
         lastMessage: last
           ? {
               kind: last.kind,
-              body: last.body,
+              body: messagePreview(last.kind, last.body),
               senderName: last.sender ? displayName(last.sender) : null,
               createdAt: last.createdAt.toISOString(),
             }
