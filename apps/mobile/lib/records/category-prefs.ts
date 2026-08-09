@@ -1,5 +1,4 @@
 import { RECORD_TYPES, type RecordType } from "@nidokey/shared";
-import { getItem, setItem, deleteItem } from "@/lib/secure-store";
 
 /**
  * Preferencias LOCALES del menú de categorías (orden + ocultas + categoría de
@@ -15,20 +14,22 @@ const ORDER_KEY = "nidokey.categories.order";
 const HIDDEN_KEY = "nidokey.categories.hidden";
 const START_KEY = "nidokey.categories.start";
 
-// "food" fuera desde la fase 0 (2026-08-09, PRODUCT_LOOP.md CICLO 2): al no estar
-// en el set gestionado desaparece de rail/ajustes/inicio y las prefs guardadas que
-// la referencien se descartan solas al validar contra este set (migración defensiva).
+// "food" (fase 0) y "workout" (fase 1) fuera desde 2026-08-09
+// (PRODUCT_LOOP.md CICLO 2): al no estar en el set gestionado desaparecen de
+// rail/ajustes/inicio y las prefs guardadas que las referencien se descartan
+// solas al validar contra este set (migración defensiva).
 export const MANAGED_RECORD_TYPES: RecordType[] = RECORD_TYPES.filter(
-  (t) => t !== "trends" && t !== "food"
+  (t) => t !== "trends" && t !== "food" && t !== "workout"
 );
 
 const RECORD_TYPE_SET = new Set<string>(MANAGED_RECORD_TYPES);
-function isRecordType(x: unknown): x is RecordType {
+export function isRecordType(x: unknown): x is RecordType {
   return typeof x === "string" && RECORD_TYPE_SET.has(x);
 }
 
 async function readTypeArray(key: string): Promise<RecordType[]> {
   try {
+    const { getItem } = await import("../secure-store");
     const raw = await getItem(key);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
@@ -40,6 +41,7 @@ async function readTypeArray(key: string): Promise<RecordType[]> {
 
 async function writeJson(key: string, value: unknown): Promise<void> {
   try {
+    const { setItem } = await import("../secure-store");
     await setItem(key, JSON.stringify(value));
   } catch {
     // SecureStore tiene límite por valor; con 9 categorías no se alcanza.
@@ -62,6 +64,7 @@ export function saveHiddenCategories(hidden: RecordType[]): Promise<void> {
 
 export async function getStartCategory(): Promise<RecordType | null> {
   try {
+    const { getItem } = await import("../secure-store");
     const raw = await getItem(START_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw); // se guarda con JSON.stringify (writeJson)
@@ -97,6 +100,7 @@ export function applyCategoryOrder(savedOrder: RecordType[]): RecordType[] {
 
 /** Borra TODAS las preferencias locales (tema + orden de registros + categorías). */
 export async function resetAllPreferences(): Promise<void> {
+  const { deleteItem } = await import("../secure-store");
   const keys = [
     "nidokey.theme",
     ORDER_KEY,
