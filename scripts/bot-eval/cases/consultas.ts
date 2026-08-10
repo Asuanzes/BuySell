@@ -87,26 +87,9 @@ export const CONSULTA_CASES: EvalCase[] = [
     },
     judge: "Debe decir que @maria le ha compartido el Estudio en Avilés (98.000 €) y puede ofrecer guardarlo en sus registros.",
   },
-  {
-    // El flujo real exige buscar el restaurante ANTES de pedir su carta — el
-    // historial ya trae esa búsqueda hecha (con el id visible para el modelo).
-    id: "con-08",
-    role: "consulta",
-    history: [
-      { role: "user", text: "¿Qué restaurantes tengo cerca?" },
-      { role: "model", text: "Cerca tienes Sushi Nido (C/ Rosal 4) y Pizzería Alma (C/ Gascona 11). ¿Te enseño alguna carta? 🪺" },
-      { role: "user", text: "Sí, la del Sushi Nido" },
-    ],
-    fixtures: {
-      carta_restaurante: '{"restaurante":"Sushi Nido","menuStatus":"PENDING","platos":[]}',
-    },
-    expect: {
-      tools: [{ name: "carta_restaurante" }],
-      mustMatch: [/prepar|todav[ií]a|a[uú]n|pendiente|no está lista|sin carta/i],
-      mustNotMatch: [/Nigiri|Ramen/i],
-    },
-    judge: "La carta está en preparación (menuStatus PENDING): debe decirlo y no inventar platos.",
-  },
+  // con-08 (carta de restaurante) RETIRADO el 2026-08-10: la vertical comida se
+  // apagó en la fase 0 del loop de producto y sus tools salieron del bot, así
+  // que el caso probaba una herramienta inexistente.
   {
     id: "con-09",
     role: "consulta",
@@ -141,5 +124,60 @@ export const CONSULTA_CASES: EvalCase[] = [
       mustMatch: [/Apple|Vanguard|S&P/i],
     },
     judge: "«Mis acciones» = categoría market (Apple y el ETF Vanguard), no crypto. Debe responder con esos dos activos.",
+  },
+  {
+    // Iconos de la cabecera del bot (2026-08-10): la app envía el mensaje con
+    // los ids YA dentro de enlaces [[tipo:id|Título]]. Pedirle el id al usuario
+    // cuando lo tiene delante es el bug que este caso impide reintroducir.
+    id: "con-12",
+    role: "consulta",
+    smoke: true,
+    history: [
+      {
+        role: "user",
+        text: `Compara estos 2 registros: [[property:${IDS.uria}|Piso en Calle Uría 12, Oviedo]], [[property:${IDS.gijon}|Ático en Gijón Centro]]`,
+      },
+    ],
+    fixtures: {
+      comparar_registros: JSON.stringify({
+        type: "property",
+        provenance: "registros_guardados_del_usuario",
+        records: [
+          { id: IDS.uria, title: "Piso en Calle Uría 12, Oviedo", precio_eur: 185000, m2: 90, eur_m2: 2056, habitaciones: 3, estado: "FOR_SALE" },
+          { id: IDS.gijon, title: "Ático en Gijón Centro", renta_mensual_eur: 650, m2: 70, habitaciones: 2, estado: "FOR_RENT" },
+        ],
+      }),
+    },
+    expect: {
+      tools: [{ name: "comparar_registros", args: { type: "property", ids: [IDS.uria, IDS.gijon] } }],
+      mustNotMatch: [/qu[eé] id|dame el id|necesito el id|cu[aá]l es el id/i],
+    },
+    judge: "Los ids venían en los enlaces del propio mensaje: debe llamar a comparar_registros con ellos y dar el contrapunto (uno es venta y otro alquiler: señalarlo es lo correcto). Pedir el id es un fallo grave.",
+  },
+  {
+    id: "con-13",
+    role: "consulta",
+    history: [
+      { role: "user", text: `Prepara una visita para: [[property:${IDS.uria}|Piso en Calle Uría 12, Oviedo]]` },
+    ],
+    fixtures: {
+      preparar_visita: JSON.stringify({
+        type: "property",
+        id: IDS.uria,
+        property: { title: "Piso en Calle Uría 12, Oviedo", precio_eur: 185000, m2: 90, habitaciones: 3, estado: "FOR_SALE" },
+        recentEvents: [{ eventType: "price_drop", observedAt: "2026-08-01T10:00:00.000Z", previousCents: 19500000, newCents: 18500000 }],
+        missingFields: [
+          { field: "communityFees", label: "gastos de comunidad", reason: "coste mensual no incluido en el precio" },
+          { field: "yearBuilt", label: "año de construcción", reason: "edad real del edificio y posibles reformas" },
+        ],
+        provenance: "ficha_guardada_del_usuario",
+      }),
+    },
+    expect: {
+      tools: [{ name: "preparar_visita", args: { id: IDS.uria } }],
+      mustMatch: [/comunidad|construcci[oó]n|baj/i],
+      mustNotMatch: [/qu[eé] id|dame el id|necesito el id/i],
+    },
+    judge: "Debe usar el id del enlace y dar preguntas concretas de los huecos reales (gastos de comunidad, año) y de la bajada de precio; no debe pedir el id ni inventar datos del inmueble.",
   },
 ];

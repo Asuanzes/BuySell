@@ -27,12 +27,26 @@ function record(partial: Partial<BaseRecord> & { id: string; type: BaseRecord["t
 test("construye el mensaje de contrapunto con 2 registros", () => {
   assert.equal(
     buildCounterpointMessage([record({ id: "a", type: "property", title: "Piso centro" }), record({ id: "b", type: "property", title: "Atico norte" })]),
-    "Compara estos 2 registros: Piso centro, Atico norte",
+    "Compara estos 2 registros: [[property:a|Piso centro]], [[property:b|Atico norte]]",
+  );
+});
+
+test("construye el mensaje de contrapunto con 3 registros mixtos enlazados", () => {
+  assert.equal(
+    buildCounterpointMessage([
+      record({ id: "p1", type: "property", title: "Piso en Oviedo" }),
+      record({ id: "p2", type: "property", title: "Atico en Gijon" }),
+      record({ id: "p3", type: "property", title: "Casa en Aviles" }),
+    ]),
+    "Compara estos 3 registros: [[property:p1|Piso en Oviedo]], [[property:p2|Atico en Gijon]], [[property:p3|Casa en Aviles]]",
   );
 });
 
 test("construye el mensaje de preparar visita", () => {
-  assert.equal(buildVisitMessage(record({ id: "a", type: "property", title: "Casa con jardin" })), "Prepara una visita para: Casa con jardin");
+  assert.equal(
+    buildVisitMessage(record({ id: "a", type: "property", title: "Casa con jardin" })),
+    "Prepara una visita para: [[property:a|Casa con jardin]]",
+  );
 });
 
 test("filtra tipos elegibles para contrapunto con minimo de dos registros", () => {

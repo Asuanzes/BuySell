@@ -4,12 +4,18 @@ export type BotRecordActionMode = "counterpoint" | "visit";
 
 const EXCLUDED_VISIT_STATUSES = new Set(["SOLD", "RETIRED"]);
 
-export function buildCounterpointMessage(records: Pick<BaseRecord, "title">[]): string {
-  return `Compara estos ${records.length} registros: ${records.map((r) => r.title).join(", ")}`;
+type LinkableRecord = Pick<BaseRecord, "id" | "type" | "title">;
+
+function recordLink(record: LinkableRecord): string {
+  return `[[${record.type}:${record.id}|${record.title}]]`;
 }
 
-export function buildVisitMessage(record: Pick<BaseRecord, "title">): string {
-  return `Prepara una visita para: ${record.title}`;
+export function buildCounterpointMessage(records: LinkableRecord[]): string {
+  return `Compara estos ${records.length} registros: ${records.map(recordLink).join(", ")}`;
+}
+
+export function buildVisitMessage(record: LinkableRecord): string {
+  return `Prepara una visita para: ${recordLink(record)}`;
 }
 
 export function eligibleCounterpointTypes(records: Pick<BaseRecord, "type">[]): RecordType[] {

@@ -14,7 +14,7 @@ import {
 import Animated, { KeyboardState, useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
@@ -969,7 +969,7 @@ export default function ChatScreen() {
               accessibilityLabel={t("chat.bot_actions.counterpoint")}
               style={styles.headerAction}
             >
-              <Ionicons name="scale-outline" size={20} color={th.textMuted} />
+              <MaterialCommunityIcons name="scale-balance" size={20} color={th.textMuted} />
             </Pressable>
             <Pressable
               onPress={() => setBotActionMode("visit")}
