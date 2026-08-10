@@ -37,6 +37,22 @@ export const BOT_TOOLS = [
   {
     type: "function",
     function: {
+      name: "comparar_registros",
+      description:
+        "Compara 2 o 3 registros PROPIOS del usuario del MISMO tipo. Es de SOLO LECTURA: devuelve campos relevantes lado-a-lado y últimos eventos guardados para que el bot haga un contrapunto crítico sin datos externos.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: [...RECORD_TYPES], description: "Categoría común de los registros" },
+          ids: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 3, description: "Ids propios a comparar" },
+        },
+        required: ["type", "ids"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "tendencias",
       description: "Tendencias actuales agregadas (X/Twitter, Google Trends, Hacker News, Twitch). Opcional: filtrar por fuente.",
       parameters: {

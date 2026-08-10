@@ -58,19 +58,19 @@ export const CONSULTA_CASES: EvalCase[] = [
     judge: "No tiene empleos guardados (lista vacía): debe decirlo con naturalidad, sin inventar ofertas; sugerir Importar es un plus.",
   },
   {
+    // Caso reescrito el 2026-08-10: la vertical comida se apagó (fase 0 del loop
+    // de producto, autorizada) y sus tools salieron del bot. Antes se esperaba
+    // que pidiera ciudad/dirección; ahora lo correcto es reconocer el límite sin
+    // inventar restaurantes ni prometer una búsqueda que ya no existe.
     id: "con-06",
     role: "consulta",
     smoke: true,
     history: [{ role: "user", text: "Búscame sushi para cenar" }],
-    fixtures: {
-      buscar_restaurantes: '{"error":"Necesito una ciudad o que el usuario tenga una dirección de entrega guardada."}',
-      buscar_platos: '{"error":"Necesito una ciudad o que el usuario tenga una dirección de entrega guardada."}',
-    },
     expect: {
-      mustMatch: [/ciudad|direcci[oó]n/i],
-      mustNotMatch: [/Sushi Nido|Pizzer/i],
+      mustMatch: [/no puedo|no est[áa]|fuera de|ya no/i],
+      mustNotMatch: [/Sushi Nido|Pizzer|buscar_restaurantes/i],
     },
-    judge: "Sin dirección guardada: debe pedir la ciudad (o guiar a configurar la dirección de entrega), sin afirmar que ha encontrado restaurantes.",
+    judge: "Comida no existe en la app: debe decir con naturalidad que no puede buscar restaurantes, sin inventar sitios ni prometer una búsqueda; redirigir a lo que sí hace es un plus.",
   },
   {
     id: "con-07",

@@ -76,6 +76,152 @@ function compactRecords(data: unknown): unknown[] {
   }));
 }
 
+type AnyRecord = Record<string, any>;
+
+function centsToEuros(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) / 100 : null;
+}
+
+function pickMeta(record: AnyRecord): AnyRecord {
+  return record?.meta && typeof record.meta === "object" ? record.meta : {};
+}
+
+function pickDetail(record: AnyRecord): AnyRecord {
+  const meta = pickMeta(record);
+  return meta.detail && typeof meta.detail === "object" ? meta.detail : {};
+}
+
+function fieldValue(...values: unknown[]): unknown {
+  return values.find((v) => v !== undefined && v !== null && v !== "");
+}
+
+function compactRecordForComparison(type: RecordType, record: AnyRecord): AnyRecord {
+  const meta = pickMeta(record);
+  const detail = pickDetail(record);
+  const base: AnyRecord = {
+    id: record.id,
+    type: record.type,
+    title: record.title,
+    subtitle: record.subtitle ?? null,
+    status: record.status ?? null,
+    value: record.primaryValue ?? null,
+  };
+
+  if (type === "property") {
+    const priceEur = centsToEuros(fieldValue(meta.currentPrice, detail.currentPrice));
+    const rentEur = centsToEuros(fieldValue(meta.monthlyRent, detail.monthlyRent));
+    const areaRaw = fieldValue(meta.builtArea, detail.builtArea);
+    const area = Number(areaRaw);
+    return {
+      ...base,
+      precio_eur: priceEur,
+      renta_mensual_eur: rentEur,
+      eur_m2: priceEur != null && Number.isFinite(area) && area > 0 ? Math.round(priceEur / area) : null,
+      m2: Number.isFinite(area) ? area : null,
+      habitaciones: fieldValue(meta.rooms, detail.rooms) ?? null,
+      banos: fieldValue(meta.bathrooms, detail.bathrooms) ?? null,
+      ubicacion: [fieldValue(meta.city, detail.city), fieldValue(meta.neighborhood, detail.neighborhood)].filter(Boolean).join(" · ") || null,
+      estado: fieldValue(record.status, detail.status) ?? null,
+      operacion: fieldValue(meta.operationType, detail.operationType) ?? null,
+    };
+  }
+
+  if (type === "crypto" || type === "market") {
+    return {
+      ...base,
+      simbolo: fieldValue(meta.symbol, detail.symbol) ?? null,
+      mercado: fieldValue(meta.exchange, detail.exchange) ?? null,
+      precio: record.primaryValue ?? null,
+      cambio_24h_pct: fieldValue(meta.change24h, meta.price_change_percentage_24h, detail.change24h) ?? null,
+      cantidad: fieldValue(meta.quantity, detail.quantity) ?? null,
+      actualizado: fieldValue(meta.lastCheckedAt, detail.lastCheckedAt, record.updatedAt) ?? null,
+    };
+  }
+
+  if (type === "job") {
+    return {
+      ...base,
+      salario: record.primaryValue ?? null,
+      empresa: fieldValue(meta.company, detail.company) ?? null,
+      ubicacion: fieldValue(meta.location, detail.location, record.subtitle) ?? null,
+      plataforma: fieldValue(meta.platform, detail.platform) ?? null,
+      remoto: fieldValue(meta.remote, detail.remote) ?? null,
+    };
+  }
+
+  if (type === "book") {
+    const book = meta.book && typeof meta.book === "object" ? meta.book : {};
+    return {
+      ...base,
+      autor: fieldValue(book.authors, meta.authors, detail.authors) ?? null,
+      rating: record.primaryValue ?? null,
+      notas: fieldValue(meta.userNotes, detail.userNotes) ?? null,
+      paginas: fieldValue(book.pageCount, meta.pageCount, detail.pageCount) ?? null,
+      publicado: fieldValue(book.publishedDate, meta.publishedDate, detail.publishedDate) ?? null,
+    };
+  }
+
+  if (type === "holiday") {
+    return {
+      ...base,
+      destino: fieldValue(meta.destination, detail.destination, record.subtitle) ?? null,
+      coste_total: record.primaryValue ?? null,
+      inicio: fieldValue(meta.startDate, detail.startDate) ?? null,
+      fin: fieldValue(meta.endDate, detail.endDate) ?? null,
+      transporte: fieldValue(meta.transportTotal, meta.flightTotal, meta.flightsTotal, detail.transportTotal) ?? null,
+      alojamiento: fieldValue(meta.hotelTotal, meta.accommodationTotal, detail.hotelTotal) ?? null,
+    };
+  }
+
+  return base;
+}
+
+function compactEvents(data: unknown): unknown[] {
+  const items = Array.isArray((data as any)?.items) ? (data as any).items : [];
+  return items.slice(0, 5).map((e: any) => {
+    const p = e?.payload && typeof e.payload === "object" ? e.payload : {};
+    return {
+      eventType: e?.eventType,
+      source: e?.source,
+      observedAt: e?.observedAt,
+      previousCents: typeof p.previousCents === "number" ? p.previousCents : null,
+      newCents: typeof p.newCents === "number" ? p.newCents : null,
+      field: p.field ?? null,
+      status: p.status ?? null,
+    };
+  });
+}
+
+export async function compareRecords(type: RecordType, ids: string[], token: string): Promise<unknown> {
+  const uniqueIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!RECORD_TYPES.includes(type) || uniqueIds.length !== ids.length || uniqueIds.length < 2 || uniqueIds.length > 3) {
+    return { error: "comparar_registros necesita type válido y 2 o 3 ids distintos" };
+  }
+
+  const rows = await Promise.all(
+    uniqueIds.map(async (id) => {
+      const record = (await apiGet(`/api/records/${encodeURIComponent(id)}?type=${encodeURIComponent(type)}`, token)) as AnyRecord;
+      if (record?.error) return { id, error: record.error };
+      if (record?.type !== type) return { id, error: "tipo mixto: el registro no coincide con la categoría solicitada" };
+      const meta = pickMeta(record);
+      if (meta.shared || meta.readOnly) return { id, error: "solo puedo comparar registros propios, no compartidos" };
+      const events = await apiGet(`/api/events?recordType=${encodeURIComponent(type)}&recordId=${encodeURIComponent(id)}&limit=5`, token);
+      return { id, record: compactRecordForComparison(type, record), events: compactEvents(events) };
+    }),
+  );
+
+  const bad = rows.find((r: any) => r.error);
+  if (bad) return { error: `registro no comparable (${bad.id}): ${bad.error}. Revisa que sean ids propios del mismo tipo.` };
+  return {
+    type,
+    ids: uniqueIds,
+    records: rows.map((r: any) => r.record),
+    events: Object.fromEntries(rows.map((r: any) => [r.id, r.events])),
+    provenance: "datos_guardados_del_usuario",
+  };
+}
+
 // Fase 0 food OFF (2026-08-09): resolveCoords y las tools de comida se retiraron
 // con la vertical (ver tool-defs.ts).
 
@@ -100,6 +246,12 @@ export async function runTool(name: string | undefined, argsJson: string | undef
         if (!RECORD_TYPES.includes(type as RecordType) || !id) return JSON.stringify({ error: "type/id no válidos" });
         const data = await apiGet(`/api/records/${encodeURIComponent(id)}?type=${encodeURIComponent(type)}`, token);
         return cap(JSON.stringify(data), 4000);
+      }
+      case "comparar_registros": {
+        const type = String(args.type || "");
+        const ids = Array.isArray(args.ids) ? args.ids.map((x: any) => String(x)) : [];
+        if (!RECORD_TYPES.includes(type as RecordType)) return JSON.stringify({ error: "categoría no válida" });
+        return cap(JSON.stringify(await compareRecords(type as RecordType, ids, token)), 5000);
       }
       case "tendencias": {
         const source = args.source ? `&source=${encodeURIComponent(String(args.source))}` : "";

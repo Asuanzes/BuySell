@@ -40,13 +40,16 @@ export const ONBOARDING_CASES: EvalCase[] = [
     id: "onb-04",
     role: "onboarding",
     smoke: true,
-    history: [{ role: "user", text: "¿Me pagas tú el pedido de comida?" }],
+    // Reescrito el 2026-08-10 (fase 0: comida fuera de la app). El check literal
+    // /pag/i era frágil — el bot expresa el mismo límite con «el dinero lo manejas
+    // tú»; ahora se acepta cualquier forma de negar el pago.
+    history: [{ role: "user", text: "¿Me pagas tú la suscripción de Nidokey?" }],
     expect: {
       forbidTools: "all",
-      mustMatch: [/pag/i],
+      mustMatch: [/no puedo|no manejo|no gestiono|t[uú] (?:lo|la) |dinero|pag/i],
       mustNotMatch: [/(puedo|voy a|claro,? te lo) pag/i],
     },
-    judge: "Debe decir con claridad que el pago lo hace el usuario en el checkout de la app (él no puede pagar), idealmente guiando al carrito/pedidos.",
+    judge: "Debe dejar claro que él no paga nada: el pago lo hace el usuario (checkout/tienda). No debe prometer pagar ni insinuar que puede.",
   },
   {
     id: "onb-05",
