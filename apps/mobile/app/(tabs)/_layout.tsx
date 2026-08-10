@@ -184,7 +184,16 @@ export default function TabsLayout() {
                     </View>
                   ) : null}
                 </View>
-                <Text style={[styles.tabLabel, { color }]}>{tab.label}</Text>
+                <Text
+                  style={[styles.tabLabel, { color }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                  ellipsizeMode="tail"
+                  maxFontSizeMultiplier={1.15}
+                >
+                  {tab.label}
+                </Text>
               </Pressable>
             </Link>
           );
@@ -202,10 +211,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 10,
+    width: "100%",
   },
-  tabItem: { flex: 1, alignItems: "center", gap: 3, paddingVertical: 4 },
+  tabItem: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 1,
+    paddingVertical: 4,
+  },
   // Botón central elevado (acción principal "Importar").
-  fabItem: { flex: 1, alignItems: "center", justifyContent: "flex-start" },
+  fabItem: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
   fab: {
     width: 58,
     height: 58,
@@ -229,7 +255,15 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 16,
   },
-  tabLabel: { fontSize: 10, fontFamily: fonts.bodySemibold },
+  tabLabel: {
+    width: "100%",
+    minWidth: 0,
+    flexShrink: 1,
+    fontSize: 10,
+    fontFamily: fonts.bodySemibold,
+    includeFontPadding: false,
+    textAlign: "center",
+  },
   badge: {
     position: "absolute",
     top: -4,

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { directKey, messagePreview } from "@/lib/chat/util";
+import { directKey, linkBotNavigationScreens, messagePreview, sanitizeMessageBody } from "@/lib/chat/util";
 import { sendChatPush } from "@/lib/chat/push";
 import { notifyMessage } from "@/lib/chat/gateway";
 import { runTool, mintUserToken } from "@/lib/chat/bot-tools";
@@ -10,7 +10,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { botDailyLimit } from "@/lib/billing/entitlements";
 import { withBotWriteToolAudit } from "@/lib/chat/bot-audit";
 
-const MAX_REPLY_CHARS = 800;
+const MAX_REPLY_CHARS = 2000;
 
 /**
  * El asistente "Nidokey" es un participante de chat normal (una fila User), no
@@ -111,7 +111,7 @@ export async function replyAsBot(
   text: string,
   options: { clientId?: string } = {},
 ): Promise<boolean> {
-  const body = text.slice(0, MAX_REPLY_CHARS);
+  const body = linkBotNavigationScreens(sanitizeMessageBody(text, MAX_REPLY_CHARS) ?? "");
   const now = new Date();
   let message;
   try {

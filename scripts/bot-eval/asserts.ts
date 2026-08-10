@@ -19,7 +19,20 @@ const TOOL_NAMES = BOT_TOOLS.map((t) => t.function.name).filter((n) => n.include
 const TOOL_NAME_RE = new RegExp(`\\b(${TOOL_NAMES.join("|")})\\b`);
 const RAW_JSON_RE = /\{\s*"(type|id|args|tool|modo|valor|keep_id)"\s*:/;
 const ENGLISH_START_RE = /^(I|I'm|I'll|The|Here|Sure|Sorry|Yes|No,? I)\b/;
-const SPANISH_SIGNAL_RE = /[áéíóúñ¿¡]|\b(el|la|los|las|un|una|de|que|y|con|para|tus?|tienes|puedes|hay|es|está)\b/i;
+// Señales de español. Ojo: una respuesta correcta puede ser MUY corta («Listo,
+// renta actualizada a 600 €/mes.») y no contener artículos ni acentos, así que
+// el vocabulario incluye confirmaciones frecuentes; además el chequeo de idioma
+// se salta en textos de menos de 60 caracteres (ver isSpanishEnough).
+const SPANISH_SIGNAL_RE =
+  /[áéíóúñ¿¡]|\b(el|la|los|las|un|una|de|que|y|con|para|tus?|tienes|puedes|hay|es|est[aá]|listo|hecho|guardado|creado|borrado|actualizada?|actualizado|renta|precio|mes)\b/i;
+
+/** El detector de idioma solo es fiable con texto suficiente. */
+function isSpanishEnough(text: string): boolean {
+  const t = text.trim();
+  if (ENGLISH_START_RE.test(t)) return false;
+  if (t.length < 60) return true; // demasiado corto para juzgar: no penalizamos
+  return SPANISH_SIGNAL_RE.test(t);
+}
 
 /** ¿La llamada llegó a EJECUTARSE? (el gate de runAgent bloquea escrituras sin confirmar). */
 const executed = (tc: AgentResult["toolCalls"][number]) => !tc.result.includes(CONFIRM_BLOCKED_MSG);
@@ -102,7 +115,7 @@ export function runAsserts(c: EvalCase, result: AgentResult): AssertFail[] {
   const toolLeak = TOOL_NAME_RE.exec(text);
   if (toolLeak) fails.push({ check: "fuga-tools", detail: `menciona la tool "${toolLeak[1]}" en el texto` });
   if (RAW_JSON_RE.test(text)) fails.push({ check: "fuga-json", detail: "JSON crudo en la respuesta" });
-  if (ENGLISH_START_RE.test(text.trim()) || !SPANISH_SIGNAL_RE.test(text)) {
+  if (!isSpanishEnough(text)) {
     fails.push({ check: "idioma", detail: `no parece español: «${text.slice(0, 80)}»` });
   }
 

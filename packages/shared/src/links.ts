@@ -26,6 +26,9 @@ export const RECORD_ROUTES: Record<string, string> = {
 export const NAV_ALLOW: ReadonlySet<string> = new Set([
   "/", "/search", "/importar", "/matches", "/account",
   "/theme-settings", "/category-settings",
+  // Pantallas del loop de producto (2026-08-10): sin esto el bot no puede
+  // llevar al usuario a las dos superficies nuevas que sí sabe explicar.
+  "/events", "/decisions",
   // Fase 0 food OFF (2026-08-09): rutas /food/* retiradas de la whitelist.
   "/chat/contacts", "/chat/new", "/chat/blocked",
   "/viajes/nuevo",

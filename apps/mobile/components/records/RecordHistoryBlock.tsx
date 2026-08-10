@@ -4,6 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui";
+import { RecordCreationRow } from "@/components/records/RecordCreationRow";
 import { RecordEventRow } from "@/components/records/RecordEventRow";
 import {
   fetchEvents,
@@ -23,11 +25,17 @@ export function RecordHistoryBlock({
   recordType,
   recordId,
   recordTitle,
+  recordCreatedAt,
+  priceAlertField,
+  onCreateAlert,
   initiallyCollapsed = true,
 }: {
   recordType: RecordType;
   recordId: string;
   recordTitle: string;
+  recordCreatedAt?: string | null;
+  priceAlertField?: "price" | "rent";
+  onCreateAlert?: () => void;
   initiallyCollapsed?: boolean;
 }) {
   const { th } = useTheme();
@@ -67,7 +75,7 @@ export function RecordHistoryBlock({
           onPress={() =>
             router.push({
               pathname: "/events",
-              params: { recordType, recordId, recordTitle },
+              params: { recordType, recordId, recordTitle, recordCreatedAt, priceAlertField },
             } as never)
           }
           style={({ pressed }) => [styles.viewAll, pressed && { opacity: 0.75 }]}
@@ -84,15 +92,33 @@ export function RecordHistoryBlock({
           </View>
         ) : eventsQ.error ? (
           <Text style={[styles.emptyText, { color: th.dangerFg }]}>{t("events.history_error")}</Text>
-        ) : events.length === 0 ? (
-          <Text style={[styles.emptyText, { color: th.textMuted }]}>{t("events.history_empty")}</Text>
         ) : (
           <View style={[styles.list, { borderTopColor: th.border }]}>
+            {events.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={[styles.emptyText, { color: th.textMuted }]}>{t("events.history_no_more")}</Text>
+                {onCreateAlert ? (
+                  <Button
+                    label={t("events.empty_alerts")}
+                    icon="notifications-outline"
+                    variant="secondary"
+                    size="sm"
+                    fullWidth={false}
+                    onPress={onCreateAlert}
+                  />
+                ) : null}
+              </View>
+            ) : null}
             {events.map((event, index) => (
               <View key={event.id} style={[index > 0 && { borderTopWidth: 1, borderTopColor: th.border }]}>
                 <RecordEventRow item={event} locale={language === "en" ? "en" : "es"} compact />
               </View>
             ))}
+            {recordCreatedAt ? (
+              <View style={[events.length > 0 && { borderTopWidth: 1, borderTopColor: th.border }]}>
+                <RecordCreationRow createdAt={recordCreatedAt} locale={language === "en" ? "en" : "es"} compact />
+              </View>
+            ) : null}
           </View>
         )
       ) : null}
@@ -130,6 +156,11 @@ const styles = StyleSheet.create({
   },
   loader: { paddingVertical: 12 },
   list: { borderTopWidth: 1 },
+  emptyBox: {
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 8,
+  },
   emptyText: {
     paddingTop: 4,
     fontSize: 13,

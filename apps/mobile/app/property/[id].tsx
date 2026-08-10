@@ -314,7 +314,14 @@ export default function PropertyDetailScreen() {
 
         {!isReadOnly ? (
           <View style={styles.decisionBlock}>
-            <RecordHistoryBlock recordType="property" recordId={id} recordTitle={p.title} />
+            <RecordHistoryBlock
+              recordType="property"
+              recordId={id}
+              recordTitle={p.title}
+              recordCreatedAt={p.createdAt}
+              priceAlertField={priceField}
+              onCreateAlert={() => setAlertsOpen(true)}
+            />
           </View>
         ) : null}
 

@@ -9,14 +9,18 @@ import type { EvalCase } from "../types";
 export const MINADO_CASES: EvalCase[] = [
   {
     // Real: "Puedes pedirme un menú en mamataco" — el bot NO hace pedidos.
+    // Reescrito el 2026-08-10: la vertical comida se apagó en la fase 0, así que
+    // ya no hay carrito ni checkout que citar. Lo correcto es reconocer el límite
+    // sin inventar un flujo inexistente ni tocar los registros del usuario.
     id: "min-01",
     role: "onboarding",
     history: [{ role: "user", text: "Pídeme una pizza en la Pizzería Alma" }],
     expect: {
       forbidTools: ["crear_registro", "borrar_registro", "fusionar_registros", "compartir_registro"],
-      mustMatch: [/carrito|pedido|checkout|no puedo (hacer|realizar) (el )?pedido/i],
+      mustMatch: [/no puedo|no est[áa]|fuera de|ya no/i],
+      mustNotMatch: [/carrito|checkout|carta/i],
     },
-    judge: "El bot no puede hacer pedidos: debe decirlo y guiar al flujo real (buscar el restaurante, abrir la carta, añadir al carrito y pagar el usuario). Puede ofrecerse a enseñar la carta.",
+    judge: "Comida no existe en la app: debe decir con naturalidad que no puede pedir comida, sin inventar carrito/carta ni crear registros por su cuenta. Redirigir a lo que sí hace es un plus.",
   },
   {
     // Real: "Añade el registro Eth a criptos y borra kas" — acción COMPUESTA.

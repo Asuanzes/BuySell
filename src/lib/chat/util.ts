@@ -1,7 +1,26 @@
 /**
  * Utilidades puras del chat (testeables sin BBDD).
  */
-import { stripRecordLinks } from "@nidokey/shared";
+import { NAV_ALLOW, stripRecordLinks } from "@nidokey/shared";
+
+const BOT_NAV_SCREEN_LINKS: ReadonlyArray<readonly [label: string, route: string]> = [
+  ["Duplicados", "/matches"],
+  ["Importar", "/importar"],
+  ["Buscar", "/search"],
+  ["Tema", "/theme-settings"],
+  ["Categorías", "/category-settings"],
+  ["Novedades", "/events"],
+  ["Decisiones", "/decisions"],
+  ["Contactos", "/chat/contacts"],
+  ["Calculadora de hipoteca", "/tools/mortgage"],
+  ["Viajes", "/viajes/nuevo"],
+  ["Nuevo viaje", "/viajes/nuevo"],
+  ["nuevo viaje", "/viajes/nuevo"],
+];
+
+const BOT_NAV_LINK_RE = /\[\[ir:([^\]|]+)\|([^\]]+)\]\]/g;
+const ANY_LINK_RE = /\[\[[\s\S]*?\]\]/g;
+const BOT_NAV_ROUTE_BY_LABEL = new Map(BOT_NAV_SCREEN_LINKS.map(([label, route]) => [label, route]));
 
 /**
  * Clave de dedupe para conversaciones DIRECT: las mismas dos personas solo
@@ -56,6 +75,75 @@ export function sanitizeMessageBody(raw: string | null | undefined, maxChars: nu
   const last = t.charCodeAt(cut - 1);
   if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
   return t.slice(0, cut);
+}
+
+/**
+ * Defensa determinista del prompt: si el bot menciona una pantalla inequívoca,
+ * convierte la primera aparición fuera de links en navegación segura.
+ */
+export function linkBotNavigationScreens(text: string): string {
+  if (!text) return text;
+  let out = sanitizeBotNavigationLinks(text);
+
+  const linkedRoutes = new Set<string>();
+  for (const match of out.matchAll(BOT_NAV_LINK_RE)) linkedRoutes.add(match[1] ?? "");
+
+  for (const [label, route] of BOT_NAV_SCREEN_LINKS) {
+    if (!NAV_ALLOW.has(route) || linkedRoutes.has(route)) continue;
+    const linked = linkFirstLabelOutsideLinks(out, label, route);
+    if (linked !== out) {
+      out = linked;
+      linkedRoutes.add(route);
+    }
+  }
+  return out;
+}
+
+function sanitizeBotNavigationLinks(text: string): string {
+  return text.replace(BOT_NAV_LINK_RE, (_full, route: string, label: string) => {
+    if (NAV_ALLOW.has(route)) return `[[ir:${route}|${label}]]`;
+    const allowedRoute = BOT_NAV_ROUTE_BY_LABEL.get(label);
+    if (allowedRoute && NAV_ALLOW.has(allowedRoute)) return `[[ir:${allowedRoute}|${label}]]`;
+    return label;
+  });
+}
+
+function linkFirstLabelOutsideLinks(text: string, label: string, route: string): string {
+  let cursor = 0;
+  let rebuilt = "";
+  for (const match of text.matchAll(ANY_LINK_RE)) {
+    const linkStart = match.index ?? 0;
+    const before = text.slice(cursor, linkStart);
+    const linkedBefore = linkFirstLabelInPlainText(before, label, route);
+    if (linkedBefore !== before) return rebuilt + linkedBefore + text.slice(linkStart);
+    rebuilt += before + match[0];
+    cursor = linkStart + match[0].length;
+  }
+  const tail = text.slice(cursor);
+  const linkedTail = linkFirstLabelInPlainText(tail, label, route);
+  return linkedTail === tail ? text : rebuilt + linkedTail;
+}
+
+function linkFirstLabelInPlainText(text: string, label: string, route: string): string {
+  let from = 0;
+  while (from < text.length) {
+    const start = text.indexOf(label, from);
+    if (start === -1) return text;
+    const end = start + label.length;
+    if (hasScreenLabelBoundary(text, start, end)) {
+      return text.slice(0, start) + `[[ir:${route}|${label}]]` + text.slice(end);
+    }
+    from = end;
+  }
+  return text;
+}
+
+function hasScreenLabelBoundary(text: string, start: number, end: number): boolean {
+  return !isWordish(text[start - 1]) && !isWordish(text[end]);
+}
+
+function isWordish(ch: string | undefined): boolean {
+  return !!ch && /^[\p{L}\p{N}_]$/u.test(ch);
 }
 
 /**

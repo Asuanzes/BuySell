@@ -150,6 +150,8 @@ export const CONSULTA_CASES: EvalCase[] = [
     },
     expect: {
       tools: [{ name: "comparar_registros", args: { type: "property", ids: [IDS.uria, IDS.gijon] } }],
+      // El contrapunto es DOCUMENTAL como el checklist de visita (ver con-13).
+      maxChars: 1900,
       mustNotMatch: [/qu[eé] id|dame el id|necesito el id|cu[aá]l es el id/i],
     },
     judge: "Los ids venían en los enlaces del propio mensaje: debe llamar a comparar_registros con ellos y dar el contrapunto (uno es venta y otro alquiler: señalarlo es lo correcto). Pedir el id es un fallo grave.",
@@ -175,6 +177,10 @@ export const CONSULTA_CASES: EvalCase[] = [
     },
     expect: {
       tools: [{ name: "preparar_visita", args: { id: IDS.uria } }],
+      // Respuesta DOCUMENTAL (preguntas + condiciones de la visita + checklist):
+      // el tope conversacional de 800 la truncaría. Producción permite 2000 y el
+      // prompt pide ~1800 como techo para este tipo de respuesta.
+      maxChars: 1900,
       mustMatch: [/comunidad|construcci[oó]n|baj/i],
       mustNotMatch: [/qu[eé] id|dame el id|necesito el id/i],
     },

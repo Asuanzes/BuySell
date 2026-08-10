@@ -10,6 +10,8 @@ import {
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 
+import { AlertsSheet } from "@/components/AlertsSheet";
+import { RecordCreationRow } from "@/components/records/RecordCreationRow";
 import { RecordEventRow } from "@/components/records/RecordEventRow";
 import { Button, EmptyState, Screen } from "@/components/ui";
 import { ApiError } from "@/lib/api";
@@ -31,7 +33,13 @@ const PAGE_SIZE = 30;
 type LoadState = "loading" | "ready" | "error";
 
 export default function EventsScreen() {
-  const params = useLocalSearchParams<{ recordType?: string; recordId?: string; recordTitle?: string }>();
+  const params = useLocalSearchParams<{
+    recordType?: string;
+    recordId?: string;
+    recordTitle?: string;
+    recordCreatedAt?: string;
+    priceAlertField?: string;
+  }>();
   const { th } = useTheme();
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -42,6 +50,7 @@ export default function EventsScreen() {
   const [error, setError] = useState<Error | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const firstRun = useRef(true);
   const navigatingRef = useRef(false);
   const recordFilter = useMemo(
@@ -49,6 +58,10 @@ export default function EventsScreen() {
     [params.recordId, params.recordType]
   );
   const recordTitle = stringParam(params.recordTitle);
+  const recordCreatedAt = stringParam(params.recordCreatedAt);
+  const priceAlertField = stringParam(params.priceAlertField) === "rent" ? "rent" : "price";
+  const canCreateRecordAlert =
+    recordFilter?.recordType === "property" || recordFilter?.recordType === "crypto" || recordFilter?.recordType === "market";
 
   const visibleItems = useMemo(
     () => items.filter((item) => isVisibleRecordEvent(item, recordFilter ? [recordFilter.recordType] : orderedVisible)),
@@ -134,70 +147,105 @@ export default function EventsScreen() {
           />
         </View>
       ) : (
-        <FlatList
-          data={visibleItems}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[styles.list, visibleItems.length === 0 && styles.emptyList]}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => void loadFirst()}
-              tintColor={th.primary}
-              colors={[th.primary]}
+        <>
+          <FlatList
+            data={visibleItems}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[styles.list, visibleItems.length === 0 && styles.emptyList]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => void loadFirst()}
+                tintColor={th.primary}
+                colors={[th.primary]}
+              />
+            }
+            renderItem={({ item }) => (
+              <RecordEventRow item={item} locale={language === "en" ? "en" : "es"} onPress={openEvent} />
+            )}
+            onEndReached={() => void loadMore()}
+            onEndReachedThreshold={0.45}
+            ListEmptyComponent={
+              recordFilter ? (
+                <View style={styles.center}>
+                  <EmptyState
+                    icon="pulse-outline"
+                    title={t("events.empty_title")}
+                    description={t("events.history_no_more")}
+                  />
+                  {canCreateRecordAlert ? (
+                    <View style={styles.emptyActions}>
+                      <Button
+                        label={t("events.empty_alerts")}
+                        icon="notifications-outline"
+                        variant="secondary"
+                        onPress={() => setAlertsOpen(true)}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ) : filteredEmpty ? (
+                <View style={styles.center}>
+                  <EmptyState
+                    icon="eye-off-outline"
+                    title={t("events.filtered_empty_title")}
+                    description={t("events.filtered_empty_desc")}
+                  />
+                  <View style={styles.emptyActions}>
+                    <Button
+                      label={t("events.filtered_empty_action")}
+                      icon="options-outline"
+                      onPress={() => router.push("/category-settings" as never)}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.center}>
+                  <EmptyState
+                    icon="pulse-outline"
+                    title={t("events.empty_title")}
+                    description={t("events.empty_desc")}
+                  />
+                  <View style={styles.emptyActions}>
+                    <Button
+                      label={t("events.empty_import")}
+                      icon="add-circle-outline"
+                      onPress={() => router.push("/importar" as never)}
+                    />
+                    <Button
+                      label={t("events.empty_alerts")}
+                      icon="notifications-outline"
+                      variant="secondary"
+                      onPress={() => router.push("/notification-settings" as never)}
+                    />
+                  </View>
+                </View>
+              )
+            }
+            ListFooterComponent={
+              <>
+                {loadingMore ? (
+                  <ActivityIndicator color={th.primary} style={styles.footerLoader} />
+                ) : visibleItems.length > 0 && !nextCursor && !recordFilter ? (
+                  <Text style={[styles.endLabel, { color: th.textSubtle }]}>{t("events.end_of_list")}</Text>
+                ) : null}
+                {recordCreatedAt && !nextCursor && !loadingMore ? (
+                  <RecordCreationRow createdAt={recordCreatedAt} locale={language === "en" ? "en" : "es"} />
+                ) : null}
+              </>
+            }
+          />
+          {recordFilter && canCreateRecordAlert ? (
+            <AlertsSheet
+              visible={alertsOpen}
+              onClose={() => setAlertsOpen(false)}
+              recordType={recordFilter.recordType}
+              recordId={recordFilter.recordId}
+              field={priceAlertField}
+              allowStatus={recordFilter.recordType === "property"}
             />
-          }
-          renderItem={({ item }) => (
-            <RecordEventRow item={item} locale={language === "en" ? "en" : "es"} onPress={openEvent} />
-          )}
-          onEndReached={() => void loadMore()}
-          onEndReachedThreshold={0.45}
-          ListEmptyComponent={
-            filteredEmpty ? (
-              <View style={styles.center}>
-                <EmptyState
-                  icon="eye-off-outline"
-                  title={t("events.filtered_empty_title")}
-                  description={t("events.filtered_empty_desc")}
-                />
-                <View style={styles.emptyActions}>
-                  <Button
-                    label={t("events.filtered_empty_action")}
-                    icon="options-outline"
-                    onPress={() => router.push("/category-settings" as never)}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.center}>
-                <EmptyState
-                  icon="pulse-outline"
-                  title={t("events.empty_title")}
-                  description={t("events.empty_desc")}
-                />
-                <View style={styles.emptyActions}>
-                  <Button
-                    label={t("events.empty_import")}
-                    icon="add-circle-outline"
-                    onPress={() => router.push("/importar" as never)}
-                  />
-                  <Button
-                    label={t("events.empty_alerts")}
-                    icon="notifications-outline"
-                    variant="secondary"
-                    onPress={() => router.push("/notification-settings" as never)}
-                  />
-                </View>
-              </View>
-            )
-          }
-          ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator color={th.primary} style={styles.footerLoader} />
-            ) : visibleItems.length > 0 && !nextCursor ? (
-              <Text style={[styles.endLabel, { color: th.textSubtle }]}>{t("events.end_of_list")}</Text>
-            ) : null
-          }
-        />
+          ) : null}
+        </>
       )}
     </Screen>
   );

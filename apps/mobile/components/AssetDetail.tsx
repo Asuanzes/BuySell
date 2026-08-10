@@ -25,6 +25,7 @@ import { marketLogoUrl } from "@/lib/records/market-logo";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AlertsSheet } from "@/components/AlertsSheet";
 import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
+import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 
 /**
  * Detalle de un activo (cripto o mercado), estilo Yahoo Finanzas:
@@ -360,6 +361,16 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
             </View>
           ))}
         </View>
+
+        <View style={styles.historyBlock}>
+          <RecordHistoryBlock
+            recordType={type}
+            recordId={id}
+            recordTitle={recordTitle}
+            recordCreatedAt={record.createdAt}
+            onCreateAlert={() => setAlertsOpen(true)}
+          />
+        </View>
       </ScrollView>
 
       {/* ── Barra inferior: cerrar (izq) · compartir + abrir en Yahoo (der) ──
@@ -505,6 +516,7 @@ const styles = StyleSheet.create({
   noChart: { alignItems: "center", justifyContent: "center" },
   chartSpinner: { position: "absolute", top: 6, right: 6 },
   statsCard: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 4, marginTop: 20 },
+  historyBlock: { marginTop: 14 },
   statRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 11 },
   statKey: { fontSize: 13 },
   statVal: { fontSize: 13, fontFamily: fonts.bodySemibold },

@@ -98,6 +98,14 @@ function fieldValue(...values: unknown[]): unknown {
   return values.find((v) => v !== undefined && v !== null && v !== "");
 }
 
+function stringList(value: unknown, max = 12): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.trim() !== "").slice(0, max) : [];
+}
+
+function combinedStringList(...values: unknown[]): string[] {
+  return [...new Set(values.flatMap((v) => stringList(v)))].slice(0, 12);
+}
+
 function compactRecordForComparison(type: RecordType, record: AnyRecord): AnyRecord {
   const meta = pickMeta(record);
   const detail = pickDetail(record);
@@ -309,6 +317,7 @@ export async function prepareVisit(id: string, token: string, deps: PrepareVisit
   const property = {
     id: record.id,
     title: record.title,
+    descripcion: typeof fieldValue(detail.description, record.description) === "string" ? String(fieldValue(detail.description, record.description)).slice(0, 700) : null,
     precio_eur: priceEur,
     renta_mensual_eur: rentEur,
     eur_m2: comparableEur != null && Number.isFinite(area) && area > 0 ? Math.round(comparableEur / area) : null,
@@ -322,6 +331,9 @@ export async function prepareVisit(id: string, token: string, deps: PrepareVisit
       [fieldValue(meta.city, detail.city), fieldValue(meta.neighborhood, detail.neighborhood), fieldValue(meta.address, detail.address)]
         .filter(Boolean)
         .join(" · ") || null,
+    direccion: fieldValue(meta.address, detail.address) ?? null,
+    entorno: fieldValue(meta.environment, detail.environment) ?? null,
+    etiquetas: combinedStringList(meta.tags, detail.tags),
     planta: fieldValue(meta.floor, detail.floor) ?? null,
     ascensor: fieldValue(meta.hasElevator, detail.hasElevator) ?? null,
   };

@@ -263,7 +263,12 @@ export default function HolidayDetail() {
         ) : null}
 
         {id && !isReadOnly ? (
-          <RecordHistoryBlock recordType="holiday" recordId={id} recordTitle={record.title} />
+          <RecordHistoryBlock
+            recordType="holiday"
+            recordId={id}
+            recordTitle={record.title}
+            recordCreatedAt={record.createdAt}
+          />
         ) : null}
 
         {hasBookingActions ? (

@@ -67,6 +67,7 @@ export type PropertyDetail = {
   priceHistory: PriceHistoryPoint[];
   shared?: boolean;
   readOnly?: boolean;
+  createdAt?: string | null;
 };
 
 /** Un punto del histórico de precio (PriceSnapshot). */

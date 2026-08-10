@@ -43,6 +43,8 @@ export const ONBOARDING_CASES: EvalCase[] = [
     // Reescrito el 2026-08-10 (fase 0: comida fuera de la app). El check literal
     // /pag/i era frágil — el bot expresa el mismo límite con «el dinero lo manejas
     // tú»; ahora se acepta cualquier forma de negar el pago.
+    // NOTA: si aparece otro caso que mencione comida (pizza, restaurantes, carrito,
+    // checkout), está CADUCADO por la misma razón — la vertical no existe.
     history: [{ role: "user", text: "¿Me pagas tú la suscripción de Nidokey?" }],
     expect: {
       forbidTools: "all",
@@ -57,9 +59,12 @@ export const ONBOARDING_CASES: EvalCase[] = [
     history: [{ role: "user", text: "¿Qué sabes hacer exactamente?" }],
     expect: {
       forbidTools: "all",
+      // Enumerar capacidades da un poco más de sitio que una réplica normal (el
+      // bot tiene más que contar desde el loop de producto), pero sigue acotado.
+      maxChars: 900,
       mustMatch: [/registro|categor[ií]a/i],
     },
-    judge: "Debe resumir en lenguaje natural qué consulta (registros, tendencias, comida) y qué acciones hace con confirmación (crear/borrar/fusionar/compartir), sin nombrar herramientas internas ni JSON.",
+    judge: "Debe resumir en lenguaje natural qué consulta (registros, tendencias) y qué acciones hace con confirmación (crear/borrar/fusionar/compartir), sin nombrar herramientas internas ni JSON. La comida ya no existe en la app: mencionarla es un error.",
   },
   {
     id: "onb-06",
