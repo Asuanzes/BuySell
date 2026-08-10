@@ -400,6 +400,17 @@ export default function RecordsScreen() {
           <View style={styles.railSpacer} />
           <View style={styles.railDivider} />
           <Pressable
+            onPress={() => router.navigate("/events" as never)}
+            accessibilityRole="button"
+            accessibilityLabel={t("events.title")}
+            style={[
+              styles.railItem,
+              { borderColor: "transparent" },
+            ]}
+          >
+            <Ionicons name="sparkles-outline" size={26} color={trendsColor} />
+          </Pressable>
+          <Pressable
             onPress={() => router.navigate("/trends" as never)}
             accessibilityRole="button"
             accessibilityLabel={typeLabel("trends")}
