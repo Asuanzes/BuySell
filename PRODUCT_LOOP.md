@@ -625,6 +625,30 @@ dato, un hueco o un evento; 5-8 es un techo, no una cuota.**
 | Montaje en la ficha + prompt que resume y enlaza | PENDIENTE (el prompt espera a que Codex libere `src`) |
 | BUG-14 (relleno genérico) | ABSORBIDA por C6i1-A: sus instrucciones ya exigen la regla de anclaje. Mantenerlas separadas habría hecho que dos tareas reescribieran el mismo generador de ítems |
 
+**Cierre C6i1** (main `ceba961` + `cb6e0d3`, OTA preview `fbb4a3fb` y production `a09678ab`,
+runtime 0.1.1) — Problema: el checklist era un texto que se perdía en el scroll del chat, y
+la cabecera contextual existía solo en el servidor. Mejora: el checklist es estado marcable
+en la ficha y el banner del chat ya enseña qué ha cambiado desde el último mensaje. Pilar:
+P2 sobre P1. Evidencia: 613 tests, typecheck web+móvil, 1210 claves ES/EN, evals del bot
+53/53. Métrica a observar: % de visitas preparadas cuyo checklist se marca al menos una vez
+(si nadie lo marca, el bloque no está donde debe) y aperturas de la fila de cambios del banner.
+
+**Lo que NO está verificado, dicho claro:**
+- No se pudo comprobar desde fuera que las rutas nuevas estén ya desplegadas en Vercel: el
+  middleware responde 401 a cualquier `/api` ANTES de enrutar, así que una sonda sin
+  credenciales no distingue «ruta nueva» de «ruta inexistente», y `/api/health` no expone el
+  build. Fallo benigno si hubiera carrera: sin datos el bloque no se renderiza y se cura solo.
+- Si el usuario pide «prepárame la visita» dos veces el mismo día tras rellenar un hueco, se
+  reutiliza el checklist del día y los ítems NO se refrescan (a cambio, nunca se destruyen sus
+  marcas). Correcto para v1, pero es una decisión que conviene tomar a la vista de uso real.
+- `publish_handoff` quedó BLOQUEADO por el gate de colaboración: exige la revisión Codex
+  registrada para el turno actual, y el `collaboration-hook` no puede registrar el prompt
+  (falla con «attempt to write a readonly database» aunque la base acepta escrituras de un
+  segundo proceso, comprobado con BEGIN IMMEDIATE/ROLLBACK). La SUSTANCIA de la regla sí se
+  cumplió: se recuperó la entrega de Codex con `get_delegated_task`, se revisó de forma
+  adversarial y se corrigieron cuatro cosas antes de integrar. Requiere intervención humana
+  en el arnés; no se ha falsificado la acreditación.
+
 **DeepSeek pasa a escribir código.** El propietario autorizó ampliar sus capacidades
 («TODO»). Se amplió el arnés para que quepa una entrega real: tope de salida 4000 → 16000
 caracteres **conservando los saltos de línea** (antes el markdown y el código llegaban
