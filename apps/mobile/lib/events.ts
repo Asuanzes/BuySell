@@ -2,12 +2,19 @@ import { api } from "@/lib/api";
 import { MANAGED_RECORD_TYPES, isRecordType } from "@/lib/records/category-prefs";
 import type { RecordType } from "@nidokey/shared";
 import { eventTitleFromPayload, type RecordEventPayload } from "./events-format";
+import { buildEventsQueryParams, type EventRecordFilter } from "./events-params";
 
 export {
   eventTimeAgo,
   formatRecordEventDescription,
   type RecordEventPayload,
 } from "./events-format";
+export {
+  buildEventsQueryParams,
+  eventScreenTitleKey,
+  validEventRecordFilter,
+  type EventRecordFilter,
+} from "./events-params";
 
 export type RecordEventDto = {
   id: string;
@@ -26,10 +33,13 @@ export type EventsPage = {
 
 const MANAGED_EVENT_TYPES = new Set<RecordType>([...MANAGED_RECORD_TYPES, "chat"]);
 
-export function fetchEvents(cursor?: string | null, limit = 30): Promise<EventsPage> {
-  const qs = new URLSearchParams({ limit: String(limit) });
-  if (cursor) qs.set("cursor", cursor);
-  return api<EventsPage>(`/api/events?${qs.toString()}`);
+export function fetchEvents(
+  cursor?: string | null,
+  limit = 30,
+  filter?: EventRecordFilter | null
+): Promise<EventsPage> {
+  const qs = buildEventsQueryParams(cursor, limit, filter);
+  return api<EventsPage>(`/api/events?${qs}`);
 }
 
 export function isVisibleRecordEvent(

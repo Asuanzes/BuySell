@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+import { buildEventsQueryParams, eventScreenTitleKey } from "./events-params";
 import { formatRecordEventDescription } from "./events-format";
 
 const t = (key: string, opts?: Record<string, string | number>) =>
@@ -46,5 +47,26 @@ describe("formatRecordEventDescription", () => {
       'events.desc.record_shared_group {"count":3}'
     );
     assert.equal(formatRecordEventDescription("record_imported", {}, t), "events.desc.record_imported {}");
+  });
+});
+
+describe("events query helpers", () => {
+  it("construye params sin filtros y con cursor", () => {
+    assert.equal(buildEventsQueryParams("c1", 15), "limit=15&cursor=c1");
+  });
+
+  it("añade recordType y recordId solo cuando vienen juntos", () => {
+    assert.equal(
+      buildEventsQueryParams(null, 5, { recordType: "property", recordId: "p1" }),
+      "limit=5&recordType=property&recordId=p1"
+    );
+    assert.equal(buildEventsQueryParams(null, 5, { recordType: "property" }), "limit=5");
+    assert.equal(buildEventsQueryParams(null, 5, { recordId: "p1" }), "limit=5");
+  });
+
+  it("selecciona título contextual solo con filtro válido completo", () => {
+    assert.equal(eventScreenTitleKey({ recordType: "holiday", recordId: "h1" }), "events.title_record");
+    assert.equal(eventScreenTitleKey({ recordType: "nope", recordId: "h1" }), "events.title");
+    assert.equal(eventScreenTitleKey({ recordType: "holiday" }), "events.title");
   });
 });

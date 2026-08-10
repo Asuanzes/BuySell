@@ -24,6 +24,7 @@ import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 import { RelatedChatsBlock } from "@/components/records/RelatedChatsBlock";
+import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 
 type Outcome = "yes" | "no" | "later";
 
@@ -156,6 +157,7 @@ export default function HolidayDetail() {
   const occupancy = metaField<{ adults: number; children: number[] }[] | null>(record, "occupancy", null);
   const booking = metaField<{ hotelRef?: string | null; flightRef?: string | null } | null>(record, "booking", null);
   // ⚠️ NO leer metaField(record, "commission", …): es interno, no se pinta.
+  const isReadOnly = metaField<boolean>(record, "readOnly", false) || metaField<boolean>(record, "shared", false);
 
   const statusLabel =
     record.status === "BOOKED"
@@ -258,6 +260,10 @@ export default function HolidayDetail() {
             onOpenChat={onOpenChat}
             onShare={() => setShareChatOpen(true)}
           />
+        ) : null}
+
+        {id && !isReadOnly ? (
+          <RecordHistoryBlock recordType="holiday" recordId={id} recordTitle={record.title} />
         ) : null}
 
         {hasBookingActions ? (

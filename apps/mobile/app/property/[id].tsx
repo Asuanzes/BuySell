@@ -41,6 +41,7 @@ import { AlertsSheet } from "@/components/AlertsSheet";
 import { PriceHistoryBlock } from "@/components/property/PriceHistoryBlock";
 import { ZoneComparisonBlock } from "@/components/property/ZoneComparisonBlock";
 import { RelatedChatsBlock } from "@/components/property/RelatedChatsBlock";
+import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 import { track } from "@/lib/analytics";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
@@ -229,6 +230,7 @@ export default function PropertyDetailScreen() {
   };
   const boolLabel = (v: boolean | null) =>
     v == null ? "—" : v ? t("common.yes") : t("common.no");
+  const isReadOnly = p.shared === true || p.readOnly === true;
 
   return (
     <View style={[styles.container, { backgroundColor: th.bg }]}>
@@ -309,6 +311,12 @@ export default function PropertyDetailScreen() {
             onShare={() => setShareOpen(true)}
           />
         </View>
+
+        {!isReadOnly ? (
+          <View style={styles.decisionBlock}>
+            <RecordHistoryBlock recordType="property" recordId={id} recordTitle={p.title} />
+          </View>
+        ) : null}
 
         {/* Anuncios vinculados ANTES de características: es lo accionable
             (precio por portal + abrir) y compacto — una fila por anuncio. */}

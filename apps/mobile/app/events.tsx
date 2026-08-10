@@ -2,25 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 
-import { CategoryIcon } from "@/components/CategoryIcon";
+import { RecordEventRow } from "@/components/records/RecordEventRow";
 import { Button, EmptyState, Screen } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
-  eventTimeAgo,
-  eventTitle,
+  eventScreenTitleKey,
   fetchEvents,
-  formatRecordEventDescription,
   isVisibleRecordEvent,
+  validEventRecordFilter,
   type RecordEventDto,
 } from "@/lib/events";
 import { fonts } from "@/lib/fonts";
@@ -34,6 +31,7 @@ const PAGE_SIZE = 30;
 type LoadState = "loading" | "ready" | "error";
 
 export default function EventsScreen() {
+  const params = useLocalSearchParams<{ recordType?: string; recordId?: string; recordTitle?: string }>();
   const { th } = useTheme();
   const { t } = useTranslation();
   const { language } = useLanguage();
@@ -46,17 +44,22 @@ export default function EventsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const firstRun = useRef(true);
   const navigatingRef = useRef(false);
+  const recordFilter = useMemo(
+    () => validEventRecordFilter({ recordType: stringParam(params.recordType), recordId: stringParam(params.recordId) }),
+    [params.recordId, params.recordType]
+  );
+  const recordTitle = stringParam(params.recordTitle);
 
   const visibleItems = useMemo(
-    () => items.filter((item) => isVisibleRecordEvent(item, orderedVisible)),
-    [items, orderedVisible]
+    () => items.filter((item) => isVisibleRecordEvent(item, recordFilter ? [recordFilter.recordType] : orderedVisible)),
+    [items, orderedVisible, recordFilter]
   );
 
   const loadFirst = useCallback(async () => {
     if (firstRun.current) setState("loading");
     else setRefreshing(true);
     try {
-      const page = await fetchEvents(null, PAGE_SIZE);
+      const page = await fetchEvents(null, PAGE_SIZE, recordFilter);
       setItems(page.items ?? []);
       setNextCursor(page.nextCursor ?? null);
       setError(null);
@@ -69,13 +72,13 @@ export default function EventsScreen() {
       firstRun.current = false;
       setRefreshing(false);
     }
-  }, []);
+  }, [recordFilter]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore || state !== "ready") return;
     setLoadingMore(true);
     try {
-      const page = await fetchEvents(nextCursor, PAGE_SIZE);
+      const page = await fetchEvents(nextCursor, PAGE_SIZE, recordFilter);
       setItems((prev) => mergeEvents(prev, page.items ?? []));
       setNextCursor(page.nextCursor ?? null);
     } catch {
@@ -83,7 +86,7 @@ export default function EventsScreen() {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, nextCursor, state]);
+  }, [loadingMore, nextCursor, recordFilter, state]);
 
   useEffect(() => {
     void loadFirst();
@@ -108,10 +111,14 @@ export default function EventsScreen() {
   }, []);
 
   const offline = error ? isOfflineError(error) : false;
-  const filteredEmpty = items.length > 0 && visibleItems.length === 0;
+  const filteredEmpty = !recordFilter && items.length > 0 && visibleItems.length === 0;
+  const titleKey = eventScreenTitleKey(recordFilter ?? {});
 
   return (
-    <Screen title={t("events.title")} subtitle={t("events.subtitle")}>
+    <Screen
+      title={t(titleKey, { title: recordTitle || t("events.title_record_fallback") })}
+      subtitle={recordFilter ? t("events.subtitle_record") : t("events.subtitle")}
+    >
       {state === "loading" ? (
         <View style={styles.center}>
           <ActivityIndicator color={th.primary} />
@@ -140,7 +147,7 @@ export default function EventsScreen() {
             />
           }
           renderItem={({ item }) => (
-            <EventRow item={item} locale={language === "en" ? "en" : "es"} onPress={openEvent} />
+            <RecordEventRow item={item} locale={language === "en" ? "en" : "es"} onPress={openEvent} />
           )}
           onEndReached={() => void loadMore()}
           onEndReachedThreshold={0.45}
@@ -196,55 +203,6 @@ export default function EventsScreen() {
   );
 }
 
-function EventRow({
-  item,
-  locale,
-  onPress,
-}: {
-  item: RecordEventDto & { recordType: RecordType };
-  locale: string;
-  onPress: (item: RecordEventDto & { recordType: RecordType }) => void;
-}) {
-  const { th } = useTheme();
-  const { t } = useTranslation();
-  const description = formatRecordEventDescription(item.eventType, item.payload, t, locale);
-  const ago = eventTimeAgo(item.observedAt, t);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={eventTitle(item)}
-      onPress={() => onPress(item)}
-      style={({ pressed }) => [
-        styles.row,
-        { backgroundColor: th.surface, borderColor: th.border },
-        th.elevation.sm,
-        pressed && { opacity: 0.76 },
-      ]}
-    >
-      <View style={[styles.iconWrap, { backgroundColor: th.surfaceRaised, borderColor: th.border }]}>
-        <CategoryIcon type={item.recordType} size={24} />
-      </View>
-      <View style={styles.rowBody}>
-        <View style={styles.rowTop}>
-          <Text style={[styles.title, { color: th.text }]} numberOfLines={1}>
-            {eventTitle(item)}
-          </Text>
-          {ago ? (
-            <Text style={[styles.time, { color: th.textSubtle }]} numberOfLines={1}>
-              {ago}
-            </Text>
-          ) : null}
-        </View>
-        <Text style={[styles.description, { color: th.textMuted }]} numberOfLines={2}>
-          {description}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={th.textSubtle} />
-    </Pressable>
-  );
-}
-
 function mergeEvents(prev: RecordEventDto[], next: RecordEventDto[]): RecordEventDto[] {
   const seen = new Set(prev.map((item) => item.id));
   return [...prev, ...next.filter((item) => !seen.has(item.id))];
@@ -255,34 +213,16 @@ function isOfflineError(error: Error): boolean {
   return /network|fetch|abort|sin respuesta/i.test(error.message);
 }
 
+function stringParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 18 },
   emptyActions: { alignSelf: "stretch", gap: 10, paddingHorizontal: 18 },
   list: { padding: 16, gap: 10, paddingBottom: 28 },
   emptyList: { flexGrow: 1 },
-  row: {
-    minHeight: 78,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowBody: { flex: 1, minWidth: 0 },
-  rowTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { flex: 1, fontSize: 15, lineHeight: 20, fontFamily: fonts.bodySemibold },
-  time: { fontSize: 11, lineHeight: 15, fontFamily: fonts.body },
-  description: { marginTop: 3, fontSize: 13, lineHeight: 18, fontFamily: fonts.body },
   footerLoader: { marginVertical: 18 },
   endLabel: { marginVertical: 18, textAlign: "center", fontSize: 12, fontFamily: fonts.body },
 });

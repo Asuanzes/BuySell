@@ -65,6 +65,8 @@ export type PropertyDetail = {
   }[];
   /** Serie de precio (PriceSnapshot). `listing.operationType` separa venta/renta. */
   priceHistory: PriceHistoryPoint[];
+  shared?: boolean;
+  readOnly?: boolean;
 };
 
 /** Un punto del histórico de precio (PriceSnapshot). */
