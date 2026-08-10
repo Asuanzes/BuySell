@@ -71,6 +71,7 @@ import { ActionsSheet, type SheetOption } from "@/components/chat/ActionsSheet";
 import { MessageActionsSheet, type MessageAction } from "@/components/chat/MessageSheet";
 import { BotRecordActionSheet } from "@/components/chat/BotRecordActionSheet";
 import { ChatContextBanner } from "@/components/chat/ChatContextBanner";
+import { HomeButton } from "@/components/HomeButton";
 import type { BotRecordActionMode } from "@/lib/chat/bot-record-actions";
 import { getDraft, setDraft } from "@/lib/chat/drafts";
 import { setActiveConversation } from "@/lib/chat/push";
@@ -983,6 +984,10 @@ export default function ChatScreen() {
             </Pressable>
           </View>
         )}
+        {/* El chat monta su propia cabecera (headerShown:false), así que el
+            `headerRight` global del Stack no llega: la casa va aquí, arriba a la
+            derecha, la misma posición que en el resto de la app. */}
+        <HomeButton />
         {conversation && (
           <Pressable
             onPress={() => void openMenu()}

@@ -41,6 +41,7 @@ import { AlertsSheet } from "@/components/AlertsSheet";
 import { PriceHistoryBlock } from "@/components/property/PriceHistoryBlock";
 import { ZoneComparisonBlock } from "@/components/property/ZoneComparisonBlock";
 import { RelatedChatsBlock } from "@/components/property/RelatedChatsBlock";
+import { HomeButton } from "@/components/HomeButton";
 import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone } from "@/lib/record-tasks";
@@ -541,8 +542,11 @@ export default function PropertyDetailScreen() {
 
       </ScrollView>
 
+      {/* La ficha oculta el header, así que el `headerRight` global no llega:
+          la casa va aquí, al otro extremo de la barra flotante (space-between). */}
       <View style={[styles.floatBar, { top: insets.top + 8 }]} pointerEvents="box-none">
         <FloatButton icon="chevron-back" onPress={() => (from === "import" ? router.replace("/") : router.back())} />
+        <HomeButton variant="float" />
       </View>
 
       <CategoryContextSheet

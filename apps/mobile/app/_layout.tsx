@@ -30,6 +30,7 @@ import { applyNeonAccent } from "@/lib/neon-accents";
 import { NeonProvider, useNeon } from "@/lib/neon-context";
 import { useFonts } from "expo-font";
 import { HeaderBack } from "@/components/HeaderBack";
+import { HomeButton } from "@/components/HomeButton";
 import { fontAssets, fonts } from "@/lib/fonts";
 import { isPortalUrl, extractSharedText } from "@/lib/portal-url";
 import { isBookShareText } from "@/lib/book-url";
@@ -354,7 +355,15 @@ function AuthGate() {
           botones) revienta. El loader se superpone encima mientras resuelve la
           sesión; las pantallas leen el token de SecureStore en cada llamada, así
           que no fallan por montar antes de que el AuthProvider resuelva. */}
-      <Stack screenOptions={{ headerLeft: () => <HeaderBack /> }}>
+      {/* `headerRight` global = salida visible al inicio en las ~30 pantallas con
+          header. Va aquí y no pantalla por pantalla porque ninguna declara
+          headerRight propio (así que no hay colisión) y porque el problema es
+          justo que al profundizar desaparece la barra de pestañas. El botón se
+          oculta solo cuando no hay profundidad, y hay opt-out explícito
+          (`headerRight: undefined`) donde un toque accidental destruiría trabajo
+          sin guardar: formularios, asistente de viaje, alta de chat, pago y el
+          modal de escaneo. */}
+      <Stack screenOptions={{ headerLeft: () => <HeaderBack />, headerRight: () => <HomeButton /> }}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -458,6 +467,7 @@ function AuthGate() {
             name="chat/new"
             options={{
               headerShown: true,
+              headerRight: undefined, // opt-out: trabajo sin guardar / pago / modal
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
@@ -469,6 +479,7 @@ function AuthGate() {
             name="chat/new-group"
             options={{
               headerShown: true,
+              headerRight: undefined, // opt-out: trabajo sin guardar / pago / modal
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
@@ -524,6 +535,7 @@ function AuthGate() {
             name="property/form"
             options={{
               headerShown: true,
+              headerRight: undefined, // opt-out: trabajo sin guardar / pago / modal
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
@@ -643,6 +655,7 @@ function AuthGate() {
             name="premium"
             options={{
               headerShown: true,
+              headerRight: undefined, // opt-out: trabajo sin guardar / pago / modal
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
@@ -655,6 +668,7 @@ function AuthGate() {
             options={{
               presentation: "modal",
               headerShown: true,
+              headerRight: undefined, // opt-out: trabajo sin guardar / pago / modal
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
@@ -666,6 +680,7 @@ function AuthGate() {
             name="viajes/nuevo"
             options={{
               headerShown: true,
+              headerRight: undefined, // opt-out: trabajo sin guardar / pago / modal
               headerBackTitle: t("common.back"),
               headerTintColor: th.primary,
               headerStyle: { backgroundColor: th.surface },
