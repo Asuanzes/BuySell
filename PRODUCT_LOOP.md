@@ -5,9 +5,9 @@
 > Norma de estrategia: `docs/MODELO-NEGOCIO.md`.
 
 ```yaml
-ciclo: 3
-fase_global: estrategia
-iteracion: 1
+ciclo: 4
+fase_global: implementacion
+iteracion: 9 (paquete de diferenciación COMPLETADO)
 responsable: claude
 
 area_actual: auditoría de las 9 categorías (COMPLETADA, pendiente de autorización del propietario)
@@ -40,8 +40,9 @@ revision_deepseek: entregada (task 1f39ac54)
 decision_final: AUTORIZADO por el propietario (2026-08-09) — fase 0 food OFF y fase 1 workout fuera del selector
 fase_0_estado: IMPLEMENTADA Y DESPLEGADA (main 2866cc7 + e0ed36e; 509 tests; gasto Apify cortado)
 ciclo_3_estado: COMPLETADO (4 pilares, 7 recorridos, conexiones, arquitectura en capas, límites)
-coordinacion: Claude coordina y delega en DeepSeek (D3-01/02/02b registradas); Codex conserva sus tareas
-siguiente_accion: CICLO 4 iteración 1 = HANDOFF_A_CODEX de la fase 1 (workout fuera del selector); después M1 EventLog+Centro
+ciclo_4_estado: paquete COMPLETO en main y OTA (fases 0-1 + M1 + MI1 + M2 + M4 + R1v1 + M3 + M5 + MI2); 577 tests, evals bot 15/15
+coordinacion: Claude coordina y delega en DeepSeek; Codex editor principal vía HANDOFF (30 tareas Codex + 22 DeepSeek en la sesión)
+siguiente_accion: CICLO 5 (mensajería como sistema de operaciones) con los 8 flujos rotos de D5-01 ya auditados; luego 6, 7, 8 y 9
 ```
 
 ---
@@ -453,6 +454,111 @@ Corrección global del revisor: el login es **OTP por email** (sin SSO ni emails
 6. afiliación ↔ analítica: /go + postback alimentan AnalyticsEvent server-side sin PII; el disclosure es visible al usuario (P4).
 7. centro-cambios ↔ fichas: cada entrada del centro enlaza a su ficha; la ficha muestra su historia viva del mismo EventLog (P1).
 8. cuenta/privacidad ↔ todo: membresía del contexto compartido, audit del bot y export/borrado gobiernan cualquier flujo (P4).
+
+---
+
+## CICLO 4 — Iteraciones de implementación
+
+### Iteración 1 · Fase 1: workout fuera del selector (en curso 2026-08-09)
+
+HANDOFF_A_CODEX emitido (task `0d14a77b`, modo edit, ámbito `apps/mobile/lib/records` **reservado por Codex**): sacar workout de MANAGED_RECORD_TYPES replicando el patrón de la fase 0, con test de migración defensiva (order/hidden/start guardados con workout se descartan). Fuera de alcance: shared, pantallas, OTA. Autorización del propietario: decisión `407b6082`. Claude verificará typecheck+tests y commiteará (el sandbox de Codex no escribe .git); DeepSeek hará la revisión posterior.
+
+Preparación iteración 2 (M1): delegación D4-01 a DeepSeek (task `77336a54`) — criterios de aceptación, casos límite, estados y privacidad del EventLog + Centro «Qué ha cambiado» antes del diseño técnico de Codex.
+
+| ID | Tarea | Estado | Revisión |
+| --- | --- | --- | --- |
+| HANDOFF-C4I1 | Codex implementa fase 1 workout (task `0d14a77b`) | **INTEGRADA** (main `2aa8fcd`) | Claude verificó (typecheck + 513 tests); DeepSeek D4-02 APROBADO sin bloqueantes |
+| D4-01 | DeepSeek: criterios M1 (task `77336a54`) | COMPLETADA | ACEPTADA con notas: decisión de negocio resuelta por Claude (duplicados near-miss se conservan ambos, sin marca); métrica = la de la ficha M1 |
+| D4-02 | DeepSeek: revisión post-impl. fase 1 (task `e649156c`) | COMPLETADA | APROBADO; importantes cubiertos por tests existentes; opcional anotado (centralizar lista de exclusión si crece) |
+| D5-01 | DeepSeek: auditoría chat + flujos rotos (task `a2539171`) | COMPLETADA | ACEPTADA con corrección: nada de «tiempo real WS» (límite: aviso→refetch); 8 flujos rotos y veredictos de capacidades registrados para CICLO 5 |
+| D5-02 | DeepSeek: política de compartir/reenviar (task `c389c659`) | COMPLETADA | ACEPTADA; decisión final de Claude: REDUCIR — sin reenvío en v1 (solo cita de texto + compartir registros); la matriz de bloqueos/joinedAt se conserva como spec para cuando se aborde |
+
+**Cierre iteración 1** — Problema: categoría esqueleto visible. Mejora: workout fuera del selector con migración defensiva. Pilar: higiene del sistema (pre-P1). Evidencia técnica: typecheck + 513 tests. Evidencia de producto: n/a (limpieza). Deuda introducida: ninguna; opcional de DeepSeek anotado. Aprendizaje: el patrón food/workout es reutilizable para cualquier salida de categoría. Siguiente: iteración 2 = M1 EventLog + Centro (criterios D4-01 listos; falta diseño técnico de Codex).
+
+### Iteración 2 · M1 EventLog + Centro «Qué ha cambiado» (**INTEGRADA** 2026-08-09, main `e6634d5` + `dc7157c`)
+
+| Paso | Resultado |
+| --- | --- |
+| Diseño técnico (Codex `65bd023d`) | APROBADO por Claude con ajuste: idempotencyKey por transición de valor + bucket de día, nunca timestamp de detección |
+| Server (Codex `5a458087`, tras 2 intentos caídos por límites del ejecutor) | RecordEvent en Neon (db push), createRecordEvent best-effort, población en 6 puntos, GET /api/events con cursor, retención 500/usuario; 519 tests |
+| Revisión server (DeepSeek D4-03 `7455db0c`) | APROBADO; trade-offs validados (1 evento/alerta/día documentado en ALERTAS.md; href informativo) |
+| Móvil (Codex `324074a9`) | pantalla /events con estados completos, filtro por categorías, entrada en Cuenta, i18n ES/EN; 523 tests |
+| Revisión móvil (DeepSeek D4-04 `f686497b`) | APROBADO CON OBSERVACIONES: 0 bloqueantes, 4 importantes |
+| Correcciones (Codex `bdec6351`) | los 4 importantes corregidos (doble-tap, 404 verificado en todas las fichas sin cambios, pull-to-refresh, vacío-por-filtrado) + fin de lista |
+
+**Cierre iteración 2** — Problema: sin lugar que responda «¿qué ha cambiado en lo que sigo?» (flujo roto #7). Mejora: EventLog determinista + centro Novedades. Pilar: P1 (fundamento también de P3). Evidencia técnica: typecheck web+móvil, 523 tests, tabla aditiva sin migración. Métrica a observar: % usuarios que abren Novedades y navegan a ficha tras un cambio (instrumentación de analítica pendiente de la iteración de M4). Deuda: href del payload con formato /records/ (informativo, cliente lo ignora); optimización batch del findUnique en crons de lote (opcional D4-03). Aprendizaje: límites del ejecutor Codex (scope debe existir; sandbox escribe solo dentro del scope) — documentados en memoria. Pendiente de OTA para llegar a dispositivos.
+
+### Iteración 3 · MI1 CommercialAction §8 (**INTEGRADA** 2026-08-09, main `e225920` + `faac76d`)
+
+| Paso | Resultado |
+| --- | --- |
+| Server (Codex `ec182b61`) | GET /api/go: whitelist estricta (aviasales exactos + sufijo .nuitee.link, solo https), attributionId como sub_id, eventos LITERALES §8 (commercial_action_click, partner_redirect), eco en Novedades, 302; conversión reservada al postback |
+| Revisión server (DeepSeek D4-05 `b09605eb`) | APROBADO con reservas: rate-limit recomendado (hecho), open-redirect teórico (documentado), formato sub_id por partner pendiente de verificar con Travelpayouts/Aviasales al configurar postback |
+| Móvil (Codex `a67664a8`) | holiday abre reserva vía /api/go (fetch auth + redirect manual), disclosure de afiliado (P4), eventos view/click, pregunta «¿llegaste a reservar?» una vez por registro |
+| Correcciones (Codex `783506b8` + `0b4e5e30`, en paralelo) | rate-limit 60/h en la ruta; FALLBACK a URL directa si /go falla (decisión de Claude: la atribución nunca bloquea la reserva) con fallback:true medido |
+
+**Cierre iteración 3** — Problema: la única monetización transaccional era invisible (hallazgo ALTO CICLO 1; §5.2 la contabiliza como cero sin atribución). Mejora: capa comercial §8 v1 con disclosure honesto y medición de atribución perdida. Pilar: P4 (y alimenta §4.4 con el outcome). Evidencia: typecheck web+móvil, 531+ tests. Métrica: clicks atribuidos vs fallback; outcomes reportados. Deuda declarada: formato de sub_id por partner (verificar con la doc de Travelpayouts al activar postback); conversión sigue en cero hasta postback — correcto por diseño. Pendiente de OTA.
+
+### Iteración 4 · M2 puente universal ficha↔chat (**INTEGRADA** 2026-08-09, main `027c885` + `e68d43d` + `7a17738`)
+
+Precondiciones cumplidas: privacidad de membresía (loop mensajería persistido en `027c885`) + audit del bot (wrapper de runner → `bot_write_tool` en AnalyticsEvent con props mínimos, sin args libres). Server: helper genérico de related-chats por viewer + ruta `/api/records/[id]/related-chats?type=X` + property como wrapper. Móvil: RelatedChatsBlock generalizado a components/records, estreno en **viajes**, property intacto. Revisión D4-06: APROBADO — 2 hallazgos refutados con código (filtro de membresía está en la query `related-chats.ts:121`; `chat` ya excluido del RECORD_TYPES de la ruta); opcionales a backlog (audit de intentos bloqueados, rate-limit preventivo). 545 tests.
+
+**Cierre iteración 4** — Problema: el chat parecía parte del registro solo en property (inconsistencia de modelo mental, hallazgo DeepSeek CICLO 1). Mejora: puente universal con la misma privacidad en todas las verticales. Pilar: P2. Métrica: % fichas no-property con chat vinculado a 7 días. Deuda: extender a job/book/crypto/market (mecánico, mismo componente). Pendiente de OTA.
+
+### Iteración 4b · Feedback del propietario (**INTEGRADA**, main `b1930da`, OTA publicada)
+
+Novedades sale de Cuenta y pasa al rail de la home junto a Tendencias, con `sparkles-outline` y el patrón visual de los tres estilos. OTA republicada en preview + production.
+
+### Iteración 5 · M4 Resumen semanal (**INTEGRADA** 2026-08-10, main `4836544`)
+
+Diseño Codex (`e24552ed`) aprobado con 2 decisiones de Claude: corte semanal UTC (cron lunes 07:00 UTC) e idempotencia por clientId de ChatMessage (`weekly-digest:{semana}:{usuario}`, sin tabla nueva). Implementación (`58866c57`): plantilla ES pura agrupada por categoría con conteos + enlaces reales + cierre a Novedades, cap 500 con «+N más», entrega por el camino exacto de las alertas (ensureBotDm + replyAsBot → push con prefs/mute), usuarios sin eventos no reciben nada; cron `/api/cron/weekly-digest` + workflow `weekly-digest.yml`. Revisión D4-07 (`f86962ac`): APROBADO sin bloqueantes; nota de longitud resuelta por el revisor (el ~700 es guía del LLM, no corte del renderizado — observar el primer lunes); primer lunes con ventana corta = aceptable (si no hay eventos, no se envía).
+
+**Cierre iteración 5** — Problema: Premium sin nada que vender salvo cuotas; el usuario no percibe lo que Nidokey vigila por él. Mejora: resumen semanal determinista (el suelo free del futuro Premium de frecuencia/narración). Pilar: P3 (sobre P1). Métrica: CTR digest→Novedades/ficha. Deuda: microcopy variable del cierre (opcional D4-07). Free íntegro: semanal completo para todos.
+
+### Iteración 6 · R1v1 Espacios de Decisión (**INTEGRADA** 2026-08-10, main `b095e8d` + `46917d2`)
+
+Diseño Codex (`f63431b2`) aprobado íntegro: DecisionItem normalizado con soft-refs, botón en el rail (no sección en la home virtualizada), alta solo desde ficha, topes 10/20, detalle devuelve contador previo y marca visita. Schema por Claude (db push). Server (`8fcab968`): CRUD owner-scoped con guardarraíles en API, changedCount por SQL tipado sobre índice compuesto nuevo. Revisión D4-08 (`ad02dc12`): limpio en los 5 vectores; verificación adicional de Claude: SIN IDOR (materialización filtra por ownerId en las 6 tablas, `decisions.ts:141-173`). Decisiones de producto de Claude: archivar NO congela el contador (reactivar muestra actividad acumulada); referencia ajena por API = inocua (record:null, cuenta 0 eventos ajenos). Móvil (`c3c2e8bc`): /decisions con badge, detalle con RecordCards + CTA comparador (≥2 property), sheet «Añadir a decisión» en las 6 fichas con crear inline, rail con `git-branch-outline`. 562 tests.
+
+**Cierre iteración 6** — Problema: la decisión real del usuario no existía como objeto (hallazgo central del debate: «registros multi-vertical no lo entiende nadie»). Mejora: la RADICAL del paquete, faseada a su v1 útil: agrupar + cambios desde la última visita. Pilar: P2 (sobre P1). Métrica: decisiones activas por MAU; % decisiones con ≥2 registros. Deuda: v2 (personas/grupo) y v3 (cierre con resultado) requieren revalidación tras uso real. OTA publicada (grupos cca7ec3a/de82317c).
+
+### Iteración 7 · M3 Historia viva (**INTEGRADA** 2026-08-10, main `f8ae941` + `dbeef0e`)
+
+Diseño (`e8fd3cb9`) aprobado: reutilizar /api/events con filtros conjuntos recordType+recordId (400 si falta uno), bloque de 5 entradas + «ver todo» filtrado, property+holiday primero, OCULTAR (no vaciar) en fichas compartidas — vacío se leería como «no hay historia» cuando no se muestra historia ajena. Server (`0e725b81`): filtros con owner-scope intacto. Móvil (`65f110a5`): RecordHistoryBlock + RecordEventRow común (sin duplicar formato con Novedades), pantalla /events parametrizada con título contextual. 569 tests.
+
+**Cierre iteración 7** — Problema: cada registro era una foto fija sin evolución visible. Mejora: la historia del objeto en su ficha, del mismo EventLog. Pilar: P1 (alimenta el futuro «historial ampliado» Premium §5.1). Métrica: aperturas del bloque Historia en fichas >30 días. Deuda: extender a crypto/market/job/book cuando generen más eventos (mecánico). OTA publicada con M5/MI2 (grupos 4f2b28fc/1e884ae6).
+
+### Iteración 8 · M5 Contrapunto (**INTEGRADA** 2026-08-10, main `b6847bc`)
+
+Sin ronda de diseño aparte (alcance cerrado en el debate; tool de lectura). Tool `comparar_registros(type,ids)` con 2-3 ids propios del mismo tipo, serialización lado-a-lado por vertical + últimos 5 eventos, prompt para análisis crítico de longitud VARIABLE (sin 3+3+3 que fuerce a alucinar), fundado solo en datos guardados y cerrando con esa provenance. 574 tests.
+**Verificación extra de Claude** (no pedida por el protocolo pero propia de un cambio de prompt): arnés `bot:eval:smoke`. Aparecieron 2 fallos que NO eran de M5 sino casos CADUCADOS tras la fase 0 — `con-06` pedía buscar restaurantes (comida retirada) y `onb-04` exigía la palabra literal «pagar» cuando el bot expresaba el límite correctamente. Reescritos ambos → 15/15. Aprendizaje: retirar una vertical exige revisar el arnés de evals, no solo el código.
+
+### Iteración 9 · MI2 Preparación de visita (**INTEGRADA** 2026-08-10, main `6e6ba5c`)
+
+Tool de LECTURA `preparar_visita(id)` (property propio): ficha compacta + historial reciente + **campos AUSENTES relevantes**; el bot genera preguntas concretas derivadas de esos huecos y del historial (si falta gastos de comunidad lo pregunta; si el precio bajó dos veces, por qué) + checklist in situ. Deja huella en el EventLog (`visit_prepared`, idempotente por día) → aparece en Novedades e Historia. Reducida al LADO COMPRADOR por la crítica cruzada (coordinar horarios con la contraparte se descartó: no es usuaria de Nidokey y sería operación humana continua). 577 tests, evals 15/15.
+
+**Cierre iteraciones 8-9** — Problema: comparar sin criterio adverso y visitar sin preparación son los dos momentos donde el usuario decide peor. Mejora: asistencia revisable en ambos, siempre sobre datos propios. Pilar: P3. Métrica: % comparaciones con contrapunto; visitas preparadas por usuario. Deuda: la salida del bot no se guarda como nota (candidata a CICLO 6 con las notas aprobadas).
+
+### PAQUETE DE DIFERENCIACIÓN — COMPLETADO
+
+M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 ✅ · R1v1 ✅ · MI1 ✅ · MI2 ✅ · MI3 (free íntegro) = decisión de diseño vigente. Todo en `main` y en los dos canales OTA. Descartadas y NO construidas: X-RAD (agente negociador) y D-RAD (trust layer), como mandó el debate.
+
+### Preparación CICLO 6 — DECISIONES sobre herramientas (D6-01, DeepSeek, revisada)
+
+| Herramienta | Decisión |
+| --- | --- |
+| Calendario | **REDUCIR** a vista de citas + checklist de visita (dentro de MI2); nunca calendario completo con sync externa |
+| Notas | **APROBAR mínimo**: por conversación (D5-01) + por ficha de registro |
+| Recordatorios/tareas | **APROBAR mínimo**: seguimientos simples desde ficha/conversación, sin gestor completo |
+| Colecciones | **DESCARTAR**: los espacios de decisión (R1) ya cubren agrupar/comparar/invitar |
+| Alertas | **APROBAR** (ya integradas, 3/25): añadir alta desde el chat («avísame si baja») |
+
+Orden recomendado: notas → tareas → alerta-desde-chat → vista de citas. Revisión de Claude: ACEPTADA; nota: el «tablero de decisiones» citado es (H) hasta que exista R1-v1.
+
+### Preparación CICLO 8 — segmentos y matriz (D8-01, DeepSeek, revisada)
+
+Aceptado: 6 segmentos con disposición a pagar (profesional = sin caso real hoy, HIPOTESIS); comparables 2025 (Notion/Airtable/Miro/PFM, 5-10 €/mes, confianza media); **4,99 €/mes validado como punto medio razonable** si el free queda íntegro; **informe de decisión 6,99-9,99 € pago único ALIMENTA la suscripción** (producto distinto, sin beneficios recurrentes) — no canibaliza.
+Rechazado por Claude (contradice decisiones del debate): precios à-la-carte por función (hay UN bundle Premium); «historial 12 meses gratis» (el free es cap de 500 eventos, no temporal); «10 contrapuntos/decisión gratis» (M5 vive dentro de la cuota general del bot, sin cuota propia).
+Pendiente del propietario (condición de parada): precio final y activación de pagos reales.
 
 ---
 
