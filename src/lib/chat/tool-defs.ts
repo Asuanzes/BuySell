@@ -55,7 +55,7 @@ export const BOT_TOOLS = [
     function: {
       name: "preparar_visita",
       description:
-        "Prepara la visita de un inmueble PROPIO del comprador. Es de SOLO LECTURA para el bot: devuelve datos guardados, eventos recientes y campos ausentes para generar preguntas concretas y checklist sin coordinar con terceros ni inventar datos.",
+        "Prepara la visita de un inmueble PROPIO del comprador: devuelve datos guardados, eventos recientes, campos ausentes e items estructurados, y crea/reutiliza el checklist diario sin coordinar con terceros ni inventar datos.",
       parameters: {
         type: "object",
         properties: {

@@ -41,7 +41,9 @@ import { AlertsSheet } from "@/components/AlertsSheet";
 import { PriceHistoryBlock } from "@/components/property/PriceHistoryBlock";
 import { ZoneComparisonBlock } from "@/components/property/ZoneComparisonBlock";
 import { RelatedChatsBlock } from "@/components/property/RelatedChatsBlock";
+import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
+import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone } from "@/lib/record-tasks";
 import { track } from "@/lib/analytics";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
@@ -102,6 +104,14 @@ export default function PropertyDetailScreen() {
   const zoneQ = useRecord<ZoneContext>(() => fetchZoneContext(id!), [id], { enabled: !!id });
   const chatsQ = useRecord<RelatedChatsResponse>(() => fetchRelatedChats(id!), [id], { enabled: !!id });
   const alertsQ = useRecord<AlertsResponse>(() => listAlerts("property", id!), [id], { enabled: !!id });
+  // El checklist es del DUEÑO: en una ficha compartida ni se pide (la ruta
+  // responde 404 a lo ajeno, pero no hay razón para provocar la llamada).
+  const ownsThisRecord = !!id && !!p && p.shared !== true && p.readOnly !== true;
+  const checklistQ = useRecord(
+    () => fetchLatestVisitChecklist("property", id!),
+    [id, ownsThisRecord],
+    { enabled: ownsThisRecord }
+  );
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busyTool, setBusyTool] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -119,6 +129,40 @@ export default function PropertyDetailScreen() {
     track("related_chat_open", { has_preview: hasPreview });
     router.push(`/chat/${conversationId}` as never);
   }, []);
+
+  // El bloque marca el ítem al instante (optimista); si el servidor lo rechaza,
+  // el refetch devuelve la verdad y el usuario ve por qué en vez de creerse una
+  // marca que no se guardó.
+  async function onChecklistFailure(e: unknown) {
+    await checklistQ.refetch();
+    setNotice({
+      tone: "error",
+      title: t("detail.property.notice_error_title"),
+      message: e instanceof Error ? e.message : t("detail.property.unknown_error"),
+    });
+  }
+
+  async function toggleChecklistItem(itemId: string, done: boolean) {
+    const taskId = checklistQ.data?.id;
+    if (!taskId) return;
+    try {
+      await setChecklistItemDone(taskId, itemId, done);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
+
+  async function addOwnChecklistItem(label: string) {
+    const taskId = checklistQ.data?.id;
+    if (!taskId) return;
+    try {
+      await addChecklistItem(taskId, label);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
 
   // Re-check: re-consulta cada anuncio vinculado y refresca el detalle.
   async function recheck() {
@@ -292,6 +336,22 @@ export default function PropertyDetailScreen() {
         <View style={styles.decisionBlock}>
           <PriceHistoryBlock history={p.priceHistory ?? []} field={priceField} />
         </View>
+
+        {/* Checklist de la visita: solo aparece si el usuario preparó una, y
+            entonces es lo más accionable de la ficha, así que va por encima del
+            chat, la historia y la comparativa de zona. */}
+        {!isReadOnly && checklistQ.data ? (
+          <View style={styles.decisionBlock}>
+            <RecordChecklistBlock
+              checklist={checklistQ.data}
+              loading={checklistQ.loading}
+              error={checklistQ.error ? t("checklist.error") : null}
+              onToggleItem={(itemId, done) => void toggleChecklistItem(itemId, done)}
+              onAddItem={(label) => void addOwnChecklistItem(label)}
+              onRetry={() => void checklistQ.refetch()}
+            />
+          </View>
+        ) : null}
 
         {/* Acciones de la ficha, juntas: herramientas · compartir (OS) · compartir con usuario · editar. */}
         <View style={styles.actionsRow}>

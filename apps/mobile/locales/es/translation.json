@@ -174,6 +174,15 @@
     "export_error": "No se pudo generar la exportación. Inténtalo de nuevo.",
     "credits": "Iconos: Solar (CC BY 4.0) · game-icons.net (CC BY 3.0) · Material Design Icons (Apache 2.0) · Phosphor (MIT)"
   },
+  "checklist": {
+    "title": "Comprobaciones de la visita",
+    "loading": "Cargando comprobaciones…",
+    "progress_one": "{{done}} de 1 hecha",
+    "progress_other": "{{done}} de {{count}} hechas",
+    "all_done": "Todo comprobado",
+    "add_placeholder": "Añadir comprobación…",
+    "error": "No se pudieron cargar las comprobaciones."
+  },
   "events": {
     "title": "Novedades",
     "title_record": "Historia de {{title}}",

@@ -2,6 +2,7 @@ import { issueMobileJwt } from "@/lib/mobile-jwt";
 import { verifyMobileJwt } from "@/lib/mobile-jwt";
 import { RECORD_TYPES, type BotRecordType as RecordType } from "@/lib/chat/tool-defs";
 import { createRecordEvent, visitPreparedEventKey } from "@/lib/record-events";
+import { createVisitChecklistForRecord, type RecordTaskView, type StructuredTaskItemInput } from "@/lib/record-tasks";
 
 /**
  * Herramientas (function calling) del asistente Nidokey. Filosofía perezosa: NO
@@ -258,6 +259,7 @@ function missingVisitFields(record: AnyRecord): MissingVisitField[] {
 type PrepareVisitDeps = {
   apiGet: (path: string, token: string) => Promise<unknown>;
   createEvent: typeof createRecordEvent;
+  createChecklist?: (userId: string, input: { recordType: RecordType; recordId: string; title?: string; items: StructuredTaskItemInput[] }) => Promise<RecordTaskView>;
   userFromToken: (token: string) => Promise<{ userId: string; email: string } | null>;
   now: () => Date;
 };
@@ -265,9 +267,96 @@ type PrepareVisitDeps = {
 const defaultPrepareVisitDeps: PrepareVisitDeps = {
   apiGet,
   createEvent: createRecordEvent,
+  createChecklist: createVisitChecklistForRecord,
   userFromToken: verifyMobileJwt,
   now: () => new Date(),
 };
+
+export type PrepareVisitChecklistItem = Required<Pick<StructuredTaskItemInput, "key" | "label">> & {
+  reason: string;
+};
+
+function visitFactSummary(property: AnyRecord): string[] {
+  return [
+    property.ubicacion ? `ubicacion: ${property.ubicacion}` : null,
+    property.planta != null ? `planta: ${property.planta}` : null,
+    property.ascensor != null ? `ascensor: ${property.ascensor ? "si" : "no"}` : null,
+    property.m2 != null ? `metros construidos: ${property.m2}` : null,
+    property.ano_construccion != null ? `ano: ${property.ano_construccion}` : null,
+  ].filter((v): v is string => Boolean(v));
+}
+
+export function buildPrepareVisitItems(record: AnyRecord, property: AnyRecord, events: unknown[]): PrepareVisitChecklistItem[] {
+  const items: PrepareVisitChecklistItem[] = [];
+  // 5 y no 8: el resto del presupuesto se reserva para los ítems anclados a
+  // hechos y eventos, que son más específicos que «pedir un dato que falta».
+  for (const missing of missingVisitFields(record).slice(0, 5)) {
+    items.push({
+      key: `missing:${missing.field}`,
+      label: `Pedir ${missing.label}`,
+      reason: missing.reason,
+    });
+  }
+
+  const priceChange = events.find((event: any) => event?.eventType === "price_changed" && typeof event?.newCents === "number") as AnyRecord | undefined;
+  if (priceChange) {
+    items.push({
+      key: "event:price_changed",
+      label: "Preguntar por la ultima bajada de precio",
+      reason: `Hay cambio de precio guardado el ${String(priceChange.observedAt ?? "").slice(0, 10) || "historial reciente"}.`,
+    });
+  }
+
+  if (property.planta != null && property.ascensor === false) {
+    items.push({
+      key: "fact:no_elevator_floor",
+      label: "Subir a pie hasta la vivienda",
+      reason: `La ficha indica planta ${property.planta} y sin ascensor.`,
+    });
+  } else if (property.ascensor === true) {
+    items.push({
+      key: "fact:elevator",
+      label: "Comprobar ruido y estado del ascensor",
+      reason: "La ficha indica que el edificio tiene ascensor.",
+    });
+  }
+
+  const description = String(property.descripcion ?? "").toLowerCase();
+  const noiseFacts = [
+    property.ubicacion && /calle|avenida|centro|principal/i.test(property.ubicacion) ? "ubicacion urbana guardada" : null,
+    /calle|avenida|trafico|tr[aá]fico|ruido|ocio|colegio|garaje|ascensor/.test(description) ? "descripcion con posibles focos de ruido" : null,
+  ].filter(Boolean);
+  if (noiseFacts.length > 0) {
+    items.push({
+      key: "fact:noise",
+      label: "Identificar origen del ruido en la visita",
+      reason: noiseFacts.join("; "),
+    });
+  } else {
+    items.push({
+      key: "missing:noise_sources",
+      label: "Preguntar por aislamiento y ruido en hora punta",
+      reason: "La ficha no guarda datos de insonorizacion ni focos de ruido.",
+    });
+  }
+
+  const facts = visitFactSummary(property);
+  if (facts.length > 0) {
+    items.push({
+      key: "fact:photo_vs_listing",
+      label: "Contrastar fotos y ficha con el estado real",
+      reason: facts.slice(0, 3).join("; "),
+    });
+  }
+
+  // Tope 8, no 12: el propietario cortó el relleno («las gafas de sol sobran»)
+  // y una lista de 12 casillas no se lleva encima en una visita. El orden de
+  // inserción decide qué cae: photo_vs_listing es el menos específico y va
+  // último, así el ítem de ruido/aislamiento —pedido expresamente— sobrevive.
+  return items
+    .filter((item, index, arr) => arr.findIndex((other) => other.key === item.key || other.label === item.label) === index)
+    .slice(0, 8);
+}
 
 export async function compareRecords(type: RecordType, ids: string[], token: string): Promise<unknown> {
   const uniqueIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
@@ -338,7 +427,9 @@ export async function prepareVisit(id: string, token: string, deps: PrepareVisit
     ascensor: fieldValue(meta.hasElevator, detail.hasElevator) ?? null,
   };
   const events = compactVisitEvents(await deps.apiGet(`/api/events?recordType=property&recordId=${encodeURIComponent(recordId)}&limit=20`, token));
+  const items = buildPrepareVisitItems(record, property, events);
 
+  let taskId: string | null = null;
   const user = await deps.userFromToken(token);
   if (user?.userId) {
     const observedAt = deps.now();
@@ -352,6 +443,19 @@ export async function prepareVisit(id: string, token: string, deps: PrepareVisit
       payload: { recordTitle: record.title ?? "Inmueble" },
       observedAt,
     });
+    if (deps.createChecklist) {
+      try {
+        const task = await deps.createChecklist(user.userId, {
+          recordType: "property",
+          recordId,
+          title: `Checklist de visita: ${String(record.title ?? "Inmueble").slice(0, 120)}`,
+          items,
+        });
+        taskId = task.id;
+      } catch (err) {
+        console.error("[bot-tools] no se pudo crear checklist de visita:", err);
+      }
+    }
   }
 
   return {
@@ -360,6 +464,8 @@ export async function prepareVisit(id: string, token: string, deps: PrepareVisit
     property,
     recentEvents: events,
     missingFields: missingVisitFields(record),
+    items,
+    taskId,
     provenance: "ficha_guardada_del_usuario",
   };
 }

@@ -5,9 +5,9 @@
 > Norma de estrategia: `docs/MODELO-NEGOCIO.md`.
 
 ```yaml
-ciclo: 4
+ciclo: 6
 fase_global: implementacion
-iteracion: 9 (paquete de diferenciación COMPLETADO)
+iteracion: C6i1 (checklist real; CICLO 5 cerrado)
 responsable: claude
 
 area_actual: auditoría de las 9 categorías (COMPLETADA, pendiente de autorización del propietario)
@@ -42,7 +42,10 @@ fase_0_estado: IMPLEMENTADA Y DESPLEGADA (main 2866cc7 + e0ed36e; 509 tests; gas
 ciclo_3_estado: COMPLETADO (4 pilares, 7 recorridos, conexiones, arquitectura en capas, límites)
 ciclo_4_estado: paquete COMPLETO en main y OTA (fases 0-1 + M1 + MI1 + M2 + M4 + R1v1 + M3 + M5 + MI2); 577 tests, evals bot 15/15
 coordinacion: Claude coordina y delega en DeepSeek; Codex editor principal vía HANDOFF (30 tareas Codex + 22 DeepSeek en la sesión)
-siguiente_accion: CICLO 5 (mensajería como sistema de operaciones) con los 8 flujos rotos de D5-01 ya auditados; luego 6, 7, 8 y 9
+ciclo_5_estado: CERRADO (mensajería como sistema de operaciones); 608 tests, evals bot 53/53
+ciclo_6_estado: EN CURSO — C6i1 checklist real (servidor Codex `bfbb83ed` + móvil de DeepSeek `dd76931b` ya integrado)
+deepseek_capacidades: AMPLIADAS a escritura de CÓDIGO PROPUESTO (el propietario autorizó «TODO»); entrega ficheros completos que revisa e integra Claude
+siguiente_accion: cerrar C6i1 (contrato del servidor + montaje en la ficha + prompt que resume y enlaza), luego notas por ficha/conversación y alerta-desde-chat; después 7, 8 y 9
 ```
 
 ---
@@ -562,6 +565,80 @@ Pendiente del propietario (condición de parada): precio final y activación de 
 
 ---
 
+## CICLO 5 — Mensajería como sistema de operaciones (CERRADO 2026-08-10)
+
+Partida: los 8 flujos rotos auditados en D5-01. No se construyó mensajería nueva: se
+arregló que la conversación **sepa de qué se está hablando** y que las funciones
+diferenciales tengan puerta de entrada.
+
+| Pieza | Estado |
+| --- | --- |
+| Cabecera contextual (servidor) | INTEGRADA (`32a3d69`): el detalle de conversación devuelve estado del registro, precio, y **cambios desde mi último mensaje** (tope 3 eventos, solo al dueño; base = último mensaje propio o `joinedAt`) |
+| Cabecera contextual (visual) | **PENDIENTE** — el banner del móvil aún solo pinta título/subtítulo/meta. Delegada a DeepSeek (D6-04) |
+| Iconos de acción en el chat del bot | INTEGRADOS: comparar (`scale-balance`) y preparar visita, con selector de registros. El propietario corrigió el icono: la balanza digital no se reconocía |
+| El bot dejaba de saber a qué inmueble se refería | RESUELTO sin añadir ids nuevos: los mensajes ya llevan `[[tipo:id\|Título]]`, así que el bot **lee el id del enlace** en vez de pedírselo al usuario. Antes preguntaba «dime el ID del inmueble», que para un usuario no significa nada |
+| Teclado fantasma al reentrar en un chat | RESUELTO (BUG-01, `cc6860e`): el relleno se deriva del estado del teclado y se reinicia al enfocar |
+| «Cuenta» truncada en las tabs | RESUELTO: era reparto de `flex`, no longitud del texto |
+| Enlaces de navegación del bot | RESUELTOS en CÓDIGO, no en prompt (ver aprendizaje abajo) |
+| Markdown crudo y cortes a media palabra | RESUELTOS (BUG-13, `ceba961`) |
+
+**Cierre CICLO 5** — Problema: la mensajería era un chat genérico pegado a una app de
+registros; no aportaba nada que no diera WhatsApp. Mejora: la conversación lleva el
+estado vivo de aquello de lo que habla, y las herramientas de decisión se lanzan desde
+ella. Pilar: P2. Evidencia: 608 tests, evals del bot 53/53 (primera vez en verde
+completo), typecheck web+móvil. Deuda declarada y visible: **la mitad visual de la
+cabecera sigue sin llegar al usuario** — el servidor calcula los cambios y la app no los
+pinta; hasta que D6-04 se integre, esta pieza no existe para quien usa la app.
+
+**Aprendizaje central del ciclo (vale para todo el proyecto): dejar de discutir con el
+modelo.** Cinco rondas de refuerzo del prompt para que el bot enlazara pantallas
+produjeron regresiones peores que el problema: dejó de ejecutar herramientas mientras
+afirmaba «✅ Guardado» (el error más grave posible según su propio prompt), empezó a
+pedir ids internos y llegó a inventarse rutas. Lo que lo arregló fue **post-proceso
+determinista en código** (autoenlace de pantallas conocidas + saneado de rutas
+inválidas) y *aliviar* el prompt. Corolario que costó tres rondas de depuración: la
+transformación tiene que vivir donde la ejecutan los evals (`agent.ts`), no solo en la
+capa de persistencia (`bot.ts`), o el arnés mide un texto distinto del que recibe el
+usuario.
+
+## CICLO 6 — Herramientas mínimas (EN CURSO)
+
+Orden aprobado en D6-01: notas → tareas → alerta-desde-chat → vista de citas. **El
+propietario adelantó la pieza de tareas** al pedir que el checklist de visita fuera real.
+
+### C6i1 · Checklist de visita REAL (en curso)
+
+Decisión de producto `58592d37`: **el checklist marcable vive en la FICHA; en el chat el
+bot resume y enlaza.** No se hace interactiva la burbuja: un mensaje es el registro
+inmutable de lo que se dijo, y una casilla marcada dentro de un mensaje de hace tres
+semanas no significa nada. Además el volcado en el chat chocaba con el límite de longitud
+(el checklist real medía 1678 caracteres contra un tope de producción de 800, subido a
+2000) y la presión de llenar la lista era justo lo que producía relleno del tipo «llevar
+gafas de sol» — que el propietario cortó en seco: **cada ítem debe estar anclado a un
+dato, un hueco o un evento; 5-8 es un techo, no una cuota.**
+
+| Pieza | Estado |
+| --- | --- |
+| Modelo `RecordTask` + `RecordTaskItem` | APLICADO a Neon con `db push` (uno por VISITA, no por inmueble: se conserva la del domingo y la del jueves) |
+| Servidor: API owner-scoped + ítems deterministas en `preparar_visita` + evento al completar | Codex `bfbb83ed` EN CURSO |
+| Móvil: `RecordChecklistBlock` (tachado, contador, «+ añadir comprobación») | **INTEGRADO** — primera entrega de CÓDIGO de DeepSeek (D6-03), revisada y corregida por Claude |
+| Montaje en la ficha + prompt que resume y enlaza | PENDIENTE (el prompt espera a que Codex libere `src`) |
+| BUG-14 (relleno genérico) | ABSORBIDA por C6i1-A: sus instrucciones ya exigen la regla de anclaje. Mantenerlas separadas habría hecho que dos tareas reescribieran el mismo generador de ítems |
+
+**DeepSeek pasa a escribir código.** El propietario autorizó ampliar sus capacidades
+(«TODO»). Se amplió el arnés para que quepa una entrega real: tope de salida 4000 → 16000
+caracteres **conservando los saltos de línea** (antes el markdown y el código llegaban
+aplastados en una sola línea ilegible), `max_tokens` 8192 → 16384, y contrato de entrega
+`### FICHERO: ruta` con el contenido COMPLETO del fichero, nunca diffs ni «...». También
+se le quitó el protocolo obligatorio del grafo, que era **imposible de cumplir** para un
+agente sin repositorio ni herramientas: pedírselo era lo que le empujaba a inventarse
+citas de ficheros que no había visto. Lo entregado se revisa siempre antes de integrar:
+en su primera entrega de código había dos defectos reales (estados de carga y error
+inalcanzables por el orden de las guardas, y una sincronización que se comía la marca
+optimista del usuario).
+
+---
+
 ## Registro de intervenciones
 
 - 2026-08-09 · claude · CICLO 1: mapa producto + inventarios + flujos rotos; Codex y DeepSeek despachados en paralelo.
@@ -570,3 +647,8 @@ Pendiente del propietario (condición de parada): precio final y activación de 
 - 2026-08-09 · propietario · AUTORIZA fase 0 (food OFF) y fase 1 (workout fuera). Autoriza además la vía Codex manual al agotarse el cupo automático diario.
 - 2026-08-09 · claude+codex · FASE 0 IMPLEMENTADA Y DESPLEGADA (main 2866cc7 + e0ed36e): crons pausados (gasto Apify cortado), kill-switch FOOD_ENABLED en 6 endpoints, bot sin tools/menciones food, NAV_ALLOW limpio, 5 guards en food-off.test.ts; typecheck + 509 tests OK. Barrido Codex 8dc7280b integrado (7 hallazgos: 5 aceptados, 2 aplazados a CICLO 9).
 - 2026-08-09 · claude(coordinador)+deepseek · CICLO 3 COMPLETADO bajo el nuevo modelo de coordinación: pilares P1-P4 + arquitectura en capas + propuesta de valor + límites (Claude); recorridos R1-R7 y mapa de conexiones (DeepSeek D3-01/02/02b, revisados y corregidos). Siguiente: CICLO 4 iteración 1 (HANDOFF_A_CODEX fase 1 workout).
+- 2026-08-10 · claude+codex+deepseek · CICLO 4 COMPLETADO: paquete de diferenciación íntegro (M1-M5, R1v1, MI1-MI2) en main y en los dos canales OTA.
+- 2026-08-10 · propietario · Reenfoque: las tareas de lanzamiento (flip de la landing, capturas/vídeos de tienda, bundle a Play, IAP) quedan APLAZADAS hasta que el producto funcione bien y haya material. Foco: mejorar lo que hay y acabar el loop.
+- 2026-08-10 · claude+codex+deepseek · CICLO 5 CERRADO: cabecera contextual (servidor), iconos de acción del bot, ids por enlace, teclado, evals 53/53. Deuda visible: la mitad VISUAL de la cabecera no ha llegado al usuario.
+- 2026-08-10 · propietario · Autoriza ampliar las capacidades de DeepSeek («TODO»). Claude amplía el arnés (16000 caracteres con saltos de línea, contrato de fichero completo, se le retira el protocolo del grafo que no podía cumplir) y le delega su primera tarea de CÓDIGO (D6-03).
+- 2026-08-10 · claude · CICLO 6 abierto por petición del propietario con la pieza de tareas adelantada: checklist de visita REAL. Decisión `58592d37` (el checklist marcable vive en la ficha; el chat resume y enlaza). BUG-14 absorbida por C6i1-A. BUG-12 y BUG-13 integrados en `ceba961` (608 tests).

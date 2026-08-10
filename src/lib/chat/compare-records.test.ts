@@ -116,13 +116,32 @@ test("comparar_registros serializa campos relevantes y eventos lado-a-lado", asy
   assert.equal(out.events.p1[0].newCents, 200_000_00);
 });
 
-test("comparar_registros es tool de lectura y no entra en WRITE_TOOLS", async () => {
+/**
+ * WRITE_TOOLS es la lista de tools que EXIGEN confirmación del usuario.
+ *
+ * `comparar_registros` no entra porque solo lee. `preparar_visita` sí escribe
+ * desde que persiste el checklist (RecordTask + evento), pero tampoco entra, y
+ * es deliberado: pedir «¿confirmas?» a quien acaba de pedir que le preparen la
+ * visita sería absurdo. Cae en la misma categoría que `guardar_compartido`:
+ * ADITIVA y sobre un registro propio, con techo de daño nulo (idempotente por
+ * día, no borra ni modifica datos del inmueble).
+ *
+ * Si algún día se le añade a `preparar_visita` una escritura que MODIFIQUE o
+ * BORRE algo del registro, deja de valer esta excepción y tiene que entrar en
+ * WRITE_TOOLS.
+ */
+test("preparar_visita escribe pero es aditiva: fuera de WRITE_TOOLS a propósito", async () => {
   const defs = await import("./tool-defs");
   const names = defs.BOT_TOOLS.map((t) => t.function.name);
+  const writeTools = defs.WRITE_TOOLS as readonly string[];
   assert.ok(names.includes("comparar_registros"));
   assert.ok(names.includes("preparar_visita"));
-  assert.ok(!(defs.WRITE_TOOLS as readonly string[]).includes("comparar_registros"));
-  assert.ok(!(defs.WRITE_TOOLS as readonly string[]).includes("preparar_visita"));
+  assert.ok(!writeTools.includes("comparar_registros"));
+  assert.ok(!writeTools.includes("preparar_visita"));
+  // Y las que sí destruyen o modifican siguen exigiendo confirmación.
+  for (const destructive of ["borrar_registro", "fusionar_registros", "editar_registro"]) {
+    assert.ok(writeTools.includes(destructive), `${destructive} debe exigir confirmación`);
+  }
 });
 
 test("preparar_visita rechaza ids ajenos y registros que no son property", async () => {
@@ -171,6 +190,7 @@ test("preparar_visita detecta campos faltantes en ficha completa vs incompleta",
     meta: { currentPrice: 180_000_00, builtArea: 90, rooms: 2, city: "Gijón", detail: { energyRating: "UNKNOWN" } },
   };
   const createCalls: unknown[] = [];
+  const checklistCalls: unknown[] = [];
   const deps = {
     apiGet: async (path: string) => {
       if (path.includes("/api/events?")) {
@@ -188,6 +208,10 @@ test("preparar_visita detecta campos faltantes en ficha completa vs incompleta",
     createEvent: async (input: unknown) => {
       createCalls.push(input);
     },
+    createChecklist: async (_userId: string, input: unknown) => {
+      checklistCalls.push(input);
+      return { id: `task-${checklistCalls.length}` } as any;
+    },
     userFromToken: async () => ({ userId: "u1", email: "u1@n.test" }),
     now: () => new Date("2026-08-10T12:00:00.000Z"),
   };
@@ -196,6 +220,8 @@ test("preparar_visita detecta campos faltantes en ficha completa vs incompleta",
   const outComplete = (await t.prepareVisit("p-completa", "token", deps)) as { missingFields: { field: string }[] };
   const outIncomplete = (await t.prepareVisit("p-incompleta", "token", deps)) as {
     missingFields: { field: string }[];
+    items: { key: string; label: string; reason: string }[];
+    taskId: string | null;
     recentEvents: unknown[];
   };
 
@@ -211,7 +237,50 @@ test("preparar_visita detecta campos faltantes en ficha completa vs incompleta",
     "energyRating",
   ]);
   assert.equal(outIncomplete.recentEvents.length, 1);
+  assert.deepEqual(
+    outIncomplete.items.slice(0, 3).map((item) => item.key),
+    ["missing:yearBuilt", "missing:communityFees", "missing:orientation"]
+  );
+  assert.ok(outIncomplete.items.every((item) => item.label && item.reason));
+  assert.equal(outIncomplete.taskId, "task-2");
   assert.equal(createCalls.length, 2);
+  assert.equal(checklistCalls.length, 2);
+});
+
+/**
+ * Guardarraíl de BUG-14. El propietario cortó en seco el relleno genérico
+ * («lo de las gafas de sol sobra, como que las vistas pueden deslumbrar…es una
+ * gilipollez»). La regla no es de estilo: cada ítem tiene que estar anclado a un
+ * hueco de la ficha (`missing:`), a un evento guardado (`event:`) o a un dato
+ * concreto (`fact:`), y llevar la razón que lo justifica. Este test es lo que
+ * impide que vuelva a colarse un consejo de manual, porque un ítem inventado no
+ * tiene prefijo con el que anclarse.
+ */
+test("los ítems del checklist están todos anclados a un hueco, un evento o un dato", async () => {
+  const { buildPrepareVisitItems } = await tools();
+  const ANCHORS = /^(missing|event|fact):/;
+
+  const conHuecos = buildPrepareVisitItems(
+    { meta: { detail: {} } },
+    { planta: "4ª", ascensor: false, ubicacion: "Calle Uría", descripcion: "Junto a avenida con tráfico" },
+    [{ eventType: "price_changed", newCents: 180_000_00, observedAt: "2026-08-10T09:00:00.000Z" }]
+  );
+  const fichaVacia = buildPrepareVisitItems({ meta: { detail: {} } }, {}, []);
+
+  for (const items of [conHuecos, fichaVacia]) {
+    assert.ok(items.length > 0, "un checklist vacío no sirve de nada");
+    assert.ok(items.length <= 8, `el tope son 8 ítems, llegaron ${items.length}`);
+    for (const item of items) {
+      assert.match(item.key, ANCHORS, `«${item.label}» no está anclado a nada`);
+      assert.ok(item.reason && item.reason.trim().length > 0, `«${item.label}» no dice por qué está ahí`);
+    }
+    assert.equal(new Set(items.map((item) => item.key)).size, items.length, "hay ítems repetidos");
+  }
+
+  // Insonorización: el propietario la pidió expresamente, así que tiene que
+  // salir tanto si la ficha tiene focos de ruido como si no guarda ninguno.
+  assert.ok(conHuecos.some((item) => item.key === "fact:noise"));
+  assert.ok(fichaVacia.some((item) => item.key === "missing:noise_sources"));
 });
 
 test("visit_prepared usa idempotency key determinista por día UTC", async () => {

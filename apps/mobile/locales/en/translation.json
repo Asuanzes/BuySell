@@ -174,6 +174,15 @@
     "export_error": "Couldn't generate the export. Please try again.",
     "credits": "Icons: Solar (CC BY 4.0) · game-icons.net (CC BY 3.0) · Material Design Icons (Apache 2.0) · Phosphor (MIT)"
   },
+  "checklist": {
+    "title": "Visit checks",
+    "loading": "Loading checks…",
+    "progress_one": "{{done}} of 1 done",
+    "progress_other": "{{done}} of {{count}} done",
+    "all_done": "All checked",
+    "add_placeholder": "Add a check…",
+    "error": "Couldn't load the checks."
+  },
   "events": {
     "title": "What changed",
     "title_record": "History of {{title}}",

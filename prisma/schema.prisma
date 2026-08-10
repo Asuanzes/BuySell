@@ -154,6 +154,7 @@ model User {
   notificationPrefs NotificationPrefs?
   recordEvents      RecordEvent[]
   decisions         Decision[]
+  recordTasks       RecordTask[]
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -1322,6 +1323,47 @@ model RecordEvent {
   // R1v1 Espacios de Decisión: cuenta de cambios por usuario+registro desde
   // lastVisitedAt sin degradar a combinación de índices en historiales largos.
   @@index([userId, recordType, recordId, observedAt(sort: Desc)])
+}
+
+// Checklist real / tareas de un registro (PRODUCT_LOOP.md CICLO 6, pedido por
+// el propietario). UNA sola herramienta para dos usos (kind): el checklist de
+// visita que siembra el bot y los seguimientos simples. Vive fuera del chat a
+// propósito: los mensajes son historial inmutable y borrar el mensaje no debe
+// llevarse el checklist. Un RecordTask POR VISITA (no por inmueble), así se
+// conservan la visita del domingo y la del jueves por separado.
+model RecordTask {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Soft-ref al registro (patrón RecordShare/RecordEvent/DecisionItem).
+  recordType  String
+  recordId    String
+  kind        String    @db.VarChar(32) // "visit_checklist" | "followup"
+  title       String
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items RecordTaskItem[]
+
+  @@index([userId, recordType, recordId, createdAt(sort: Desc)])
+}
+
+model RecordTaskItem {
+  id        String     @id @default(cuid())
+  taskId    String
+  task      RecordTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  // `key` identifica el ítem generado de forma determinista (p.ej. el campo
+  // ausente que lo motivó); null en los que añade el usuario a mano.
+  key       String?    @db.VarChar(48)
+  label     String
+  reason    String?
+  done      Boolean    @default(false)
+  doneAt    DateTime?
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+
+  @@index([taskId, sortOrder])
 }
 
 // R1v1 Espacios de Decisión (PRODUCT_LOOP.md CICLO 4 iter 6): una decisión
