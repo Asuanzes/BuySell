@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Animated, { useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
+import Animated, { KeyboardState, useAnimatedKeyboard, useAnimatedStyle } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +19,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useTranslation } from "react-i18next";
 
 import { RECORD_LINK_RE, linkDest } from "@nidokey/shared";
+import { chatKeyboardPaddingBottom } from "@/lib/chat-keyboard-padding";
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
 import { VerifiedBadge, isOfficialConversation } from "@/components/chat/VerifiedBadge";
@@ -880,9 +881,20 @@ export default function ChatScreen() {
   // useAnimatedKeyboard sigue los insets del IME en continuo (resize incluido).
   const kbInsets = useSafeAreaInsets();
   const keyboard = useAnimatedKeyboard();
+  useFocusEffect(
+    useCallback(() => {
+      keyboard.height.value = 0;
+      keyboard.state.value = KeyboardState.CLOSED;
+
+      return () => {
+        keyboard.height.value = 0;
+        keyboard.state.value = KeyboardState.CLOSED;
+      };
+    }, [keyboard.height, keyboard.state])
+  );
   const kbStyle = useAnimatedStyle(() => ({
     // El SafeAreaView ya pone el inset inferior; solo compensamos el solape real.
-    paddingBottom: Math.max(0, keyboard.height.value - kbInsets.bottom),
+    paddingBottom: chatKeyboardPaddingBottom(keyboard.state.value, keyboard.height.value, kbInsets.bottom),
   }));
 
   return (
