@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import type { RecordEventPayload } from "@/lib/events-format";
 
 /**
  * Cliente del chat: tipos DTO (espejo de src/lib/chat/serialize.ts) y fetchers.
@@ -9,6 +10,14 @@ import { api } from "@/lib/api";
 export type ChatUser = { id: string; name: string | null; username: string | null; email: string | null; image: string | null };
 
 /** Tarjeta de un registro (banner de conversación y mensajes-tarjeta). */
+export type ContextHeaderEventDto = {
+  recordType: string;
+  recordId: string;
+  eventType: string;
+  observedAt: string;
+  payload: RecordEventPayload;
+};
+
 export type RecordCardDto = {
   title: string;
   subtitle: string | null;
@@ -16,6 +25,11 @@ export type RecordCardDto = {
   meta?: string | null;
   statusShown?: boolean;
   imageUrl: string | null;
+  /** Los tres campos de abajo solo llegan al DUEÑO del registro: el servidor los
+   *  omite para quien lo tiene compartido (no se filtra actividad ajena). */
+  viewerOwnsRecord?: boolean;
+  relatedRecordCount?: number;
+  changedSinceMyLastMessage?: { total: number; since: string; events: ContextHeaderEventDto[] } | null;
 };
 
 export type ChatParticipant = {

@@ -70,6 +70,7 @@ import type { RecordType } from "@nidokey/shared";
 import { ActionsSheet, type SheetOption } from "@/components/chat/ActionsSheet";
 import { MessageActionsSheet, type MessageAction } from "@/components/chat/MessageSheet";
 import { BotRecordActionSheet } from "@/components/chat/BotRecordActionSheet";
+import { ChatContextBanner } from "@/components/chat/ChatContextBanner";
 import type { BotRecordActionMode } from "@/lib/chat/bot-record-actions";
 import { getDraft, setDraft } from "@/lib/chat/drafts";
 import { setActiveConversation } from "@/lib/chat/push";
@@ -995,46 +996,31 @@ export default function ChatScreen() {
         )}
       </View>
 
-      {/* Banner del registro vinculado */}
-      {conversation?.context && (
-        <Pressable
-          onPress={() => {
+      {/* Cabecera contextual: de qué se habla y qué ha cambiado ahí desde el
+          último mensaje del usuario (lo segundo, solo si es suyo). */}
+      {conversation ? (
+        <ChatContextBanner
+          card={conversation.context}
+          contextType={conversation.contextType}
+          contextId={conversation.contextId}
+          deletedLabel={t("chat.context_deleted")}
+          locale={i18n.language === "en" ? "en" : "es"}
+          onOpenRecord={() => {
             if (conversation.contextType && conversation.contextId) {
               router.push(`/${conversation.contextType}/${conversation.contextId}` as never);
             }
           }}
-          accessibilityRole="button"
-          accessibilityLabel={conversation.context.title}
-          style={[styles.ctxBanner, { backgroundColor: th.surface, borderColor: th.border }]}
-        >
-          {conversation.context.imageUrl ? (
-            <Image source={{ uri: conversation.context.imageUrl }} style={styles.ctxImg} contentFit="cover" />
-          ) : (
-            <View style={[styles.ctxImg, { backgroundColor: th.imagePlaceholder }]} />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.ctxTitle, { color: th.text }]} numberOfLines={1}>
-              {conversation.context.title}
-            </Text>
-            {conversation.context.subtitle && (
-              <Text style={[styles.ctxSub, { color: th.textMuted }]} numberOfLines={1}>
-                {conversation.context.subtitle}
-              </Text>
-            )}
-            {conversation.context.meta && (
-              <Text style={[styles.ctxSub, { color: th.textMuted }]} numberOfLines={1}>
-                {conversation.context.meta}
-              </Text>
-            )}
-          </View>
-          <Ionicons name="chevron-forward" size={16} color={th.textSubtle} />
-        </Pressable>
-      )}
-      {conversation && conversation.contextType && !conversation.context && (
-        <View style={[styles.ctxBanner, { backgroundColor: th.surface, borderColor: th.border }]}>
-          <Text style={[styles.ctxSub, { color: th.textSubtle }]}>{t("chat.context_deleted")}</Text>
-        </View>
-      )}
+          onOpenHistory={() => {
+            if (!conversation.contextType || !conversation.contextId) return;
+            const qs = new URLSearchParams({
+              recordType: conversation.contextType,
+              recordId: conversation.contextId,
+              recordTitle: conversation.context?.title ?? "",
+            });
+            router.push(`/events?${qs.toString()}` as never);
+          }}
+        />
+      ) : null}
 
       {/* Zona de mensajes */}
       <View style={styles.flex}>
@@ -1949,19 +1935,6 @@ const styles = StyleSheet.create({
   headerMenu: { padding: 4 },
   headerTitle: { fontSize: 16, fontFamily: fonts.bodySemibold, flexShrink: 1 },
   headerSub: { fontSize: 11 },
-  ctxBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginHorizontal: 10,
-    marginTop: 8,
-    padding: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  ctxImg: { width: 38, height: 38, borderRadius: 6 },
-  ctxTitle: { fontSize: 13, fontFamily: fonts.bodyMedium },
-  ctxSub: { fontSize: 12 },
   list: { padding: 12, gap: 6 },
   bubbleRow: { flexDirection: "row", justifyContent: "flex-start" },
   bubbleRowMine: { justifyContent: "flex-end" },
