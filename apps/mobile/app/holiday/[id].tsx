@@ -5,6 +5,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -39,6 +40,7 @@ export default function HolidayDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { data: record, error, loading } = useRecord<BaseRecord>(
     () => api<BaseRecord>(`/api/records/${id}?type=holiday`),
     [id]
@@ -228,7 +230,7 @@ export default function HolidayDetail() {
   return (
     <>
       <Stack.Screen options={{ title: t("types.holiday.singular") }} />
-      <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
+      <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}>
         {record.imageUrl ? (
           <Image source={{ uri: record.imageUrl }} style={styles.hero} contentFit="cover" transition={200} />
         ) : null}

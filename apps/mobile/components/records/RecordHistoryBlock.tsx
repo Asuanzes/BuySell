@@ -16,6 +16,7 @@ import {
 import { fonts } from "@/lib/fonts";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { useLanguage } from "@/lib/i18n/language-context";
+import { hasRecordCreationDate } from "@/lib/records/creation-date";
 import { useTheme } from "@/lib/theme";
 import type { RecordType } from "@nidokey/shared";
 
@@ -54,6 +55,7 @@ export function RecordHistoryBlock({
   const events = (eventsQ.data?.items ?? []).filter((item): item is RecordEventDto & { recordType: RecordType } =>
     isVisibleRecordEvent(item, [recordType])
   );
+  const showRecordCreation = hasRecordCreationDate(recordCreatedAt);
 
   if (!filter) return null;
 
@@ -114,7 +116,7 @@ export function RecordHistoryBlock({
                 <RecordEventRow item={event} locale={language === "en" ? "en" : "es"} compact />
               </View>
             ))}
-            {recordCreatedAt ? (
+            {showRecordCreation ? (
               <View style={[events.length > 0 && { borderTopWidth: 1, borderTopColor: th.border }]}>
                 <RecordCreationRow createdAt={recordCreatedAt} locale={language === "en" ? "en" : "es"} compact />
               </View>

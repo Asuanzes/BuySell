@@ -21,6 +21,7 @@ const BOT_NAV_SCREEN_LINKS: ReadonlyArray<readonly [label: string, route: string
 const BOT_NAV_LINK_RE = /\[\[ir:([^\]|]+)\|([^\]]+)\]\]/g;
 const ANY_LINK_RE = /\[\[[\s\S]*?\]\]/g;
 const BOT_NAV_ROUTE_BY_LABEL = new Map(BOT_NAV_SCREEN_LINKS.map(([label, route]) => [label, route]));
+const ELLIPSIS = "\u2026";
 
 /**
  * Clave de dedupe para conversaciones DIRECT: las mismas dos personas solo
@@ -70,11 +71,100 @@ export function sanitizeMessageBody(raw: string | null | undefined, maxChars: nu
   const t = out.trim();
   if (!t) return null;
   if (t.length <= maxChars) return t;
-  // Corte sin partir surrogate pairs (mismo criterio que truncateSafe).
-  let cut = maxChars;
-  const last = t.charCodeAt(cut - 1);
-  if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
-  return t.slice(0, cut);
+  return truncateMessageBodyAtBoundary(t, maxChars);
+}
+
+function truncateMessageBodyAtBoundary(text: string, maxChars: number): string {
+  if (maxChars <= 0) return "";
+  if (maxChars <= ELLIPSIS.length) return ELLIPSIS.slice(0, maxChars);
+
+  const budget = maxChars - ELLIPSIS.length;
+  let safeBudget = budget;
+  const last = text.charCodeAt(safeBudget - 1);
+  if (last >= 0xd800 && last <= 0xdbff) safeBudget -= 1;
+
+  const prefix = text.slice(0, safeBudget);
+  const sentenceCut = findLastSentenceBoundary(prefix);
+  let cut = sentenceCut > 0 ? sentenceCut : findLastWordBoundary(prefix);
+  if (cut <= 0) cut = safeBudget;
+
+  let truncated = removeUnclosedTrailingDelimiters(text.slice(0, cut).trimEnd());
+  if (!truncated) truncated = text.slice(0, safeBudget).trimEnd();
+  return truncated + ELLIPSIS;
+}
+
+function findLastSentenceBoundary(text: string): number {
+  let cut = -1;
+  for (const match of text.matchAll(/[.\n]/g)) cut = (match.index ?? 0) + 1;
+  return cut;
+}
+
+function findLastWordBoundary(text: string): number {
+  const match = /\s+\S*$/.exec(text);
+  return match?.index ?? -1;
+}
+
+function removeUnclosedTrailingDelimiters(text: string): string {
+  let out = text.replace(/[\s([{"'`\u00ab\u201c\u2018]+$/u, "").trimEnd();
+
+  for (const [open, close] of [["(", ")"], ["[", "]"], ["{", "}"]] as const) {
+    let balance = 0;
+    let lastOpen = -1;
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] === open) {
+        balance++;
+        lastOpen = i;
+      } else if (out[i] === close && balance > 0) {
+        balance--;
+      }
+    }
+    if (balance > 0 && lastOpen >= 0) out = out.slice(0, lastOpen).trimEnd();
+  }
+
+  for (const quote of ['"', "'", "`"] as const) {
+    if (countChar(out, quote) % 2 === 1) out = out.slice(0, out.lastIndexOf(quote)).trimEnd();
+  }
+
+  for (const [open, close] of [["\u00ab", "\u00bb"], ["\u201c", "\u201d"], ["\u2018", "\u2019"]] as const) {
+    if (countChar(out, open) > countChar(out, close)) out = out.slice(0, out.lastIndexOf(open)).trimEnd();
+  }
+
+  return out;
+}
+
+function countChar(text: string, char: string): number {
+  let count = 0;
+  for (const ch of text) if (ch === char) count++;
+  return count;
+}
+
+/**
+ * Elimina marcadores Markdown que la burbuja del chat no renderiza. No toca el
+ * interior de enlaces [[...]], porque ahi viven ids, rutas y labels propios.
+ */
+export function stripBotMarkdown(text: string): string {
+  return transformOutsideLinks(text, stripMarkdownFromPlainText);
+}
+
+function stripMarkdownFromPlainText(text: string): string {
+  return text
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, "")
+    .replace(/`([^`\n]+?)`/g, "$1")
+    .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
+    .replace(/__([^_\n]+?)__/g, "$1")
+    .replace(/\*([^*\n]+?)\*/g, "$1")
+    .replace(/(?<![\p{L}\p{N}_])_([^_\n]+?)_(?![\p{L}\p{N}_])/gu, "$1");
+}
+
+function transformOutsideLinks(text: string, transform: (plain: string) => string): string {
+  let cursor = 0;
+  let out = "";
+  for (const match of text.matchAll(ANY_LINK_RE)) {
+    const start = match.index ?? 0;
+    out += transform(text.slice(cursor, start)) + match[0];
+    cursor = start + match[0].length;
+  }
+  return out + transform(text.slice(cursor));
 }
 
 /**

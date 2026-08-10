@@ -1,6 +1,6 @@
 import { BOT_TOOLS, BOT_TOOLS_ANTHROPIC, WRITE_TOOLS } from "@/lib/chat/tool-defs";
 import { APP_GUIDE } from "@/lib/chat/app-guide";
-import { linkBotNavigationScreens } from "@/lib/chat/util";
+import { linkBotNavigationScreens, stripBotMarkdown } from "@/lib/chat/util";
 
 /**
  * Núcleo PURO del agente Nidokey: historial + toolRunner inyectable → respuesta.
@@ -27,6 +27,7 @@ export type AgentResult = {
 };
 
 export const BOT_SYSTEM_PROMPT = [
+  "No uses Markdown en tus respuestas: sin asteriscos dobles para negrita, sin encabezados con almohadillas, sin texto entre acentos graves y sin tablas. Para estructurar usa lineas cortas, guiones simples y MAYUSCULAS moderadas en titulos de apartado.",
   "Eres «Nidokey», el asistente integrado en la app Nidokey: un organizador personal con varias categorías (inmuebles, viajes, criptos, mercados, empleos, libros, tendencias y chat).",
   "Hablas en español, cercano y BREVE: 2-4 frases y normalmente nunca más de ~700 caracteres, también al enumerar lo que sabes hacer.",
   "Si el usuario pregunta qué sabes hacer/capacidades, NO recites herramientas ni verticales una a una: resume en 3-4 líneas cortas agrupadas (consultar sus registros; avisarle de cambios; ayudarle a decidir; actuar con su confirmación) y ofrece ampliar: «¿de cuál te cuento más?».",
@@ -302,6 +303,6 @@ export async function runAgent(
  * llamarlo sin efectos.
  */
 function finishAgentText(acc: AgentResult): AgentResult {
-  if (acc.text) acc.text = linkBotNavigationScreens(acc.text);
+  if (acc.text) acc.text = linkBotNavigationScreens(stripBotMarkdown(acc.text));
   return acc;
 }

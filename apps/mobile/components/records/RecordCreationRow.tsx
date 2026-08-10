@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 
 import { fonts } from "@/lib/fonts";
+import { formatRecordCreationDate } from "@/lib/records/creation-date";
 import { useTheme } from "@/lib/theme";
 
 export function RecordCreationRow({
@@ -10,13 +11,15 @@ export function RecordCreationRow({
   locale,
   compact = false,
 }: {
-  createdAt: string;
+  createdAt?: string | null;
   locale: string;
   compact?: boolean;
 }) {
   const { th } = useTheme();
   const { t } = useTranslation();
-  const date = formatCreationDate(createdAt, locale);
+  const date = formatRecordCreationDate(createdAt, locale);
+
+  if (!date) return null;
 
   return (
     <View
@@ -40,12 +43,6 @@ export function RecordCreationRow({
       </View>
     </View>
   );
-}
-
-function formatCreationDate(iso: string, locale: string): string {
-  const ts = Date.parse(iso);
-  if (Number.isNaN(ts)) return iso;
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(ts));
 }
 
 const styles = StyleSheet.create({

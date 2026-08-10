@@ -235,7 +235,7 @@ export default function PropertyDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: th.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 32 + insets.bottom }]}>
         {photos.length > 0 && (
           <ScrollView
             horizontal
