@@ -1,0 +1,29 @@
+name: weekly-digest
+
+# Resumen semanal de M4 (PRODUCT_LOOP.md CICLO 4 iter 5): cada lunes por la
+# mañana llama a GET /api/cron/weekly-digest, que compone el digest de la
+# semana anterior (RecordEvent) por plantilla determinista y lo entrega como
+# DM del bot @Nidokey (idempotente por clientId semana+usuario: relanzar este
+# workflow NO duplica mensajes). Mismo patrón de secreto que refresh.yml:
+# el secret del repo CRON_SECRET debe coincidir con el env de Vercel.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # lunes 07:00 UTC (~09:00 Madrid en verano)
+  workflow_dispatch: {} # botón de ejecución manual (pestaña Actions)
+
+concurrency:
+  group: weekly-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping cron weekly-digest
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS --max-time 290 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://nidokey.es/api/cron/weekly-digest"

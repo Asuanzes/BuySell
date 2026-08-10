@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
 import { directKey, messagePreview } from "@/lib/chat/util";
 import { sendChatPush } from "@/lib/chat/push";
@@ -104,18 +106,31 @@ export function isBotDirect(kind: string, participantUserIds: string[]): boolean
  * crea el mensaje, actualiza el preview y avisa (push + gateway WS). Pensado
  * para correr dentro de `after()` (post-respuesta) → fallo no-bloqueante.
  */
-export async function replyAsBot(conversationId: string, text: string): Promise<void> {
+export async function replyAsBot(
+  conversationId: string,
+  text: string,
+  options: { clientId?: string } = {},
+): Promise<boolean> {
   const body = text.slice(0, MAX_REPLY_CHARS);
   const now = new Date();
-  const message = await prisma.chatMessage.create({
-    data: { conversationId, senderId: NIDOKEY_BOT_ID, kind: "TEXT", body },
-    include: { attachments: true },
-  });
+  let message;
+  try {
+    message = await prisma.chatMessage.create({
+      data: { conversationId, senderId: NIDOKEY_BOT_ID, kind: "TEXT", body, clientId: options.clientId ?? null },
+      include: { attachments: true },
+    });
+  } catch (err) {
+    if (options.clientId && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return false;
+    }
+    throw err;
+  }
   await prisma.conversation.update({
     where: { id: conversationId },
     data: { lastMessageAt: now, lastMessagePreview: messagePreview("TEXT", body) },
   });
   await Promise.allSettled([sendChatPush(message), notifyMessage(message)]);
+  return true;
 }
 
 /**
