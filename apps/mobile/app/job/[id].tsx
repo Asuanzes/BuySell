@@ -11,6 +11,7 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
 import RNShare from "react-native-share";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { type BaseRecord, metaField, jobPlatformLabel } from "@nidokey/shared";
 import { api } from "@/lib/api";
@@ -31,6 +32,7 @@ export default function JobDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { data: record, error, loading } = useRecord<BaseRecord>(
     () => api<BaseRecord>(`/api/records/${id}?type=job`),
     [id]
@@ -99,7 +101,10 @@ export default function JobDetail() {
   return (
     <>
       <Stack.Screen options={{ title: t("types.job.singular") }} />
-      <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={{ backgroundColor: th.bg }}
+        contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
+      >
         {banner && (
           <Image source={{ uri: banner }} style={styles.banner} contentFit="cover" transition={200} />
         )}

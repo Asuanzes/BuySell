@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import { AlertsSheet } from "@/components/AlertsSheet";
@@ -43,6 +44,7 @@ export default function EventsScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
   const { language } = useLanguage();
+  const insets = useSafeAreaInsets();
   const { orderedVisible } = useCategoryPrefs();
   const [items, setItems] = useState<RecordEventDto[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -151,7 +153,15 @@ export default function EventsScreen() {
           <FlatList
             data={visibleItems}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={[styles.list, visibleItems.length === 0 && styles.emptyList]}
+            // El relleno inferior SUMA el inset del sistema: `Screen` monta el
+            // SafeAreaView con edges=["top"] a propósito, así que abajo manda
+            // cada pantalla. Con un 28 fijo, la última fila (aquí «Añadido el…»,
+            // que va en el footer) quedaba debajo de la barra de Android.
+            contentContainerStyle={[
+              styles.list,
+              { paddingBottom: 28 + insets.bottom },
+              visibleItems.length === 0 && styles.emptyList,
+            ]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

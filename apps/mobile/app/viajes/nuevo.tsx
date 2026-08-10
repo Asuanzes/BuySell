@@ -12,6 +12,7 @@ import { Image } from "expo-image";
 import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Calendar, type DateData } from "react-native-calendars";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -205,6 +206,7 @@ function rangeMarks(start: string, end: string, color: string, textColor: string
 
 export default function NewTrip() {
   const { th } = useTheme();
+  const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   // Locale del calendario sincronizado con el idioma; también alimenta fmtDay y
   // se usa como `key` del <Calendar> (fuerza remount al cambiar idioma).
@@ -868,7 +870,7 @@ export default function NewTrip() {
   return (
     <>
       <Stack.Screen options={{ title: t("trip.title") }} />
-      <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
+      <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}>
         <Text style={[styles.stepLabel, { color: th.textSubtle }]}>
           {t("trip.step_label", { n: stepIndex, total: activeSteps.length, title: STEP_TITLES[step - 1] })}
         </Text>

@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import RNShare from "react-native-share";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { type BaseRecord, type Book, metaField } from "@nidokey/shared";
 import { api } from "@/lib/api";
@@ -33,6 +34,7 @@ export default function BookDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { data: record, error, loading } = useRecord<BaseRecord>(
     () => api<BaseRecord>(`/api/records/${id}?type=book`),
     [id]
@@ -132,7 +134,10 @@ export default function BookDetail() {
   return (
     <>
       <Stack.Screen options={{ title: t("types.book.singular") }} />
-      <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={{ backgroundColor: th.bg }}
+        contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
+      >
         <View style={styles.hero}>
           {cover ? (
             <Image source={{ uri: cover }} style={styles.cover} contentFit="cover" transition={200} />

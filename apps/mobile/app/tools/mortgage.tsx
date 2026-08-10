@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
@@ -21,6 +22,7 @@ function eur(n: number): string {
 export default function MortgageSimulator() {
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { amount } = useLocalSearchParams<{ amount?: string }>();
 
   const [price, setPrice] = useState(amount ? String(parseInt(amount, 10) || "") : "");
@@ -42,7 +44,10 @@ export default function MortgageSimulator() {
   }, [price, downPct, years, rate]);
 
   return (
-    <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={{ backgroundColor: th.bg }}
+      contentContainerStyle={[styles.content, { paddingBottom: 32 + insets.bottom }]}
+    >
       <Stack.Screen options={{ title: t("tools.mortgage.title") }} />
 
       <Card style={styles.card}>

@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState, Screen } from "@/components/ui";
 import { newsTimeAgo } from "@/components/NewsSheet";
@@ -45,6 +46,7 @@ export default function TrendsScreen() {
   const { th, dark } = useTheme();
   const { appStyle } = useAppStyle();
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets();
   const accent = categoryColor("trends", dark, appStyle);
   const [source, setSource] = useState<TrendFilter>("all");
   const [items, setItems] = useState<TrendDTO[]>([]);
@@ -89,7 +91,11 @@ export default function TrendsScreen() {
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={[styles.list, items.length === 0 && styles.emptyList]}
+          contentContainerStyle={[
+            styles.list,
+            items.length === 0 && styles.emptyList,
+            { paddingBottom: 26 + insets.bottom },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

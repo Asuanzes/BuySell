@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, Text } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAppStyle } from "@/lib/app-style-context";
 import { useTheme } from "@/lib/theme";
@@ -15,11 +16,12 @@ export default function ThemeSettingsScreen() {
   const { th } = useTheme();
   const { appStyle } = useAppStyle();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
 
   return (
     <ScrollView
       style={{ backgroundColor: th.bg }}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
       showsVerticalScrollIndicator={false}
     >
       <Section label={t("theme.appearance")}>

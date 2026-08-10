@@ -12,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router } from "expo-router";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState, ResultModal } from "@/components/ui";
 import { fonts } from "@/lib/fonts";
@@ -36,6 +37,7 @@ type ConfirmState =
 export default function DecisionsScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { data, error, loading, refreshing, refetch } = useQuery(() => listDecisions(), [], {
     revalidateOnFocus: true,
     refreshInterval: 60_000,
@@ -127,7 +129,7 @@ export default function DecisionsScreen() {
         <FlatList
           data={decisions}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: 28 + insets.bottom }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={th.primary} />}
           renderItem={({ item }) => (
             <DecisionRow

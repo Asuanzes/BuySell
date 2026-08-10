@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { NewsRow, newsTimeAgo } from "@/components/NewsSheet";
 import { EmptyState, Screen } from "@/components/ui";
@@ -44,6 +45,7 @@ export default function TrendDetailScreen() {
   const { th, dark } = useTheme();
   const { appStyle } = useAppStyle();
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets();
   const accent = categoryColor("trends", dark, appStyle);
   const [trend, setTrend] = useState<TrendDTO | null>(null);
   const [trendError, setTrendError] = useState<string | null>(null);
@@ -128,7 +130,11 @@ export default function TrendDetailScreen() {
       <FlatList<NewsItem>
         data={visibleNews}
         keyExtractor={(item) => item.url}
-        contentContainerStyle={[styles.list, visibleNews.length === 0 && styles.emptyList]}
+        contentContainerStyle={[
+          styles.list,
+          visibleNews.length === 0 && styles.emptyList,
+          { paddingBottom: 32 + insets.bottom },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

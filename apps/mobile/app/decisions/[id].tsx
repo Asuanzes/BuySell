@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Tex
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RecordCard } from "@/components/RecordCard";
 import { EmptyState, ResultModal } from "@/components/ui";
@@ -15,6 +16,7 @@ export default function DecisionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { data, error, loading, refreshing, refetch } = useQuery(() => getDecision(id!), [id], {
     enabled: !!id,
     revalidateOnFocus: true,
@@ -94,7 +96,7 @@ export default function DecisionDetailScreen() {
           <FlatList
             data={data.items}
             keyExtractor={(item) => `${item.recordType}:${item.recordId}`}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, { paddingBottom: 28 + insets.bottom }]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={th.primary} />}
             renderItem={({ item }) => (
               <DecisionRecordItem

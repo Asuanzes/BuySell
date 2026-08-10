@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
@@ -15,6 +16,7 @@ import { Card } from "@/components/ui";
 export default function ToolScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { tool, city } = useLocalSearchParams<{ tool?: string; city?: string }>();
   const key = tool ?? "";
   // El id llega como string libre de la ruta → Record con t() (sin template
@@ -26,7 +28,10 @@ export default function ToolScreen() {
   const title = TITLES[key] ?? t("tools.fallback_title");
 
   return (
-    <ScrollView style={{ backgroundColor: th.bg }} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={{ backgroundColor: th.bg }}
+      contentContainerStyle={[styles.content, { paddingBottom: 32 + insets.bottom }]}
+    >
       <Stack.Screen options={{ title }} />
       {key === "registro" && <Registro />}
       {key === "ine" && <Ine city={city} />}

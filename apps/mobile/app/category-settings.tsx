@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/lib/theme";
@@ -19,6 +20,7 @@ import { Button, Chip, ResultModal, Section } from "@/components/ui";
 export default function CategorySettingsScreen() {
   const { th, setThemeMode } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { label: typeLabel } = useTypeI18n();
   const {
     managed,
@@ -50,7 +52,7 @@ export default function CategorySettingsScreen() {
     <>
     <ScrollView
       style={{ backgroundColor: th.bg }}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
       scrollEnabled={scrollOn}
     >
       <Section label={t("catsettings.order_title")}>

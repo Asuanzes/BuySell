@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, Vi
 import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/lib/theme";
 import { fonts } from "@/lib/fonts";
@@ -28,6 +29,7 @@ import { EmptyState, ResultModal } from "@/components/ui";
 export default function NewChatScreen() {
   const { th } = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<ChatUser[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -132,7 +134,7 @@ export default function NewChatScreen() {
         <FlatList
           data={results}
           keyExtractor={(u) => u.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: 24 + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => {
             const name =
