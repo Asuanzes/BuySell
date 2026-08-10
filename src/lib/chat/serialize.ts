@@ -1,4 +1,5 @@
 import type { ChatAttachment, ChatMessage, Conversation, ConversationParticipant, User } from "@prisma/client";
+import type { ConversationContextHeader } from "@/lib/chat/context";
 import { truncateSafe } from "@/lib/chat/util";
 
 /**
@@ -77,7 +78,7 @@ export function participantDto(p: ParticipantWithUser, meId?: string) {
 export function conversationDto(
   c: Conversation & { participants: ParticipantWithUser[] },
   meId: string,
-  extras: { unreadCount?: number; context?: { title: string; imageUrl: string | null; subtitle: string | null } | null } = {}
+  extras: { unreadCount?: number; context?: ConversationContextHeader | null } = {}
 ) {
   const me = c.participants.find((p) => p.userId === meId) ?? null;
   const others = c.participants.filter((p) => p.userId !== meId && !p.leftAt);

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { getParticipantOrNull } from "@/lib/chat/guard";
 import { conversationDto } from "@/lib/chat/serialize";
 import { actorName, systemEvent } from "@/lib/chat/system";
-import { contextCard } from "@/lib/chat/context";
+import { buildConversationContextHeader } from "@/lib/chat/context";
 import { deleteObject, groupImageKey } from "@/lib/chat/r2";
 import { isProtectedName } from "@nidokey/shared";
 
@@ -13,7 +14,12 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const PARTICIPANT_INCLUDE = {
   participants: { include: { user: { select: { id: true, name: true, username: true, email: true, image: true } } } },
-} as const;
+  messages: {
+    where: { contextType: { not: null }, contextId: { not: null } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { senderId: true, contextType: true, contextId: true, deletedAt: true, createdAt: true },
+  },
+} satisfies Prisma.ConversationInclude;
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
@@ -23,14 +29,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   }
   const c = await prisma.conversation.findUnique({ where: { id }, include: PARTICIPANT_INCLUDE });
   if (!c) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const context = await contextCard(
-    c.contextType,
-    c.contextId,
-    // En GRUPO solo cuentan los activos: la regla es que el dueño del registro
-    // SIGA en la conversación. En 1:1 no se filtra — ahí `leftAt` es "borré el
-    // chat de mi lista", local y reversible.
-    c.participants.filter((p) => c.kind !== "GROUP" || !p.leftAt).map((p) => p.userId)
-  );
+  const context = await buildConversationContextHeader(c, userId);
   return NextResponse.json(conversationDto(c, userId, { context }));
 }
 

@@ -30,7 +30,65 @@ export type ContextCard = {
   statusShown?: boolean;
 };
 
+export type ContextHeaderEvent = {
+  recordType: string;
+  recordId: string;
+  eventType: string;
+  observedAt: string;
+  payload: unknown;
+};
+
+export type ConversationContextHeader = ContextCard & {
+  viewerOwnsRecord?: boolean;
+  relatedRecordCount?: number;
+  changedSinceMyLastMessage?: {
+    total: number;
+    since: string;
+    events: ContextHeaderEvent[];
+  } | null;
+};
+
 type CardWithOwner = (ContextCard & { ownerId: string | null }) | null;
+
+type ContextMessageLite = {
+  senderId: string | null;
+  contextType: string | null;
+  contextId: string | null;
+  deletedAt?: Date | null;
+  createdAt: Date;
+};
+
+type ContextParticipantLite = {
+  userId: string;
+  joinedAt?: Date | null;
+  leftAt?: Date | null;
+};
+
+type ContextConversationLite = {
+  id: string;
+  kind?: string;
+  contextType: string | null;
+  contextId: string | null;
+  participants: ContextParticipantLite[];
+  messages?: ContextMessageLite[];
+};
+
+type RecordPair = { contextType: string; contextId: string };
+
+type RecordEventLite = {
+  recordType: string;
+  recordId: string;
+  eventType: string;
+  payload: unknown;
+  observedAt: Date;
+};
+
+type ContextHeaderDeps = {
+  fetchCard?: (contextType: string, contextId: string) => Promise<CardWithOwner>;
+  findContextMessages?: (conversationId: string) => Promise<ContextMessageLite[]>;
+  findRecordEvents?: (viewerId: string, pairs: RecordPair[], baseline: Date) => Promise<RecordEventLite[]>;
+  countRecordEvents?: (viewerId: string, pairs: RecordPair[], baseline: Date) => Promise<number>;
+};
 
 const fmtPrice = (cents: number | null | undefined, currency = "EUR"): string | null =>
   cents == null
@@ -155,6 +213,150 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
     };
   }
   return null;
+}
+
+function pairKey(pair: RecordPair): string {
+  return `${pair.contextType}\0${pair.contextId}`;
+}
+
+function recordPairsFrom(conversation: ContextConversationLite, messages: ContextMessageLite[]): RecordPair[] {
+  const pairs = new Map<string, RecordPair>();
+  const add = (contextType: string | null, contextId: string | null) => {
+    if (!contextType || !contextId) return;
+    const pair = { contextType, contextId };
+    pairs.set(pairKey(pair), pair);
+  };
+
+  add(conversation.contextType, conversation.contextId);
+  for (const message of messages) {
+    if (!message.deletedAt) add(message.contextType, message.contextId);
+  }
+  return [...pairs.values()];
+}
+
+function selectHeaderPair(conversation: ContextConversationLite, messages: ContextMessageLite[]): RecordPair | null {
+  if (conversation.contextType && conversation.contextId) {
+    return { contextType: conversation.contextType, contextId: conversation.contextId };
+  }
+  const latest = messages.find((message) => !message.deletedAt && message.contextType && message.contextId);
+  return latest?.contextType && latest.contextId ? { contextType: latest.contextType, contextId: latest.contextId } : null;
+}
+
+function activeParticipantIds(conversation: ContextConversationLite): string[] {
+  return conversation.participants
+    .filter((p) => conversation.kind !== "GROUP" || !p.leftAt)
+    .map((p) => p.userId);
+}
+
+function degradedCard(): ContextCard {
+  return { title: "Registro eliminado", imageUrl: null, subtitle: null, meta: null };
+}
+
+function lastOwnMessageBaseline(messages: ContextMessageLite[], viewerId: string): Date | null {
+  const own = messages
+    .filter((message) => message.senderId === viewerId && !message.deletedAt)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  return own?.createdAt ?? null;
+}
+
+function joinedAtBaseline(conversation: ContextConversationLite, viewerId: string): Date | null {
+  return conversation.participants.find((p) => p.userId === viewerId)?.joinedAt ?? null;
+}
+
+async function defaultFindContextMessages(conversationId: string): Promise<ContextMessageLite[]> {
+  return prisma.chatMessage.findMany({
+    where: { conversationId, contextType: { not: null }, contextId: { not: null } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { senderId: true, contextType: true, contextId: true, deletedAt: true, createdAt: true },
+  });
+}
+
+function recordEventWhere(viewerId: string, pairs: RecordPair[], baseline: Date) {
+  return {
+    userId: viewerId,
+    observedAt: { gt: baseline },
+    OR: pairs.map((pair) => ({ recordType: pair.contextType, recordId: pair.contextId })),
+  };
+}
+
+async function defaultFindRecordEvents(viewerId: string, pairs: RecordPair[], baseline: Date): Promise<RecordEventLite[]> {
+  if (pairs.length === 0) return [];
+  return prisma.recordEvent.findMany({
+    where: recordEventWhere(viewerId, pairs, baseline),
+    orderBy: [{ observedAt: "desc" }, { id: "desc" }],
+    take: 3,
+    select: { recordType: true, recordId: true, eventType: true, payload: true, observedAt: true },
+  });
+}
+
+async function defaultCountRecordEvents(viewerId: string, pairs: RecordPair[], baseline: Date): Promise<number> {
+  if (pairs.length === 0) return 0;
+  return prisma.recordEvent.count({ where: recordEventWhere(viewerId, pairs, baseline) });
+}
+
+export async function buildConversationContextHeader(
+  conversation: ContextConversationLite,
+  viewerId: string,
+  deps: ContextHeaderDeps = {}
+): Promise<ConversationContextHeader | null> {
+  const messages = conversation.messages ?? (await (deps.findContextMessages ?? defaultFindContextMessages)(conversation.id));
+  const selected = selectHeaderPair(conversation, messages);
+  if (!selected) return null;
+
+  const allPairs = recordPairsFrom(conversation, messages);
+  const selectedKey = pairKey(selected);
+  const relatedRecordCount = allPairs.filter((pair) => pairKey(pair) !== selectedKey).length;
+  const participantIds = activeParticipantIds(conversation);
+
+  let ownerId: string | null = null;
+  let card: ContextCard | null = null;
+  try {
+    const fetched = await (deps.fetchCard ?? fetchCard)(selected.contextType, selected.contextId);
+    ownerId = fetched?.ownerId ?? null;
+    if (fetched && ownerId && participantIds.includes(ownerId)) {
+      card = {
+        title: fetched.title,
+        imageUrl: fetched.imageUrl,
+        subtitle: fetched.subtitle,
+        meta: fetched.meta ?? null,
+        ...(fetched.statusShown ? { statusShown: true } : {}),
+      };
+    }
+  } catch {
+    card = null;
+  }
+
+  const viewerOwnsRecord = ownerId === viewerId;
+  const header: ConversationContextHeader = card ?? degradedCard();
+
+  if (!viewerOwnsRecord) return header;
+
+  header.viewerOwnsRecord = true;
+  if (relatedRecordCount > 0) header.relatedRecordCount = relatedRecordCount;
+
+  const baseline = lastOwnMessageBaseline(messages, viewerId) ?? joinedAtBaseline(conversation, viewerId);
+  if (!baseline) return header;
+
+  const [total, events] = await Promise.all([
+    (deps.countRecordEvents ?? defaultCountRecordEvents)(viewerId, allPairs, baseline),
+    (deps.findRecordEvents ?? defaultFindRecordEvents)(viewerId, allPairs, baseline),
+  ]);
+  header.changedSinceMyLastMessage =
+    total > 0
+      ? {
+          total,
+          since: baseline.toISOString(),
+          events: events.slice(0, 3).map((event) => ({
+            recordType: event.recordType,
+            recordId: event.recordId,
+            eventType: event.eventType,
+            payload: event.payload,
+            observedAt: event.observedAt.toISOString(),
+          })),
+        }
+      : null;
+
+  return header;
 }
 
 /** Dueño del registro, o null si el registro/tipo no existe. Para la regla 1. */
