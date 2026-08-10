@@ -5,6 +5,7 @@ import type { RecordType } from "@nidokey/shared";
 import { prisma } from "@/lib/db";
 import { requireUserId } from "@/lib/auth-helpers";
 import { sharedAccess } from "@/lib/records/access";
+import { withoutPrivateAnnotations } from "@/lib/records/private-annotations";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -16,7 +17,8 @@ const Body = z.object({ type: z.enum(RECORD_TYPES) });
 async function copyRecord(type: RecordType, id: string, ownerId: string): Promise<string | null> {
   const strip = (row: any) => {
     const { id: _i, ownerId: _o, createdAt: _c, updatedAt: _u, ...rest } = row;
-    return { ...rest, ownerId };
+    // Sin las anotaciones privadas del dueño: ver private-annotations.ts.
+    return { ...withoutPrivateAnnotations(rest), ownerId };
   };
   if (type === "crypto") {
     const s = await prisma.cryptoHolding.findFirst({ where: { id } });
