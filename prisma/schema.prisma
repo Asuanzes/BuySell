@@ -153,6 +153,7 @@ model User {
   priceAlerts       PriceAlert[]
   notificationPrefs NotificationPrefs?
   recordEvents      RecordEvent[]
+  decisions         Decision[]
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -1317,6 +1318,44 @@ model RecordEvent {
   createdAt      DateTime @default(now())
 
   @@index([userId, observedAt(sort: Desc), id])
+  @@index([recordType, recordId])
+  // R1v1 Espacios de Decisión: cuenta de cambios por usuario+registro desde
+  // lastVisitedAt sin degradar a combinación de índices en historiales largos.
+  @@index([userId, recordType, recordId, observedAt(sort: Desc)])
+}
+
+// R1v1 Espacios de Decisión (PRODUCT_LOOP.md CICLO 4 iter 6): una decisión
+// agrupa registros de cualquier vertical hacia un objetivo. v1 = agrupar +
+// «cambios desde tu última visita» (RecordEvent). Sin personas (v2) ni
+// cierre con resultado (v3). Topes de producto: 10 abiertas/usuario,
+// 20 items/decisión (se validan en la API, no aquí).
+model Decision {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  status        String    @default("open") // "open" | "archived"
+  lastVisitedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  items DecisionItem[]
+
+  @@index([userId, status, updatedAt])
+}
+
+model DecisionItem {
+  id         String   @id @default(cuid())
+  decisionId String
+  decision   Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  // Soft-ref al registro (patrón RecordShare/RecordEvent): sin FK porque
+  // apunta a tablas distintas según el tipo; los huérfanos se toleran.
+  recordType String
+  recordId   String
+  addedAt    DateTime @default(now())
+
+  @@unique([decisionId, recordType, recordId])
+  @@index([decisionId, addedAt])
   @@index([recordType, recordId])
 }
 
