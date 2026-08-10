@@ -1,5 +1,7 @@
 import { issueMobileJwt } from "@/lib/mobile-jwt";
+import { verifyMobileJwt } from "@/lib/mobile-jwt";
 import { RECORD_TYPES, type BotRecordType as RecordType } from "@/lib/chat/tool-defs";
+import { createRecordEvent, visitPreparedEventKey } from "@/lib/record-events";
 
 /**
  * Herramientas (function calling) del asistente Nidokey. Filosofía perezosa: NO
@@ -193,6 +195,72 @@ function compactEvents(data: unknown): unknown[] {
   });
 }
 
+function compactVisitEvents(data: unknown): unknown[] {
+  const items = Array.isArray((data as any)?.items) ? (data as any).items : [];
+  return items
+    .filter((e: any) => {
+      const p = e?.payload && typeof e.payload === "object" ? e.payload : {};
+      const eventType = String(e?.eventType ?? "");
+      return eventType === "price_changed" || eventType === "status_changed" || p.status != null;
+    })
+    .slice(0, 5)
+    .map((e: any) => {
+      const p = e?.payload && typeof e.payload === "object" ? e.payload : {};
+      return {
+        eventType: e?.eventType,
+        source: e?.source,
+        observedAt: e?.observedAt,
+        previousCents: typeof p.previousCents === "number" ? p.previousCents : null,
+        newCents: typeof p.newCents === "number" ? p.newCents : null,
+        field: p.field ?? null,
+        previousStatus: p.previousStatus ?? p.oldStatus ?? null,
+        status: p.status ?? p.newStatus ?? null,
+      };
+    });
+}
+
+function hasValue(v: unknown): boolean {
+  return v !== undefined && v !== null && v !== "";
+}
+
+type MissingVisitField = { field: string; label: string; reason: string };
+
+const VISIT_FIELDS: { field: string; label: string; reason: string; values: string[] }[] = [
+  { field: "yearBuilt", label: "año de construcción", reason: "edad real del edificio y posibles reformas", values: ["yearBuilt", "constructionYear"] },
+  { field: "communityFees", label: "gastos de comunidad", reason: "coste mensual no incluido en el precio", values: ["communityFees", "communityExpenses", "communityCosts", "gastosComunidad"] },
+  { field: "orientation", label: "orientación", reason: "luz natural, humedad y temperatura", values: ["orientation", "orientacion"] },
+  { field: "floor", label: "planta", reason: "ruido, accesibilidad, seguridad y humedad si es baja", values: ["floor"] },
+  { field: "hasElevator", label: "ascensor", reason: "accesibilidad y valor de reventa", values: ["hasElevator", "elevator"] },
+  { field: "bathrooms", label: "baños", reason: "capacidad y coste de reforma", values: ["bathrooms"] },
+  { field: "usableArea", label: "m² útiles", reason: "diferencia frente a m² construidos", values: ["usableArea"] },
+  { field: "energyRating", label: "certificado energético", reason: "consumo previsto y estado de instalaciones", values: ["energyRating"] },
+];
+
+function missingVisitFields(record: AnyRecord): MissingVisitField[] {
+  const meta = pickMeta(record);
+  const detail = pickDetail(record);
+  return VISIT_FIELDS.filter((f) => {
+    const value = fieldValue(...f.values.flatMap((key) => [(detail as AnyRecord)[key], (meta as AnyRecord)[key]]));
+    if (f.field === "energyRating") return !hasValue(value) || value === "UNKNOWN";
+    return !hasValue(value);
+  })
+    .map(({ field, label, reason }) => ({ field, label, reason }));
+}
+
+type PrepareVisitDeps = {
+  apiGet: (path: string, token: string) => Promise<unknown>;
+  createEvent: typeof createRecordEvent;
+  userFromToken: (token: string) => Promise<{ userId: string; email: string } | null>;
+  now: () => Date;
+};
+
+const defaultPrepareVisitDeps: PrepareVisitDeps = {
+  apiGet,
+  createEvent: createRecordEvent,
+  userFromToken: verifyMobileJwt,
+  now: () => new Date(),
+};
+
 export async function compareRecords(type: RecordType, ids: string[], token: string): Promise<unknown> {
   const uniqueIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
   if (!RECORD_TYPES.includes(type) || uniqueIds.length !== ids.length || uniqueIds.length < 2 || uniqueIds.length > 3) {
@@ -219,6 +287,68 @@ export async function compareRecords(type: RecordType, ids: string[], token: str
     records: rows.map((r: any) => r.record),
     events: Object.fromEntries(rows.map((r: any) => [r.id, r.events])),
     provenance: "datos_guardados_del_usuario",
+  };
+}
+
+export async function prepareVisit(id: string, token: string, deps: PrepareVisitDeps = defaultPrepareVisitDeps): Promise<unknown> {
+  const recordId = String(id || "").trim();
+  if (!recordId) return { error: "preparar_visita necesita id de inmueble" };
+
+  const record = (await deps.apiGet(`/api/records/${encodeURIComponent(recordId)}?type=property`, token)) as AnyRecord;
+  if (record?.error) return { error: `inmueble no preparable (${recordId}): ${record.error}. Revisa que sea un id propio.` };
+  if (record?.type !== "property") return { error: "preparar_visita solo admite inmuebles (property)" };
+  const meta = pickMeta(record);
+  if (meta.shared || meta.readOnly) return { error: "solo puedo preparar visitas de inmuebles propios, no compartidos" };
+
+  const detail = pickDetail(record);
+  const priceEur = centsToEuros(fieldValue(meta.currentPrice, detail.currentPrice));
+  const rentEur = centsToEuros(fieldValue(meta.monthlyRent, detail.monthlyRent));
+  const comparableEur = priceEur ?? rentEur;
+  const areaRaw = fieldValue(meta.builtArea, detail.builtArea);
+  const area = Number(areaRaw);
+  const property = {
+    id: record.id,
+    title: record.title,
+    precio_eur: priceEur,
+    renta_mensual_eur: rentEur,
+    eur_m2: comparableEur != null && Number.isFinite(area) && area > 0 ? Math.round(comparableEur / area) : null,
+    m2: Number.isFinite(area) ? area : null,
+    habitaciones: fieldValue(meta.rooms, detail.rooms) ?? null,
+    banos: fieldValue(meta.bathrooms, detail.bathrooms) ?? null,
+    ano_construccion: fieldValue(meta.yearBuilt, detail.yearBuilt) ?? null,
+    estado: fieldValue(record.status, detail.status) ?? null,
+    operacion: fieldValue(meta.operationType, detail.operationType) ?? null,
+    ubicacion:
+      [fieldValue(meta.city, detail.city), fieldValue(meta.neighborhood, detail.neighborhood), fieldValue(meta.address, detail.address)]
+        .filter(Boolean)
+        .join(" · ") || null,
+    planta: fieldValue(meta.floor, detail.floor) ?? null,
+    ascensor: fieldValue(meta.hasElevator, detail.hasElevator) ?? null,
+  };
+  const events = compactVisitEvents(await deps.apiGet(`/api/events?recordType=property&recordId=${encodeURIComponent(recordId)}&limit=20`, token));
+
+  const user = await deps.userFromToken(token);
+  if (user?.userId) {
+    const observedAt = deps.now();
+    await deps.createEvent({
+      userId: user.userId,
+      recordType: "property",
+      recordId,
+      eventType: "visit_prepared",
+      source: "bot",
+      idempotencyKey: visitPreparedEventKey(recordId, observedAt),
+      payload: { recordTitle: record.title ?? "Inmueble" },
+      observedAt,
+    });
+  }
+
+  return {
+    type: "property",
+    id: recordId,
+    property,
+    recentEvents: events,
+    missingFields: missingVisitFields(record),
+    provenance: "ficha_guardada_del_usuario",
   };
 }
 
@@ -252,6 +382,10 @@ export async function runTool(name: string | undefined, argsJson: string | undef
         const ids = Array.isArray(args.ids) ? args.ids.map((x: any) => String(x)) : [];
         if (!RECORD_TYPES.includes(type as RecordType)) return JSON.stringify({ error: "categoría no válida" });
         return cap(JSON.stringify(await compareRecords(type as RecordType, ids, token)), 5000);
+      }
+      case "preparar_visita": {
+        const id = String(args.id || "");
+        return cap(JSON.stringify(await prepareVisit(id, token)), 5000);
       }
       case "tendencias": {
         const source = args.source ? `&source=${encodeURIComponent(String(args.source))}` : "";

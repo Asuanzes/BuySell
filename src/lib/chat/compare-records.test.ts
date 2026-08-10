@@ -120,5 +120,104 @@ test("comparar_registros es tool de lectura y no entra en WRITE_TOOLS", async ()
   const defs = await import("./tool-defs");
   const names = defs.BOT_TOOLS.map((t) => t.function.name);
   assert.ok(names.includes("comparar_registros"));
+  assert.ok(names.includes("preparar_visita"));
   assert.ok(!(defs.WRITE_TOOLS as readonly string[]).includes("comparar_registros"));
+  assert.ok(!(defs.WRITE_TOOLS as readonly string[]).includes("preparar_visita"));
+});
+
+test("preparar_visita rechaza ids ajenos y registros que no son property", async () => {
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/api/records/p-ajeno?")) return jsonResponse({ error: "Not found" }, { status: 404 });
+    if (url.includes("/api/records/c1?")) return jsonResponse({ id: "c1", type: "crypto", title: "Bitcoin" });
+    return jsonResponse({ error: "unexpected" }, { status: 500 });
+  };
+
+  const foreign = JSON.parse(await (await tools()).runTool("preparar_visita", JSON.stringify({ id: "p-ajeno" }), "token"));
+  const wrongType = JSON.parse(await (await tools()).runTool("preparar_visita", JSON.stringify({ id: "c1" }), "token"));
+
+  assert.match(foreign.error, /id propio|Not found/);
+  assert.match(wrongType.error, /solo admite inmuebles/);
+});
+
+test("preparar_visita detecta campos faltantes en ficha completa vs incompleta", async () => {
+  const complete = {
+    id: "p-completa",
+    type: "property",
+    title: "Piso completo",
+    status: "FOR_SALE",
+    meta: {
+      currentPrice: 240_000_00,
+      builtArea: 120,
+      rooms: 3,
+      city: "Oviedo",
+      detail: {
+        yearBuilt: 1998,
+        communityFees: 85,
+        orientation: "sur",
+        floor: "4ª planta",
+        hasElevator: false,
+        bathrooms: 2,
+        usableArea: 105,
+        energyRating: "C",
+      },
+    },
+  };
+  const incomplete = {
+    id: "p-incompleta",
+    type: "property",
+    title: "Piso incompleto",
+    status: "FOR_SALE",
+    meta: { currentPrice: 180_000_00, builtArea: 90, rooms: 2, city: "Gijón", detail: { energyRating: "UNKNOWN" } },
+  };
+  const createCalls: unknown[] = [];
+  const deps = {
+    apiGet: async (path: string) => {
+      if (path.includes("/api/events?")) {
+        return {
+          items: [
+            { eventType: "price_changed", source: "recheck", observedAt: "2026-08-10T09:00:00.000Z", payload: { previousCents: 190_000_00, newCents: 180_000_00 } },
+            { eventType: "record_imported", source: "import", observedAt: "2026-08-09T09:00:00.000Z", payload: {} },
+          ],
+        };
+      }
+      if (path.includes("p-completa")) return complete;
+      if (path.includes("p-incompleta")) return incomplete;
+      return { error: "unexpected" };
+    },
+    createEvent: async (input: unknown) => {
+      createCalls.push(input);
+    },
+    userFromToken: async () => ({ userId: "u1", email: "u1@n.test" }),
+    now: () => new Date("2026-08-10T12:00:00.000Z"),
+  };
+
+  const t = await tools();
+  const outComplete = (await t.prepareVisit("p-completa", "token", deps)) as { missingFields: { field: string }[] };
+  const outIncomplete = (await t.prepareVisit("p-incompleta", "token", deps)) as {
+    missingFields: { field: string }[];
+    recentEvents: unknown[];
+  };
+
+  assert.deepEqual(outComplete.missingFields, []);
+  assert.deepEqual(outIncomplete.missingFields.map((f) => f.field), [
+    "yearBuilt",
+    "communityFees",
+    "orientation",
+    "floor",
+    "hasElevator",
+    "bathrooms",
+    "usableArea",
+    "energyRating",
+  ]);
+  assert.equal(outIncomplete.recentEvents.length, 1);
+  assert.equal(createCalls.length, 2);
+});
+
+test("visit_prepared usa idempotency key determinista por día UTC", async () => {
+  const { visitPreparedEventKey } = await import("../record-events");
+
+  assert.equal(visitPreparedEventKey("p1", new Date("2026-08-10T00:01:00.000Z")), "visit-prep:p1:2026-08-10");
+  assert.equal(visitPreparedEventKey("p1", new Date("2026-08-10T23:59:00.000Z")), "visit-prep:p1:2026-08-10");
+  assert.equal(visitPreparedEventKey("p1", new Date("2026-08-11T00:00:00.000Z")), "visit-prep:p1:2026-08-11");
 });

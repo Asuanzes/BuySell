@@ -53,6 +53,21 @@ export const BOT_TOOLS = [
   {
     type: "function",
     function: {
+      name: "preparar_visita",
+      description:
+        "Prepara la visita de un inmueble PROPIO del comprador. Es de SOLO LECTURA para el bot: devuelve datos guardados, eventos recientes y campos ausentes para generar preguntas concretas y checklist sin coordinar con terceros ni inventar datos.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Id propio del inmueble a visitar" },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "tendencias",
       description: "Tendencias actuales agregadas (X/Twitter, Google Trends, Hacker News, Twitch). Opcional: filtrar por fuente.",
       parameters: {
