@@ -421,6 +421,28 @@ function AuthGate() {
             }}
           />
           <Stack.Screen
+            name="decisions/index"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("decisions.title"),
+            }}
+          />
+          <Stack.Screen
+            name="decisions/[id]"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("decisions.detail.title"),
+            }}
+          />
+          <Stack.Screen
             name="export-data"
             options={{
               headerShown: true,

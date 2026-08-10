@@ -15,6 +15,7 @@ export function ShareOpenActions({
   onShare,
   onOpen,
   onSendToChat,
+  onAddToDecision,
   openLabel,
   style,
 }: {
@@ -23,6 +24,8 @@ export function ShareOpenActions({
   onOpen?: () => void;
   /** Enviar la tarjeta del registro a un chat (ShareRecordSheet). */
   onSendToChat?: () => void;
+  /** Guardar el registro dentro de una decisiÃ³n. */
+  onAddToDecision?: () => void;
   openLabel?: string;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -43,6 +46,21 @@ export function ShareOpenActions({
           ]}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={22} color={th.primary} />
+        </Pressable>
+      ) : null}
+      {onAddToDecision ? (
+        <Pressable
+          onPress={onAddToDecision}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t("decisions.add.action")}
+          style={({ pressed }) => [
+            styles.btn,
+            { backgroundColor: th.surface, borderColor: th.border },
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <Ionicons name="git-branch-outline" size={22} color={th.primary} />
         </Pressable>
       ) : null}
       {onShare ? (

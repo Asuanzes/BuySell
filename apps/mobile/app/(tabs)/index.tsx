@@ -411,6 +411,17 @@ export default function RecordsScreen() {
             <Ionicons name="sparkles-outline" size={26} color={trendsColor} />
           </Pressable>
           <Pressable
+            onPress={() => router.navigate("/decisions" as never)}
+            accessibilityRole="button"
+            accessibilityLabel={t("decisions.title")}
+            style={[
+              styles.railItem,
+              { borderColor: "transparent" },
+            ]}
+          >
+            <Ionicons name="git-branch-outline" size={26} color={trendsColor} />
+          </Pressable>
+          <Pressable
             onPress={() => router.navigate("/trends" as never)}
             accessibilityRole="button"
             accessibilityLabel={typeLabel("trends")}

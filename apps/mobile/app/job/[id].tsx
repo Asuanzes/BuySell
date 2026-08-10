@@ -20,6 +20,7 @@ import { fonts } from "@/lib/fonts";
 import { provinceImage } from "@/lib/records/province-images";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 
 /**
  * Ficha propia de un empleo guardado. Muestra los datos scrapeados (lugar,
@@ -35,6 +36,7 @@ export default function JobDetail() {
     [id]
   );
   const [shareChatOpen, setShareChatOpen] = useState(false);
+  const [decisionOpen, setDecisionOpen] = useState(false);
 
   if (loading) {
     return (
@@ -129,6 +131,7 @@ export default function JobDetail() {
           style={styles.actions}
           onShare={onShare}
           onSendToChat={() => setShareChatOpen(true)}
+          onAddToDecision={() => setDecisionOpen(true)}
           onOpen={externalUrl ? () => void Linking.openURL(externalUrl) : undefined}
           openLabel={t("detail.job.view_offer", { source: platformLabel })}
         />
@@ -146,6 +149,12 @@ export default function JobDetail() {
         type="job"
         id={id!}
         preview={{ title: record.title, subtitle: record.subtitle ?? null, imageUrl: record.imageUrl ?? null }}
+      />
+      <AddToDecisionSheet
+        visible={decisionOpen}
+        onClose={() => setDecisionOpen(false)}
+        recordType="job"
+        recordId={id!}
       />
     </>
   );

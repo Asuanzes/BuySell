@@ -24,6 +24,7 @@ import { useTheme } from "@/lib/theme";
 import { marketLogoUrl } from "@/lib/records/market-logo";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AlertsSheet } from "@/components/AlertsSheet";
+import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 
 /**
  * Detalle de un activo (cripto o mercado), estilo Yahoo Finanzas:
@@ -61,6 +62,7 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
   const { th } = useTheme();
   const { t } = useTranslation();
   const [shareOpen, setShareOpen] = useState(false);
+  const [decisionOpen, setDecisionOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const [record, setRecord] = useState<BaseRecord | null>(null);
@@ -392,6 +394,15 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
             <Ionicons name="chatbubble-ellipses-outline" size={22} color={th.primary} />
           </Pressable>
           <Pressable
+            onPress={() => setDecisionOpen(true)}
+            hitSlop={10}
+            style={({ pressed }) => [styles.fab, { backgroundColor: th.surface, borderColor: th.border }, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t("decisions.add.action")}
+          >
+            <Ionicons name="git-branch-outline" size={22} color={th.primary} />
+          </Pressable>
+          <Pressable
             onPress={onShare}
             hitSlop={10}
             style={({ pressed }) => [styles.fab, { backgroundColor: th.surface, borderColor: th.border }, pressed && { opacity: 0.85 }]}
@@ -418,6 +429,12 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
         type={type}
         id={id}
         preview={{ title: recordTitle, subtitle: symbol, imageUrl: logoUri }}
+      />
+      <AddToDecisionSheet
+        visible={decisionOpen}
+        onClose={() => setDecisionOpen(false)}
+        recordType={type}
+        recordId={id}
       />
       <AlertsSheet
         visible={alertsOpen}

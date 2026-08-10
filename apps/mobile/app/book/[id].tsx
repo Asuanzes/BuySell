@@ -22,6 +22,7 @@ import { useRecord } from "@/lib/hooks/useRecord";
 import { useTheme } from "@/lib/theme";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 
 /**
  * Ficha de un libro guardado. Lee el `Book` completo de `meta.book` (lo guarda
@@ -38,6 +39,7 @@ export default function BookDetail() {
   );
   const [descExpanded, setDescExpanded] = useState(false);
   const [shareChatOpen, setShareChatOpen] = useState(false);
+  const [decisionOpen, setDecisionOpen] = useState(false);
   // Comentario propio del usuario (meta.userNotes). Sin caja a la vista: si no hay,
   // solo un "＋ Añadir comentario"; al tocar aparece el editor.
   const [note, setNote] = useState<string | null>(null);
@@ -164,6 +166,7 @@ export default function BookDetail() {
               style={styles.heroActions}
               onShare={onShare}
               onSendToChat={() => setShareChatOpen(true)}
+              onAddToDecision={() => setDecisionOpen(true)}
               onOpen={detailUrl ? () => void Linking.openURL(detailUrl) : undefined}
               openLabel={t("detail.book.view_on", { source: sourceLabel })}
             />
@@ -273,6 +276,12 @@ export default function BookDetail() {
         type="book"
         id={id!}
         preview={{ title: book.title, subtitle: book.authors.join(", ") || null, imageUrl: cover ?? null }}
+      />
+      <AddToDecisionSheet
+        visible={decisionOpen}
+        onClose={() => setDecisionOpen(false)}
+        recordType="book"
+        recordId={id!}
       />
     </>
   );

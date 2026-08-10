@@ -66,6 +66,55 @@
     "empty": "Nadie te ha compartido registros todavía.",
     "by": "Compartido por {{user}}"
   },
+  "decisions": {
+    "title": "Decisiones",
+    "status_open": "abierta",
+    "status_archived": "archivada",
+    "items_count_one": "1 alternativa",
+    "items_count_other": "{{count}} alternativas",
+    "row_meta_one": "1 alternativa · {{status}}",
+    "row_meta_other": "{{count}} alternativas · {{status}}",
+    "empty_title": "Agrupa alternativas antes de decidir",
+    "empty_desc": "Crea una decisión para seguir inmuebles, empleos, libros, viajes o activos que compiten por el mismo objetivo.",
+    "error_title": "No se pudieron cargar las decisiones",
+    "create": {
+      "placeholder": "Ej. Casa en Gijón o vacaciones de octubre",
+      "action": "Crear decisión"
+    },
+    "archive": {
+      "title": "Archivar decisión",
+      "message": "«{{title}}» desaparecerá de las opciones abiertas, pero sus registros seguirán intactos.",
+      "action": "Archivar"
+    },
+    "delete": {
+      "title": "Eliminar decisión",
+      "message": "Se eliminará «{{title}}». Esto NO borra los registros que contiene; solo quita este grupo."
+    },
+    "detail": {
+      "title": "Decisión",
+      "subtitle_one": "1 alternativa · {{changed}} cambios desde tu última visita",
+      "subtitle_other": "{{count}} alternativas · {{changed}} cambios desde tu última visita",
+      "empty_title": "Añade alternativas desde una ficha",
+      "empty_desc": "Abre un registro y toca Añadir a decisión para construir esta comparación.",
+      "remove": "Quitar",
+      "orphan_title": "Ya no disponible",
+      "orphan_desc": "Este {{type}} ya no existe o no está accesible.",
+      "compare": "Comparar"
+    },
+    "add": {
+      "action": "Añadir a decisión",
+      "title": "Añadir a decisión",
+      "hint": "El registro queda vinculado a una decisión abierta para compararlo con sus alternativas.",
+      "empty": "No tienes decisiones abiertas. Crea una arriba y se añadirá este registro.",
+      "create_and_add": "Crear y añadir",
+      "done": "Añadido a «{{title}}»"
+    },
+    "errors": {
+      "generic": "No se pudo completar la acción. Reinténtalo.",
+      "open_limit": "Tienes 10 decisiones abiertas. Archiva una para crear otra.",
+      "item_limit_or_type": "No se pudo añadir: la decisión puede estar llena o este tipo no admite decisiones todavía."
+    }
+  },
   "account": {
     "appearance": "Apariencia",
     "theme_light": "Claro",

@@ -22,6 +22,7 @@ import { getItem, setItem } from "@/lib/secure-store";
 import { useTheme } from "@/lib/theme";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 import { RelatedChatsBlock } from "@/components/records/RelatedChatsBlock";
 
 type Outcome = "yes" | "no" | "later";
@@ -42,6 +43,7 @@ export default function HolidayDetail() {
     [id]
   );
   const [shareChatOpen, setShareChatOpen] = useState(false);
+  const [decisionOpen, setDecisionOpen] = useState(false);
   const [showOutcomeQuestion, setShowOutcomeQuestion] = useState(false);
   const [outcomeAlreadyAnswered, setOutcomeAlreadyAnswered] = useState(false);
   const browserPendingRef = useRef(false);
@@ -235,7 +237,7 @@ export default function HolidayDetail() {
               <Text style={[styles.total, { color: th.accent }]}>{record.primaryValue}</Text>
             ) : null}
           </View>
-          <ShareOpenActions onSendToChat={() => setShareChatOpen(true)} />
+          <ShareOpenActions onSendToChat={() => setShareChatOpen(true)} onAddToDecision={() => setDecisionOpen(true)} />
         </View>
 
         {rows.length > 0 && (
@@ -309,6 +311,12 @@ export default function HolidayDetail() {
         type="holiday"
         id={id!}
         preview={{ title: record.title, subtitle: record.subtitle ?? null, imageUrl: record.imageUrl ?? null }}
+      />
+      <AddToDecisionSheet
+        visible={decisionOpen}
+        onClose={() => setDecisionOpen(false)}
+        recordType="holiday"
+        recordId={id!}
       />
     </>
   );

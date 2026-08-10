@@ -36,6 +36,7 @@ import { toolsForType, type ToolDef } from "@/lib/records/tools";
 import { CategoryContextSheet } from "@/components/CategoryContextSheet";
 import { ResultModal } from "@/components/ui";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
+import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 import { AlertsSheet } from "@/components/AlertsSheet";
 import { PriceHistoryBlock } from "@/components/property/PriceHistoryBlock";
 import { ZoneComparisonBlock } from "@/components/property/ZoneComparisonBlock";
@@ -59,6 +60,7 @@ export default function PropertyDetailScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [shareOpen, setShareOpen] = useState(false);
+  const [decisionOpen, setDecisionOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
 
   // El tipo viene de la API como string libre → Record construido con t() (no
@@ -294,6 +296,7 @@ export default function PropertyDetailScreen() {
           <ActionBtn icon="construct-outline" label={t("detail.property.tools_title")} onPress={() => setSheetOpen(true)} />
           <ActionBtn icon="share-social-outline" label={t("common.share")} onPress={nativeShare} />
           <ActionBtn icon="chatbubble-ellipses-outline" label={t("share.action")} onPress={() => setShareOpen(true)} />
+          <ActionBtn icon="git-branch-outline" label={t("decisions.add.action")} onPress={() => setDecisionOpen(true)} />
           <ActionBtn icon="create-outline" label={t("common.edit")} onPress={() => router.push(`/property/form?id=${p.id}` as never)} />
         </View>
 
@@ -491,6 +494,12 @@ export default function PropertyDetailScreen() {
         type="property"
         id={id}
         preview={{ title: p.title, subtitle: p.city ?? null, imageUrl: photos[0]?.url ?? null }}
+      />
+      <AddToDecisionSheet
+        visible={decisionOpen}
+        onClose={() => setDecisionOpen(false)}
+        recordType="property"
+        recordId={id}
       />
       <AlertsSheet
         visible={alertsOpen}

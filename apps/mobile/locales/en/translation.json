@@ -66,6 +66,55 @@
     "empty": "No one has shared records with you yet.",
     "by": "Shared by {{user}}"
   },
+  "decisions": {
+    "title": "Decisions",
+    "status_open": "open",
+    "status_archived": "archived",
+    "items_count_one": "1 alternative",
+    "items_count_other": "{{count}} alternatives",
+    "row_meta_one": "1 alternative · {{status}}",
+    "row_meta_other": "{{count}} alternatives · {{status}}",
+    "empty_title": "Group alternatives before deciding",
+    "empty_desc": "Create a decision to track properties, jobs, books, trips or assets that compete for the same goal.",
+    "error_title": "Couldn't load decisions",
+    "create": {
+      "placeholder": "e.g. Gijón home or October holidays",
+      "action": "Create decision"
+    },
+    "archive": {
+      "title": "Archive decision",
+      "message": "“{{title}}” will disappear from open options, but its records stay intact.",
+      "action": "Archive"
+    },
+    "delete": {
+      "title": "Delete decision",
+      "message": "“{{title}}” will be deleted. This does NOT delete the records inside it; it only removes this group."
+    },
+    "detail": {
+      "title": "Decision",
+      "subtitle_one": "1 alternative · {{changed}} changes since your last visit",
+      "subtitle_other": "{{count}} alternatives · {{changed}} changes since your last visit",
+      "empty_title": "Add alternatives from a record",
+      "empty_desc": "Open a record and tap Add to decision to build this comparison.",
+      "remove": "Remove",
+      "orphan_title": "No longer available",
+      "orphan_desc": "This {{type}} no longer exists or is not accessible.",
+      "compare": "Compare"
+    },
+    "add": {
+      "action": "Add to decision",
+      "title": "Add to decision",
+      "hint": "The record is linked to an open decision so you can compare it with alternatives.",
+      "empty": "You have no open decisions. Create one above and this record will be added.",
+      "create_and_add": "Create and add",
+      "done": "Added to “{{title}}”"
+    },
+    "errors": {
+      "generic": "Couldn't complete the action. Try again.",
+      "open_limit": "You already have 10 open decisions. Archive one to create another.",
+      "item_limit_or_type": "Couldn't add it: the decision may be full or this type doesn't support decisions yet."
+    }
+  },
   "account": {
     "appearance": "Appearance",
     "theme_light": "Light",
