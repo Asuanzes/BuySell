@@ -69,6 +69,8 @@ import { categoryColor, RECORD_TYPE_CONFIG } from "@/lib/records/config";
 import type { RecordType } from "@nidokey/shared";
 import { ActionsSheet, type SheetOption } from "@/components/chat/ActionsSheet";
 import { MessageActionsSheet, type MessageAction } from "@/components/chat/MessageSheet";
+import { BotRecordActionSheet } from "@/components/chat/BotRecordActionSheet";
+import type { BotRecordActionMode } from "@/lib/chat/bot-record-actions";
 import { getDraft, setDraft } from "@/lib/chat/drafts";
 import { setActiveConversation } from "@/lib/chat/push";
 import { chatSocket } from "@/lib/chat/socket";
@@ -174,6 +176,7 @@ export default function ChatScreen() {
 
   // Búsqueda dentro del chat.
   const [searchOpen, setSearchOpen] = useState(false);
+  const [botActionMode, setBotActionMode] = useState<BotRecordActionMode | null>(null);
 
   // Denuncias: objetivo (mensaje o usuario) + confirmación de enviada.
   const [reportTarget, setReportTarget] = useState<{ message?: MessageDto; userId?: string } | null>(null);
@@ -464,15 +467,19 @@ export default function ChatScreen() {
       return;
     }
 
-    const quoted = replyTo;
+    await sendTextMessage(body, replyTo);
     setReplyTo(null);
+  }
+
+  async function sendTextMessage(body: string, quoted: MessageDto | null = null) {
+    if (!id || !myId) return;
     const clientId = `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     const replySnippet: ReplyToDto | null = quoted
       ? { id: quoted.id, senderId: quoted.senderId, kind: quoted.kind, body: quoted.body, deleted: quoted.deleted }
       : null;
     const optimistic: MessageDto = {
       id: "tmp_" + clientId,
-      conversationId: id!,
+      conversationId: id,
       senderId: myId,
       kind: "TEXT",
       body,
@@ -490,6 +497,12 @@ export default function ChatScreen() {
     };
     setPending((p) => [...p, optimistic]);
     await postMessage(optimistic);
+  }
+
+  function onSendBotRecordAction(body: string) {
+    setEditing(null);
+    setReplyTo(null);
+    void sendTextMessage(body);
   }
 
   /** POST del mensaje (primer envío y reintentos: MISMO clientId → el servidor
@@ -704,6 +717,7 @@ export default function ChatScreen() {
   const otherDeliveredAt = conversation?.kind === "DIRECT" ? other?.lastDeliveredAt ?? null : null;
 
   const isGroup = conversation?.kind === "GROUP";
+  const isOfficial = isOfficialConversation(conversation);
 
   /** Nombre a mostrar de un participante (citas y burbujas de grupo). */
   const nameOf = useCallback(
@@ -931,7 +945,7 @@ export default function ChatScreen() {
             <Text style={[styles.headerTitle, { color: th.text }]} numberOfLines={1}>
               {conversation?.title ?? t("common.loading")}
             </Text>
-            {isOfficialConversation(conversation) && <VerifiedBadge size={15} />}
+            {isOfficial && <VerifiedBadge size={15} />}
             {muted && <Ionicons name="notifications-off-outline" size={14} color={th.textSubtle} />}
           </View>
           {id && (
@@ -946,6 +960,28 @@ export default function ChatScreen() {
             />
           )}
         </Pressable>
+        {isOfficial && (
+          <View style={styles.headerBotActions}>
+            <Pressable
+              onPress={() => setBotActionMode("counterpoint")}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={t("chat.bot_actions.counterpoint")}
+              style={styles.headerAction}
+            >
+              <Ionicons name="scale-outline" size={20} color={th.textMuted} />
+            </Pressable>
+            <Pressable
+              onPress={() => setBotActionMode("visit")}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={t("chat.bot_actions.visit")}
+              style={styles.headerAction}
+            >
+              <Ionicons name="clipboard-outline" size={20} color={th.textMuted} />
+            </Pressable>
+          </View>
+        )}
         {conversation && (
           <Pressable
             onPress={() => void openMenu()}
@@ -1229,6 +1265,13 @@ export default function ChatScreen() {
         options={attachOptions}
         onSelect={(o) => void onAttachSelect(o)}
         onClose={() => setAttachOpen(false)}
+      />
+
+      <BotRecordActionSheet
+        visible={!!botActionMode}
+        mode={botActionMode ?? "counterpoint"}
+        onClose={() => setBotActionMode(null)}
+        onSend={onSendBotRecordAction}
       />
 
       {/* Denuncia: elegir categoría */}
@@ -1901,6 +1944,8 @@ const styles = StyleSheet.create({
   headerBack: { padding: 4 },
   headerText: { flex: 1 },
   headerTitleRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  headerBotActions: { flexDirection: "row", alignItems: "center", gap: 2 },
+  headerAction: { padding: 4 },
   headerMenu: { padding: 4 },
   headerTitle: { fontSize: 16, fontFamily: fonts.bodySemibold, flexShrink: 1 },
   headerSub: { fontSize: 11 },
