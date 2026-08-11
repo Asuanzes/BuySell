@@ -107,7 +107,14 @@ function combinedStringList(...values: unknown[]): string[] {
   return [...new Set(values.flatMap((v) => stringList(v)))].slice(0, 12);
 }
 
-function compactRecordForComparison(type: RecordType, record: AnyRecord): AnyRecord {
+function truncateUserNote(body: unknown): string | null {
+  if (typeof body !== "string") return null;
+  const note = body.trim();
+  if (!note) return null;
+  return note.length > 300 ? `${note.slice(0, 300)}...` : note;
+}
+
+export function compactRecordForComparison(type: RecordType, record: AnyRecord, latestUserNote?: unknown): AnyRecord {
   const meta = pickMeta(record);
   const detail = pickDetail(record);
   const base: AnyRecord = {
@@ -118,6 +125,8 @@ function compactRecordForComparison(type: RecordType, record: AnyRecord): AnyRec
     status: record.status ?? null,
     value: record.primaryValue ?? null,
   };
+  const nota_reciente = truncateUserNote(latestUserNote);
+  if (nota_reciente) base.nota_reciente = nota_reciente;
 
   if (type === "property") {
     const priceEur = centsToEuros(fieldValue(meta.currentPrice, detail.currentPrice));
@@ -371,8 +380,12 @@ export async function compareRecords(type: RecordType, ids: string[], token: str
       if (record?.type !== type) return { id, error: "tipo mixto: el registro no coincide con la categoría solicitada" };
       const meta = pickMeta(record);
       if (meta.shared || meta.readOnly) return { id, error: "solo puedo comparar registros propios, no compartidos" };
-      const events = await apiGet(`/api/events?recordType=${encodeURIComponent(type)}&recordId=${encodeURIComponent(id)}&limit=5`, token);
-      return { id, record: compactRecordForComparison(type, record), events: compactEvents(events) };
+      const [events, notes] = await Promise.all([
+        apiGet(`/api/events?recordType=${encodeURIComponent(type)}&recordId=${encodeURIComponent(id)}&limit=5`, token),
+        apiGet(`/api/records/${encodeURIComponent(id)}/notes?type=${encodeURIComponent(type)}`, token),
+      ]);
+      const noteItems = Array.isArray((notes as any)?.items) ? (notes as any).items : [];
+      return { id, record: compactRecordForComparison(type, record, noteItems[0]?.body), events: compactEvents(events) };
     }),
   );
 

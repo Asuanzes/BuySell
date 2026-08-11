@@ -155,6 +155,7 @@ model User {
   recordEvents      RecordEvent[]
   decisions         Decision[]
   recordTasks       RecordTask[]
+  recordNotes       RecordNote[]
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -1323,6 +1324,39 @@ model RecordEvent {
   // R1v1 Espacios de Decisión: cuenta de cambios por usuario+registro desde
   // lastVisitedAt sin degradar a combinación de índices en historiales largos.
   @@index([userId, recordType, recordId, observedAt(sort: Desc)])
+}
+
+// Notas del usuario sobre un registro (PRODUCT_LOOP.md CICLO 6, C6i2): lo que
+// aprende y el anuncio no dice («la dueña acepta 175k», «el vecino de arriba
+// tiene perro»), que es la materia prima de una decisión.
+//
+// TABLA PROPIA, y no la clave `meta.userNotes` que ya usaban los libros, porque
+// el blob tiene CUATRO escritores y cada uno rompía la nota de una forma
+// distinta: el cron de precios hace read-modify-write del meta cada 1-2 min
+// (src/features/sources/refresh.ts) y se traga la nota guardada en esa ventana;
+// `/api/records/import` acepta meta arbitrario del cliente y se salta el tope;
+// el mapper hace spread del meta completo, así que la nota viajaba en el LISTADO
+// de la home; y `adopt` la clonaba a otra cuenta. Tampoco columna en Property:
+// fusionar dos anuncios del mismo piso borra la fila perdedora y la nota se iría
+// con ella (aquí se REAPUNTA, ver reassignRecordNotes).
+//
+// ENTRADAS FECHADAS, varias por registro, en vez de un texto editable: así no
+// existe el «cadena vacía BORRA» que hoy hace indistinguible una nota borrada
+// por error de una que nunca existió.
+model RecordNote {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Soft-ref al registro (patrón RecordEvent/RecordTask/DecisionItem): sin FK,
+  // así una nota huérfana se puede seguir leyendo y BORRAR aunque el registro ya
+  // no exista.
+  recordType String
+  recordId   String
+  body       String   @db.VarChar(4000)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, recordType, recordId, createdAt(sort: Desc)])
 }
 
 // Checklist real / tareas de un registro (PRODUCT_LOOP.md CICLO 6, pedido por

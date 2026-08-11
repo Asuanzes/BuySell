@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { hamming } from "@/lib/dhash";
+import { reassignRecordNotes } from "@/lib/record-notes";
 
 /**
  * Fusiona `sourceId` dentro de `targetId`:
@@ -109,7 +110,15 @@ export async function mergeProperties(sourceId: string, targetId: string): Promi
     await prisma.property.update({ where: { id: targetId }, data: patch });
   }
 
-  // 5. Borrar source
+  // 5. Reapuntar notas privadas antes de borrar la fila perdedora.
+  await reassignRecordNotes(prisma, {
+    userId: target.ownerId,
+    recordType: "property",
+    fromIds: [sourceId],
+    toId: targetId,
+  });
+
+  // 6. Borrar source
   await prisma.property.delete({ where: { id: sourceId } });
 
   return {

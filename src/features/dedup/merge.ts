@@ -170,7 +170,11 @@ export async function mergeRecords(
       rows.map((r) => r.currentValue).find((v) => v != null) ??
       (book?.averageRating != null ? Math.round(book.averageRating * 100) : null);
 
-    const [updated, del] = await prisma.$transaction([
+    const [, updated, del] = await prisma.$transaction([
+      prisma.recordNote.updateMany({
+        where: { userId: ownerId, recordType: "book", recordId: { in: drops } },
+        data: { recordId: keep.id },
+      }),
       prisma.bookRecord.update({
         where: { id: keep.id },
         data: {
@@ -201,7 +205,11 @@ export async function mergeRecords(
       status: pickStatus(rows.map((r) => r.status), (s) => (s === "HOLDING" ? 2 : s === "WATCH" ? 1 : 0)),
       meta: meta as object,
     };
-    const [, updated, del] = await prisma.$transaction([
+    const [, , updated, del] = await prisma.$transaction([
+      prisma.recordNote.updateMany({
+        where: { userId: ownerId, recordType: "crypto", recordId: { in: drops } },
+        data: { recordId: keep.id },
+      }),
       prisma.cryptoSnapshot.updateMany({ where: { holdingId: { in: drops } }, data: { holdingId: keep.id } }),
       prisma.cryptoHolding.update({ where: { id: keep.id }, data }),
       prisma.cryptoHolding.deleteMany({ where: { id: { in: drops }, ownerId } }),
@@ -222,7 +230,11 @@ export async function mergeRecords(
       status: pickStatus(rows.map((r) => r.status), (s) => (s === "HOLDING" ? 2 : s === "WATCH" ? 1 : 0)),
       meta: meta as object,
     };
-    const [, updated, del] = await prisma.$transaction([
+    const [, , updated, del] = await prisma.$transaction([
+      prisma.recordNote.updateMany({
+        where: { userId: ownerId, recordType: "market", recordId: { in: drops } },
+        data: { recordId: keep.id },
+      }),
       prisma.marketSnapshot.updateMany({ where: { instrumentId: { in: drops } }, data: { instrumentId: keep.id } }),
       prisma.marketInstrument.update({ where: { id: keep.id }, data }),
       prisma.marketInstrument.deleteMany({ where: { id: { in: drops }, ownerId } }),
@@ -243,7 +255,11 @@ export async function mergeRecords(
     status: pickStatus(rows.map((r) => r.status), (s) => (s === "OPEN" ? 2 : s === "CLOSED" ? 1 : 0)),
     meta: meta as object,
   };
-  const [, updated, del] = await prisma.$transaction([
+  const [, , updated, del] = await prisma.$transaction([
+    prisma.recordNote.updateMany({
+      where: { userId: ownerId, recordType: "job", recordId: { in: drops } },
+      data: { recordId: keep.id },
+    }),
     prisma.jobSnapshot.updateMany({ where: { listingId: { in: drops } }, data: { listingId: keep.id } }),
     prisma.jobListing.update({ where: { id: keep.id }, data }),
     prisma.jobListing.deleteMany({ where: { id: { in: drops }, ownerId } }),
