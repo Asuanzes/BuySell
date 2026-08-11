@@ -1,5 +1,4 @@
-import { Pressable, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Image, Pressable, StyleSheet } from "react-native";
 import { router, useNavigation } from "expo-router";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +8,27 @@ import { useTheme } from "@/lib/theme";
  *  se abre encima, así que al profundizar desaparece la barra de pestañas y con
  *  ella la única vía visible al inicio. Este botón es esa vía. */
 const TABS_ROUTE = "(tabs)";
+
+/**
+ * El botón lleva el MONOGRAMA NK, no un icono de casa.
+ *
+ * Por qué no una casa: `home-outline` ya es el icono de la categoría Inmuebles
+ * (RECORD_TYPE_CONFIG.property), así que en una ficha de piso el mismo glifo
+ * aparecía dos veces con dos significados. Y la metáfora tampoco encajaba: al
+ * llegar no hay una casa, hay la rejilla de categorías.
+ *
+ * Por qué la marca: un logotipo que lleva al inicio es convención universal
+ * (toda web lo hace) y, por construcción, NO PUEDE colisionar con ninguna
+ * categoría presente ni futura — ninguna vertical se va a llamar «NK».
+ *
+ * `brand-mark.png` es silueta blanca sobre transparente, así que `tintColor` la
+ * pinta del color que toque y adopta el tema igual que el chevron de atrás. Es
+ * un asset PROPIO (96 px, 1,1 KB) recortado al monograma: reutilizar el del
+ * icono adaptativo obligaba a compensar su zona segura con un factor y a
+ * decodificar 1024² en memoria para pintar 24 px. Un monograma necesita un
+ * pelín más de tamaño que un pictograma para leerse: 24 px, no 22.
+ */
+const MARK = require("../assets/images/brand-mark.png");
 
 export function HomeButton({ variant = "header" }: { variant?: "header" | "float" }) {
   const navigation = useNavigation();
@@ -50,7 +70,17 @@ export function HomeButton({ variant = "header" }: { variant?: "header" | "float
         pressed && { opacity: 0.6 },
       ]}
     >
-      <Ionicons name="home-outline" size={variant === "float" ? 20 : 22} color={variant === "float" ? "#fff" : th.primary} />
+      <Image
+        source={MARK}
+        style={{
+          width: variant === "float" ? 20 : 24,
+          height: variant === "float" ? 20 : 24,
+          // Sobre las fotos de la ficha va en blanco; en cabecera adopta el
+          // acento del tema, para que marca y chevron de atrás lean como pareja.
+          tintColor: variant === "float" ? "#fff" : th.primary,
+        }}
+        resizeMode="contain"
+      />
     </Pressable>
   );
 }

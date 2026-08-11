@@ -74,6 +74,24 @@ await sharp(MASTER).resize(196, 196).png().toFile(path.join(mobileImg, "favicon.
 // 6. Logo in-app (login) — rounded transparente, tamaño pequeño.
 await sharp(MASTER).resize(256, 256).png().toFile(path.join(mobileImg, "brand-logo.png"));
 
+// 6b. Marca de navegación (HomeButton): el monograma SOLO, recortado a su caja y
+//     en silueta blanca sobre transparente para poder teñirlo con `tintColor` y
+//     que adopte el acento del tema. Se deriva del monochrome del paso 4, que ya
+//     es la silueta, pero sin la zona segura del adaptive icon: ese margen del
+//     22 % por lado obligaría a pintar una caja de 42 px para ver 24 px de marca.
+const MARK_PX = 96; // basta para 24 px a densidad 3x
+const MARK_MARGIN = 5; // aire óptico dentro de la caja
+const markInner = MARK_PX - MARK_MARGIN * 2;
+const markGlyph = await sharp(path.join(mobileImg, "android-icon-monochrome.png"))
+  .trim() // fuera la zona segura: deja la caja real del monograma
+  .resize(markInner, markInner, { fit: "contain", background: transparent })
+  .png()
+  .toBuffer();
+await sharp({ create: { width: MARK_PX, height: MARK_PX, channels: 4, background: transparent } })
+  .composite([{ input: markGlyph, gravity: "center" }])
+  .png()
+  .toFile(path.join(mobileImg, "brand-mark.png"));
+
 // 7. Refrescar las FUENTES base (source of truth) con el logo nuevo. El pipeline
 //    icon-glow.mjs queda legacy; estas bases reflejan el logo actual por si acaso.
 await fs.copyFile(MASTER, path.join(mobileImg, "icon.base.png"));
