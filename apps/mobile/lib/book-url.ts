@@ -30,6 +30,15 @@ const BOOK_HOSTS = [
   "agapea.",
 ];
 
+/** Amazon bloquea el scrape server-side (captcha/403), así que el resolver por
+ *  URL es inútil contra sus páginas. Este helper permite al flujo de Importar
+ *  saltarse el resolve y priorizar la búsqueda por título cuando hay uno. */
+export function isAmazonUrl(u: string): boolean {
+  if (!u) return false;
+  const low = u.toLowerCase();
+  return low.includes("amazon.") || low.includes("amzn.");
+}
+
 export function isBookUrl(u: string): boolean {
   return bookUrlQuery(u) !== null;
 }

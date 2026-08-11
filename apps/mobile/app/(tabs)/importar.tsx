@@ -19,7 +19,7 @@ import { useCategoryPrefs } from "@/lib/records/category-prefs-context";
 import { useTypeI18n } from "@/lib/records/type-i18n";
 import { usePendingImport } from "@/lib/pending-import";
 import { isPortalUrl } from "@/lib/portal-url";
-import { bookShareQuery, firstShareUrl } from "@/lib/book-url";
+import { bookShareQuery, firstShareUrl, isAmazonUrl } from "@/lib/book-url";
 import { useTheme } from "@/lib/theme";
 import { api, ApiError } from "@/lib/api";
 import { RECORD_TYPE_CONFIG } from "@/lib/records/config";
@@ -56,6 +56,16 @@ export default function ImportarScreen() {
   const { category: type, setCategory: setType, orderedVisible } = useCategoryPrefs();
   const { t } = useTranslation();
   const { label: typeLabel, singular: typeSingular } = useTypeI18n();
+  // El layout raíz captura el share/deep-link (estés donde estés) y deja aquí la
+  // URL de inmueble O el TEXTO compartido de un libro; consumimos cada canal y lo
+  // limpiamos (patrón consumidor → un segundo share igual vuelve a dispararse).
+  const {
+    url: pendingUrl,
+    setUrl: setPendingUrl,
+    bookShare: pendingBookShare,
+    setBookShare: setPendingBookShare,
+    completePendingImport,
+  } = usePendingImport();
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -149,6 +159,7 @@ export default function ImportarScreen() {
       });
       setOkMsg(t("importar.ok_book_added", { title: r.record?.title ?? title }));
       setStatus("ok");
+      completePendingImport(); // terminal de éxito: el share ya no debe resucitar
       setManualOpen(false);
       setManualTitle("");
       setManualAuthor("");
@@ -200,9 +211,12 @@ export default function ImportarScreen() {
           hits = res.results ?? [];
           reliable = hits.length > 0;
         }
-        // 2) Hay URL → pipeline del servidor (lee schema.org de la página y resuelve
-        //    por ISBN/score). Si devuelve libro, es fiable.
-        if (!reliable && url) {
+        // 2) Hay URL NO-Amazon → pipeline del servidor (lee schema.org de la
+        //    página y resuelve por ISBN/score). Si devuelve libro, es fiable.
+        //    Amazon BLOQUEA el scrape server-side (captcha/403), de modo que
+        //    contra sus URLs saltamos el resolve y pasamos directo a la búsqueda
+        //    por título/ISBN (paso 3) — evita 12 s muertos y el falso "fallo".
+        if (!reliable && url && !isAmazonUrl(url)) {
           const res = await api<{ results: SearchHit[]; error?: string }>("/api/books/resolve", {
             method: "POST",
             body: JSON.stringify({ url }),
@@ -215,8 +229,9 @@ export default function ImportarScreen() {
             serviceDown = true;
           }
         }
-        // 3) Solo título → buscar; fiable solo si el primero casa FUERTE (título
-        //    largo y distintivo). Si es corto/ambiguo, se muestra la lista.
+        // 3) Título/ISBN del texto compartido → buscar; fiable solo si el primero
+        //    casa FUERTE (título largo y distintivo) o es ISBN. Si es corto/ambiguo,
+        //    se muestra la lista.
         if (!reliable && parsed?.query) {
           const res = await api<{ results: SearchHit[] }>(
             `/api/records/search?type=book&q=${encodeURIComponent(parsed.query)}`
@@ -248,6 +263,7 @@ export default function ImportarScreen() {
           });
           setOkMsg(t("importar.ok_book_added_pick", { title: r.record?.title ?? hits[0].name ?? t("importar.book_fallback") }));
           setStatus("ok");
+          completePendingImport(); // terminal de éxito: el share ya no debe resucitar
           setValue(""); // A1: limpiar la caja tras añadir el libro compartido.
           setAddedKeys(new Set([0]));
         } catch (e) {
@@ -263,7 +279,7 @@ export default function ImportarScreen() {
         setStatus("error");
       }
     },
-    [setType]
+    [setType, completePendingImport]
   );
 
   // Share/deep-link de INMUEBLE: una URL de portal → flujo property (WebView).
@@ -284,15 +300,6 @@ export default function ImportarScreen() {
     }
   }, [t]);
 
-  // El layout raíz captura el share/deep-link (estés donde estés) y deja aquí la
-  // URL de inmueble O el TEXTO compartido de un libro; consumimos cada canal y lo
-  // limpiamos (patrón consumidor → un segundo share igual vuelve a dispararse).
-  const {
-    url: pendingUrl,
-    setUrl: setPendingUrl,
-    bookShare: pendingBookShare,
-    setBookShare: setPendingBookShare,
-  } = usePendingImport();
   useEffect(() => {
     if (pendingUrl) {
       handleIncomingUrl(pendingUrl);
@@ -416,6 +423,7 @@ export default function ImportarScreen() {
       });
       setOkMsg(res.created ? t("importar.ok_property_created") : res.priceChanged ? t("importar.ok_price_updated") : t("importar.ok_already_have"));
       setStatus("ok");
+      completePendingImport(); // terminal de éxito: la URL compartida ya no debe resucitar
       setValue(""); // A1: limpiar el enlace de la caja tras importar.
       // A2: ?from=import → el botón "volver" del detalle irá al listado (no a Importar).
       setTimeout(() => router.push(`/property/${res.propertyId}?from=import`), 800);
@@ -471,6 +479,8 @@ export default function ImportarScreen() {
         method: "POST",
         body: JSON.stringify({ type, input }),
       });
+      // Elegir candidato = el share de libro queda resuelto: no debe resucitar.
+      completePendingImport();
       // Confirmación visual en la propia fila (check verde), sin tarjeta grande.
       setAddedKeys((prev) => {
         const n = new Set(prev);

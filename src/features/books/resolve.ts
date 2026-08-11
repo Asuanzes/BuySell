@@ -323,6 +323,18 @@ export async function resolveBookFromUrl(
     };
   }
 
+  // Amazon y otras tiendas devuelven páginas de captcha/bot-check (HTTP 200) a
+  // peticiones server-side. Extraer "pistas" de un captcha produce falsos
+  // ISBN_NOT_FOUND → mentimos al usuario ("no existe"). Mejor decir "reintenta".
+  if (isBotCheckPage(html)) {
+    return {
+      ok: false,
+      code: "PROVIDERS_UNAVAILABLE",
+      message:
+        "La tienda bloqueó la lectura de la página (protección anti-bots). Inténtalo de nuevo o busca por título.",
+    };
+  }
+
   const hints = d.extractHints(html);
   let unavailable = false;
 
@@ -469,6 +481,32 @@ export function normalizeIsbn(raw: string | undefined | null): string | null {
   if (isValidIsbn13(d)) return d; // ISBN-13 (checksum ok)
   if (isValidIsbn10(d)) return d; // ISBN-10 (checksum ok)
   return null;
+}
+
+/** Señales de página de reto anti-bot (captcha / bot-check) que devuelven
+ *  algunas tiendas (Amazon…). La página SÍ es HTML con 200, pero no contiene el
+ *  producto: contiene "Captcha", "robot check", referencias a cookies/blobs
+ *  anti-bot, etc. Detectar aquí evita ISBN_NOT_FOUND engañoso. */
+export function isBotCheckPage(html: string): boolean {
+  if (!html || html.length < 2000) return false;
+  const low = html.toLowerCase();
+  const signals = [
+    "captcha",
+    "robot check",
+    "api-services-support@amazon.com",
+    "what is the value of this expression",
+    "aws-waf-token",
+    "cf-chl",
+    "cf-challenge",
+    "are you a robot",
+    "verify you are human",
+    "turnstile",
+    "hcaptcha",
+  ];
+  for (const s of signals) {
+    if (low.includes(s)) return true;
+  }
+  return false;
 }
 
 function isbnFromText(html: string): string | null {
