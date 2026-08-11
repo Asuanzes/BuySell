@@ -46,7 +46,7 @@ import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock"
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
 import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone } from "@/lib/record-tasks";
-import { createRecordNote, deleteRecordNote, fetchRecordNotes, updateRecordNote } from "@/lib/record-notes";
+import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
 import { track } from "@/lib/analytics";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
@@ -116,8 +116,14 @@ export default function PropertyDetailScreen() {
     { enabled: ownsThisRecord }
   );
   // Las notas son PRIVADAS del dueño: en una ficha compartida no se piden.
-  const notesQ = useRecord(() => fetchRecordNotes("property", id!), [id, ownsThisRecord], {
+  const notes = useRecordNotes("property", id, {
     enabled: ownsThisRecord,
+    onError: (e) =>
+      setNotice({
+        tone: "error",
+        title: t("detail.property.notice_error_title"),
+        message: e instanceof Error ? e.message : t("detail.property.unknown_error"),
+      }),
   });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busyTool, setBusyTool] = useState<string | null>(null);
@@ -168,23 +174,6 @@ export default function PropertyDetailScreen() {
       await checklistQ.refetch();
     } catch (e) {
       await onChecklistFailure(e);
-    }
-  }
-
-  // Notas: el aviso lo da la ficha, pero el error se RELANZA para que el bloque
-  // conserve el texto que el usuario acababa de escribir. Tragárselo aquí sería
-  // dejarle la caja vacía y la nota sin guardar.
-  async function runNoteAction(action: () => Promise<unknown>) {
-    try {
-      await action();
-      await notesQ.refetch();
-    } catch (e) {
-      setNotice({
-        tone: "error",
-        title: t("detail.property.notice_error_title"),
-        message: e instanceof Error ? e.message : t("detail.property.unknown_error"),
-      });
-      throw e;
     }
   }
 
@@ -392,13 +381,13 @@ export default function PropertyDetailScreen() {
         {!isReadOnly ? (
           <View style={styles.decisionBlock}>
             <RecordNotesBlock
-              notes={notesQ.data ?? null}
-              loading={notesQ.loading}
-              error={notesQ.error ? t("notes.error") : null}
-              onAdd={(body) => runNoteAction(() => createRecordNote("property", id!, body))}
-              onEdit={(noteId, body) => runNoteAction(() => updateRecordNote(noteId, body))}
-              onDelete={(noteId) => runNoteAction(() => deleteRecordNote(noteId))}
-              onRetry={() => void notesQ.refetch()}
+              notes={notes.notes}
+              loading={notes.loading}
+              error={notes.error ? t("notes.error") : null}
+              onAdd={notes.add}
+              onEdit={notes.edit}
+              onDelete={notes.remove}
+              onRetry={() => void notes.retry()}
             />
           </View>
         ) : null}

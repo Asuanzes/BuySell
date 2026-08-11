@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fonts } from "@/lib/fonts";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Pressable,
   ScrollView,
@@ -26,6 +27,9 @@ import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AlertsSheet } from "@/components/AlertsSheet";
 import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
+import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
+import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
+import { HomeButton } from "@/components/HomeButton";
 
 /**
  * Detalle de un activo (cripto o mercado), estilo Yahoo Finanzas:
@@ -69,6 +73,19 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
   const [record, setRecord] = useState<BaseRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // La ruta marca así lo que te han compartido (`{ shared: true, readOnly: true }`).
+  const isSharedRecord = !!(record as (BaseRecord & { shared?: boolean }) | null)?.shared;
+  // Esta pantalla no tiene ResultModal como la ficha de inmueble, así que el
+  // fallo al guardar una nota se avisa con el diálogo nativo. Lo importante es
+  // que AVISE: el bloque conserva el texto, pero en silencio parecería guardado.
+  const notes = useRecordNotes(type, id, {
+    // Un registro COMPARTIDO se abre en esta misma pantalla (Compartidos navega a
+    // `/${type}/${id}`), y sus notas son del dueño: la ruta responde 404 y saldría
+    // una tarjeta de error. Ni se piden.
+    enabled: !isSharedRecord,
+    onError: (e) =>
+      Alert.alert(t("notes.error"), e instanceof Error ? e.message : String(e)),
+  });
   const [rangeKey, setRangeKey] = useState<RangeKey>("1S");
   const shotRef = useRef<View>(null);
   const [capturing, setCapturing] = useState(false);
@@ -362,6 +379,19 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
           ))}
         </View>
 
+        {/* Tus notas: la capa propia del usuario, encima de la historia. */}
+        <View style={styles.historyBlock}>
+          <RecordNotesBlock
+            notes={notes.notes}
+            loading={notes.loading}
+            error={notes.error ? t("notes.error") : null}
+            onAdd={notes.add}
+            onEdit={notes.edit}
+            onDelete={notes.remove}
+            onRetry={() => void notes.retry()}
+          />
+        </View>
+
         <View style={styles.historyBlock}>
           <RecordHistoryBlock
             recordType={type}
@@ -372,6 +402,14 @@ export function AssetDetail({ type }: { type: "crypto" | "market" }) {
           />
         </View>
       </ScrollView>
+
+      {/* Marca NK = volver al inicio. Va ARRIBA A LA DERECHA como en el resto de
+          la app: la barra inferior ya lleva seis botones y no admite un séptimo
+          (en pantallas estrechas desbordaría), y además la casa/cierre de abajo
+          significa «atrás», que no es lo mismo que «inicio». */}
+      <View style={[styles.topRight, { top: insets.top + 8 }]} pointerEvents="box-none">
+        <HomeButton variant="float" />
+      </View>
 
       {/* ── Barra inferior: cerrar (izq) · compartir + abrir en Yahoo (der) ──
           Iconos bronce sobre fondo superficie (blanco en claro / negro en oscuro). */}
@@ -496,7 +534,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 5,
   },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8 },
+  // `paddingRight` deja sitio a la marca NK, que va absoluta arriba a la derecha:
+  // sin él, un símbolo o un nombre largo se desliza por debajo del botón.
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8, paddingRight: 40 },
+  // Fuera del ScrollView y fuera del bloque capturable (`shotRef`), para que la
+  // imagen que se comparte no salga con un botón de la app encima.
+  topRight: { position: "absolute", right: 12 },
   logoChip: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   logoSquare: { borderRadius: 10 },
   logoImg: { width: 34, height: 34 },
