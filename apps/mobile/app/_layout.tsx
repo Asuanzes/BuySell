@@ -50,6 +50,17 @@ import { getOnboardingDone, setOnboardingDone } from "@/lib/onboarding";
 // "cuadrado blanco" y el flash blanco entre el splash y el primer render.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+/**
+ * Ancla de la pila: por debajo de todo va SIEMPRE la pantalla de pestañas.
+ *
+ * Sin esto, abrir la app en frío directamente en un detalle —notificación push,
+ * deep-link, share— deja esa pantalla con la pila vacía por debajo: no hay
+ * inicio al que volver porque nunca llegó a montarse, y el atrás cierra la app.
+ * Es la misma familia de fallo que BUG-15: en frío, las cosas llegan antes de
+ * que exista dónde ponerlas.
+ */
+export const unstable_settings = { anchor: "(tabs)" };
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   // Carga Inter/Poppins (assets JS → OTA, sin recompilar nativo). No bloquea el
@@ -197,7 +208,7 @@ function AuthGate() {
   // Estado del navegador raíz: su `.key` solo existe cuando el Stack está
   // montado. Lo usamos para no navegar antes de tiempo (cold-start desde share).
   const rootNavState = useRootNavigationState();
-  const { setUrl, setBookShare } = usePendingImport();
+  const { url: pendingUrl, bookShare: pendingBookShare, setUrl, setBookShare } = usePendingImport();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
   const [localOnboardingDone, setLocalOnboardingDone] = useState<boolean | null>(null);
 
@@ -303,48 +314,54 @@ function AuthGate() {
   }, []);
 
   // Deep links (expo-linking): una URL de portal abierta como enlace → Importar.
+  // CAPTURA sin esperar a la sesión (BUG-15): en arranque en frío el enlace llega
+  // antes de que AuthGate resuelva, y si se descarta aquí ya no vuelve. Guardar
+  // es barato; navegar se hace luego, cuando haya sesión y navegador.
   useEffect(() => {
-    if (state.kind !== "authed") return;
     let alive = true;
-    const go = (u: string | null) => {
+    const capture = (u: string | null) => {
       if (!alive || !u) return;
-      if (isPortalUrl(u)) {
-        setUrl(u);
-        router.navigate("/importar");
-      } else if (isBookShareText(u)) {
-        // Libros por deep-link (no solo por share-intent): también se importan.
-        setBookShare(u);
-        router.navigate("/importar");
-      }
+      if (isPortalUrl(u)) setUrl(u);
+      // Libros por deep-link (no solo por share-intent): también se importan.
+      else if (isBookShareText(u)) setBookShare(u);
     };
-    Linking.getInitialURL().then((u) => go(u ?? null));
-    const linkSub = Linking.addEventListener("url", ({ url }) => go(url));
+    Linking.getInitialURL().then((u) => capture(u ?? null));
+    const linkSub = Linking.addEventListener("url", ({ url }) => capture(url));
     return () => {
       alive = false;
       linkSub.remove();
     };
-  }, [state.kind, router, setUrl, setBookShare]);
+  }, [setUrl, setBookShare]);
 
   // Share-to-app (expo-share-intent): la hoja de Compartir entrega el contenido al
   // HOOK (un solo root React — no crea una 2ª instancia como react-native-share-menu,
   // que corrompía TODA la navegación). Clasificamos el texto compartido: URL de
   // portal → inmueble; ISBN/host de libro → libro. Navegamos a Importar (seguro
   // ahora) y allí se auto-importa.
+  // CAPTURA, sin condición de sesión (BUG-15): con la app CERRADA, el intent
+  // llega y `expo-share-intent` lo BORRA del lado nativo antes de que AuthGate
+  // resuelva. El código anterior salía por `state.kind !== "authed"` y para
+  // cuando podía volver ya no había texto: el usuario aterrizaba en Importar con
+  // las instrucciones vacías, que es exactamente el sintoma reportado. Guardar
+  // aquí y navegar aparte rompe ese acoplamiento.
   useEffect(() => {
-    if (state.kind !== "authed" || !hasShareIntent) return;
+    if (!hasShareIntent) return;
     const text = extractSharedText(shareIntent);
     if (text) {
       const url = text.match(/https?:\/\/[^\s]+/)?.[0] ?? null;
-      if (url && isPortalUrl(url)) {
-        setUrl(url);
-        router.navigate("/importar");
-      } else if (isBookShareText(text)) {
-        setBookShare(text);
-        router.navigate("/importar");
-      }
+      if (url && isPortalUrl(url)) setUrl(url);
+      else if (isBookShareText(text)) setBookShare(text);
     }
     resetShareIntent();
-  }, [hasShareIntent, shareIntent, state.kind, router, setUrl, setBookShare, resetShareIntent]);
+  }, [hasShareIntent, shareIntent, setUrl, setBookShare, resetShareIntent]);
+
+  // NAVEGACIÓN: cuando por fin hay sesión Y navegador montado. Se dispara tanto
+  // si el pendiente acaba de llegar como si venía guardado del arranque en frío.
+  useEffect(() => {
+    if (state.kind !== "authed" || !rootNavState?.key) return;
+    if (!pendingUrl && !pendingBookShare) return;
+    router.navigate("/importar");
+  }, [state.kind, rootNavState?.key, pendingUrl, pendingBookShare, router]);
 
   return (
     <>
