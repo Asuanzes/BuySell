@@ -2,8 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import { deleteItem, getItem, setItem } from "@/lib/secure-store";
 import {
+  forgetPendingImport,
+  getRememberedPendingImport,
   PENDING_IMPORT_KEY,
   parsePendingImport,
+  rememberPendingImport,
   serializePendingImport,
 } from "@/lib/pending-import-storage";
 
@@ -59,6 +62,21 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
+    const remembered = getRememberedPendingImport(Date.now());
+    if (remembered?.kind === "url") {
+      setUrlState(remembered.value);
+      setHydrating(false);
+      return () => {
+        alive = false;
+      };
+    }
+    if (remembered?.kind === "book") {
+      setBookShareState(remembered.value);
+      setHydrating(false);
+      return () => {
+        alive = false;
+      };
+    }
     getItem(PENDING_IMPORT_KEY)
       .then((raw) => {
         if (!alive) return;
@@ -81,7 +99,11 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
   // best-effort — si falla, la app sigue funcionando en memoria como antes.
   // Con `null` (recogida) NO se toca el almacén: eso es completePendingImport().
   const persist = useCallback((kind: "url" | "book", value: string | null) => {
-    if (value) void setItem(PENDING_IMPORT_KEY, serializePendingImport(kind, value, Date.now())).catch(() => {});
+    if (value) {
+      const now = Date.now();
+      rememberPendingImport(kind, value, now);
+      void setItem(PENDING_IMPORT_KEY, serializePendingImport(kind, value, now)).catch(() => {});
+    }
   }, []);
 
   const setUrl = useCallback(
@@ -101,6 +123,7 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
   );
 
   const completePendingImport = useCallback(() => {
+    forgetPendingImport();
     void deleteItem(PENDING_IMPORT_KEY).catch(() => {});
   }, []);
 
