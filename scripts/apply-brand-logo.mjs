@@ -87,8 +87,18 @@ const markGlyph = await sharp(path.join(mobileImg, "android-icon-monochrome.png"
   .resize(markInner, markInner, { fit: "contain", background: transparent })
   .png()
   .toBuffer();
-await sharp({ create: { width: MARK_PX, height: MARK_PX, channels: 4, background: transparent } })
+const markRaw = await sharp({ create: { width: MARK_PX, height: MARK_PX, channels: 4, background: transparent } })
   .composite([{ input: markGlyph, gravity: "center" }])
+  .raw()
+  .toBuffer();
+// Suelo de alfa: el promediado del resize deja neblina (alfa 1..31) pegada a los
+// bordes y alguna mota SUELTA — que teñida con tintColor se ve como un puntito
+// del color del acento flotando junto a la marca (lo cazó el propietario a 24 px).
+// Umbral 32: mata neblina y motas, conserva el antialiasing real (alfa medio/alto).
+for (let p = 0; p < MARK_PX * MARK_PX; p++) {
+  if (markRaw[p * 4 + 3] < 32) markRaw[p * 4 + 3] = 0;
+}
+await sharp(markRaw, { raw: { width: MARK_PX, height: MARK_PX, channels: 4 } })
   .png()
   .toFile(path.join(mobileImg, "brand-mark.png"));
 
