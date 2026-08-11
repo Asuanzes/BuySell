@@ -267,8 +267,16 @@ async function upsertBook(
   // currentValue = rating*100 (opcional). Si lo acabamos de enriquecer, derivarlo.
   const value = n.currentValue ?? (enrichedRating != null ? Math.round(enrichedRating * 100) : null);
 
+  // Identidad: además de (externalId, source), el MISMO ISBN-13 ya guardado desde
+  // OTRO proveedor es el mismo libro (OL cae → el reintento resuelve por Google y
+  // sin esto se creaba un duplicado). El alta manual queda fuera del cruce: un
+  // import de proveedor no debe "capturar" (ni pisar) un libro escrito a mano.
+  const isbn13Key = str("isbn13");
   const existing = await prisma.bookRecord.findFirst({
-    where: { ownerId, externalId, source },
+    where:
+      isbn13Key && source !== "manual"
+        ? { ownerId, OR: [{ externalId, source }, { isbn13: isbn13Key, source: { not: "manual" } }] }
+        : { ownerId, externalId, source },
   });
 
   if (!existing) {
@@ -310,6 +318,8 @@ async function upsertBook(
       imageUrls: keepExistingImgs ? existingBook.imageUrls : book.imageUrls,
       averageRating: book.averageRating ?? existingBook.averageRating ?? null,
       ratingsCount: book.ratingsCount ?? existingBook.ratingsCount ?? null,
+      // La sinopsis guardada no se degrada a null por un reimport de fuente pobre.
+      description: book.description ?? existingBook.description ?? null,
     };
   }
   // Misma regla para la columna que muestra la lista: refresca solo si la guardada
