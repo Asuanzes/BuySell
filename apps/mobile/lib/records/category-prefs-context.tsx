@@ -66,9 +66,19 @@ export function CategoryPrefsProvider({ children }: { children: ReactNode }) {
   const [order, setOrder] = useState<RecordType[]>(() => [...MANAGED_RECORD_TYPES]);
   const [hidden, setHidden] = useState<Set<RecordType>>(() => new Set());
   const [startCategory, setStartCategoryState] = useState<RecordType | null>(null);
-  const [category, setCategory] = useState<RecordType>(DEFAULT_CATEGORY);
+  const [category, setCategoryState] = useState<RecordType>(DEFAULT_CATEGORY);
   const [ready, setReady] = useState(false);
   const didInit = useRef(false);
+
+  // Una elección EXPLÍCITA de categoría gana siempre al init de la hidratación.
+  // En el share en frío, Importar hace setCategory("book") unos ms ANTES de que
+  // SecureStore termine de hidratar; sin esto, el init-once posterior la pisaba
+  // con la categoría de inicio (chat) y el usuario aterrizaba en "Añadir chat"
+  // con el import de libro corriendo invisible (BUG-15, cola).
+  const setCategory = useCallback((t: RecordType) => {
+    didInit.current = true;
+    setCategoryState(t);
+  }, []);
 
   // Hidratar de SecureStore una vez al montar.
   useEffect(() => {
