@@ -12,7 +12,7 @@ import {
  * captura el share/deep-link estés en la pantalla que estés) y la pantalla
  * Importar (que la consume: auto-arranca la importación y la limpia).
  *
- * Patrón "consumir": tras importar, la pantalla hace setUrl(null); así un
+ * Patrón "consumir": tras RECOGERLO, la pantalla hace setUrl(null); así un
  * segundo share de la MISMA URL vuelve a dispararse (null → url = cambio).
  *
  * PERSISTE en almacenamiento (BUG-15). Antes vivía solo en memoria y el share
@@ -21,6 +21,18 @@ import {
  * quedaba nada que copiar y el usuario aterrizaba en Importar con las
  * instrucciones vacías. Guardar en cuanto llega desacopla "capturar" de "poder
  * navegar", que era justo el acoplamiento que rompía el arranque en frío.
+ *
+ * RECOGER ≠ COMPLETAR (BUG-15, fase 3): setUrl(null)/setBookShare(null) limpian
+ * SOLO el estado; el almacén se borra con completePendingImport(), que Importar
+ * llama cuando el import TERMINA de verdad (registro creado / candidato elegido /
+ * alta manual / inmueble ok). El porqué: en el arranque en frío del share viven
+ * unos ~2s DOS instancias de la app y la condenada (invisible, bajo la task de
+ * quien comparte) llegaba a recoger el pendiente, BORRARLO y morir a mitad de la
+ * importación — la instancia promocionada hidrataba un almacén vacío y el libro
+ * se esfumaba sin error. Con el borrado movido al final, morir a mitad deja el
+ * pendiente intacto y la instancia superviviente rehace el import a la vista.
+ * Si el import muere en ERROR tampoco se borra: reabrir en <10 min reintenta
+ * (semántica de retry); pasado el TTL caduca solo.
  */
 type Ctx = {
   url: string | null;
@@ -33,6 +45,9 @@ type Ctx = {
   /** true hasta que se ha leído el almacenamiento: sin esto, Importar decidiría
    *  "no hay nada pendiente" antes de que el pendiente guardado llegue. */
   hydrating: boolean;
+  /** Borra el pendiente PERSISTIDO. Llamar SOLO cuando el import ha llegado a un
+   *  terminal de ÉXITO; recoger no basta (ver cabecera). Inocuo sin pendiente. */
+  completePendingImport: () => void;
 };
 
 const PendingImportContext = createContext<Ctx | null>(null);
@@ -64,9 +79,9 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
 
   // El almacenamiento guarda UN pendiente: el último que llegó. Escribir es
   // best-effort — si falla, la app sigue funcionando en memoria como antes.
+  // Con `null` (recogida) NO se toca el almacén: eso es completePendingImport().
   const persist = useCallback((kind: "url" | "book", value: string | null) => {
     if (value) void setItem(PENDING_IMPORT_KEY, serializePendingImport(kind, value, Date.now())).catch(() => {});
-    else void deleteItem(PENDING_IMPORT_KEY).catch(() => {});
   }, []);
 
   const setUrl = useCallback(
@@ -85,8 +100,14 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
     [persist]
   );
 
+  const completePendingImport = useCallback(() => {
+    void deleteItem(PENDING_IMPORT_KEY).catch(() => {});
+  }, []);
+
   return (
-    <PendingImportContext.Provider value={{ url, setUrl, bookShare, setBookShare, hydrating }}>
+    <PendingImportContext.Provider
+      value={{ url, setUrl, bookShare, setBookShare, hydrating, completePendingImport }}
+    >
       {children}
     </PendingImportContext.Provider>
   );

@@ -56,6 +56,20 @@ export default function ImportarScreen() {
   const { category: type, setCategory: setType, orderedVisible } = useCategoryPrefs();
   const { t } = useTranslation();
   const { label: typeLabel, singular: typeSingular } = useTypeI18n();
+  // El layout raíz captura el share/deep-link (estés donde estés) y deja aquí la
+  // URL de inmueble O el TEXTO compartido de un libro. Va arriba del todo porque
+  // completePendingImport lo usan los flujos de import de más abajo.
+  // OJO: recoger (setPending*(null)) limpia solo el ESTADO; el almacén persistido
+  // se borra con completePendingImport() en los terminales de ÉXITO. Si esta
+  // pantalla muere a mitad (la instancia condenada del arranque en frío, BUG-15),
+  // la instancia superviviente encuentra el pendiente y rehace el import.
+  const {
+    url: pendingUrl,
+    setUrl: setPendingUrl,
+    bookShare: pendingBookShare,
+    setBookShare: setPendingBookShare,
+    completePendingImport,
+  } = usePendingImport();
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -149,6 +163,7 @@ export default function ImportarScreen() {
       });
       setOkMsg(t("importar.ok_book_added", { title: r.record?.title ?? title }));
       setStatus("ok");
+      completePendingImport(); // terminal de éxito: el share ya no debe resucitar
       setManualOpen(false);
       setManualTitle("");
       setManualAuthor("");
@@ -248,6 +263,7 @@ export default function ImportarScreen() {
           });
           setOkMsg(t("importar.ok_book_added_pick", { title: r.record?.title ?? hits[0].name ?? t("importar.book_fallback") }));
           setStatus("ok");
+          completePendingImport(); // terminal de éxito: el share ya no debe resucitar
           setValue(""); // A1: limpiar la caja tras añadir el libro compartido.
           setAddedKeys(new Set([0]));
         } catch (e) {
@@ -263,7 +279,7 @@ export default function ImportarScreen() {
         setStatus("error");
       }
     },
-    [setType]
+    [setType, completePendingImport]
   );
 
   // Share/deep-link de INMUEBLE: una URL de portal → flujo property (WebView).
@@ -284,15 +300,8 @@ export default function ImportarScreen() {
     }
   }, [t]);
 
-  // El layout raíz captura el share/deep-link (estés donde estés) y deja aquí la
-  // URL de inmueble O el TEXTO compartido de un libro; consumimos cada canal y lo
-  // limpiamos (patrón consumidor → un segundo share igual vuelve a dispararse).
-  const {
-    url: pendingUrl,
-    setUrl: setPendingUrl,
-    bookShare: pendingBookShare,
-    setBookShare: setPendingBookShare,
-  } = usePendingImport();
+  // Consumo de los canales pendientes (capturados arriba del todo): patrón
+  // consumidor — un segundo share igual vuelve a dispararse (null → valor).
   useEffect(() => {
     if (pendingUrl) {
       handleIncomingUrl(pendingUrl);
@@ -416,6 +425,7 @@ export default function ImportarScreen() {
       });
       setOkMsg(res.created ? t("importar.ok_property_created") : res.priceChanged ? t("importar.ok_price_updated") : t("importar.ok_already_have"));
       setStatus("ok");
+      completePendingImport(); // terminal de éxito: la URL compartida ya no debe resucitar
       setValue(""); // A1: limpiar el enlace de la caja tras importar.
       // A2: ?from=import → el botón "volver" del detalle irá al listado (no a Importar).
       setTimeout(() => router.push(`/property/${res.propertyId}?from=import`), 800);
@@ -471,6 +481,8 @@ export default function ImportarScreen() {
         method: "POST",
         body: JSON.stringify({ type, input }),
       });
+      // Elegir candidato = el share de libro queda resuelto: no debe resucitar.
+      completePendingImport();
       // Confirmación visual en la propia fila (check verde), sin tarjeta grande.
       setAddedKeys((prev) => {
         const n = new Set(prev);
