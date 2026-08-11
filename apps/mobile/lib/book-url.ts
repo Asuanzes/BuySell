@@ -126,24 +126,61 @@ function isBookHost(url: string): boolean {
   return BOOK_HOSTS.some((h) => low.includes(h));
 }
 
+/** Prefijos de compartir de Amazon ("Echa un vistazo a esto en Amazon", en EN/FR/IT/DE/PT…).
+ *  A veces Amazon comparte SOLO texto: "Echa un vistazo a esto en Amazon La asistenta".
+ *  Ese texto no lleva URL ni ISBN, pero ES un libro. */
+const AMAZON_SHARE_PREFIXES = [
+  "echa un vistazo a esto en amazon",
+  "check this out on amazon",
+  "regarde ça sur amazon",
+  "guarda questo su amazon",
+  "sieh dir das bei amazon an",
+  "dê uma olhada nisto na amazon",
+  "ver isso na amazon",
+  "kijk hiernaar op amazon",
+  "bekijk dit op amazon",
+];
+
+function stripAmazonPrefix(text: string): string {
+  const low = text.toLowerCase();
+  for (const p of AMAZON_SHARE_PREFIXES) {
+    if (low.startsWith(p)) {
+      // Quita el prefijo y los separadores comunes (":", " - ", "…")
+      let rest = text.slice(p.length).trim();
+      rest = rest.replace(/^[:\s-·•]+/, "").trim();
+      if (rest) return rest;
+    }
+  }
+  return text;
+}
+
 /** ¿El texto compartido parece un libro? (lleva un ISBN, o un enlace de un host
- *  de libros conocido — Amazon/amzn, Google Books, Open Library, tiendas…). */
+ *  de libros conocido — Amazon/amzn, Google Books, Open Library, tiendas…, o el
+ *  prefijo de compartir de Amazon — que no trae URL). */
 export function isBookShareText(text: string): boolean {
   if (!text) return false;
   if (extractIsbn(text)) return true;
   const url = firstUrl(text);
-  return !!(url && isBookHost(url));
+  if (url && isBookHost(url)) return true;
+  // Amazon comparte a veces solo texto ("Echa un vistazo a esto en Amazon Título").
+  return stripAmazonPrefix(text) !== text;
 }
 
 /** Query buscable a partir del texto compartido: ISBN si lo hay (match fiable →
  *  añadir solo); si no, el TÍTULO (el texto sin la URL ni el "(Editorial)" final).
  *  null si no hay nada útil. Sirve igual para texto compartido y para pegar. */
 export function bookShareQuery(text: string): { query: string; isbn: boolean } | null {
-  const t = (text ?? "").trim();
+  let t = (text ?? "").trim();
   if (!t) return null;
+  // Limpia el prefijo de compartir de Amazon ("Echa un vistazo a esto en Amazon")
+  // en TODO el texto, tanto si llega con URL como sin ella: lo que queda es el
+  // título del libro.
+  t = stripAmazonPrefix(t);
   const isbn = extractIsbn(t);
   if (isbn) return { query: isbn, isbn: true };
   const url = firstUrl(t);
+
+  // 1) URL de libro conocida → título del texto o del slug.
   if (url && isBookHost(url)) {
     let title = t
       .replace(/https?:\/\/[^\s]+/g, " ")
@@ -151,9 +188,9 @@ export function bookShareQuery(text: string): { query: string; isbn: boolean } |
       .trim()
       .replace(/\s*\([^)]*\)\s*$/, "") // quita "(Editorial)" del final
       .trim();
-    // El título PRINCIPAL (antes del subtítulo tras ":") casa mejor en la
+    // El título PRINCIPAL (antes del subtítulo tras ":" o " - ") casa mejor en la
     // búsqueda que la cadena larga que mandan Amazon/tiendas.
-    const main = title.split(":")[0].trim();
+    const main = title.split(":")[0].split(" - ")[0].trim();
     if (main.length >= 3) title = main;
     if (title.length >= 3) return { query: title, isbn: false };
     // Sin título en el TEXTO (p. ej. Fnac comparte solo la URL): sácalo del SLUG
@@ -161,6 +198,11 @@ export function bookShareQuery(text: string): { query: string; isbn: boolean } |
     const fromSlug = titleFromSlug(url);
     if (fromSlug && fromSlug.length >= 3) return { query: fromSlug, isbn: false };
   }
+
+  // 2) Texto de libro SIN URL: "La asistenta" (tras quitar el prefijo Amazon).
+  //    Quita " - Autor" y "|" (a veces Amazon añade el autor tras " - ").
+  const title = t.split(" - ")[0].split("|")[0].trim();
+  if (title && title.length >= 2) return { query: title, isbn: false };
   return null;
 }
 

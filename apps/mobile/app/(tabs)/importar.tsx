@@ -994,7 +994,14 @@ function jobMetaOf(
 
 /** ¿El primer resultado casa FUERTE con el título compartido? Solo entonces
  *  auto-añadimos por título (evita meter el libro equivocado). Títulos cortos o
- *  de 1–2 palabras se consideran ambiguos → mejor elegir a mano. */
+ *  de 1–2 palabras se consideran ambiguos → mejor elegir a mano.
+ *
+ *  Relajado (BUG-15): el share de Amazon manda "Echa un vistazo a esto en Amazon
+ *  La asistenta" → query "La asistenta" (2 palabras, 11 chars). El guard de ≥12
+ *  chars lo rechazaba y el libro caía a lista/manual aunque Google Books top-1
+ *  fuera exacto. Con un mínimo de 5 chars y 2 palabras (título real corto) SI
+ *  casamos por inclusión; solo títulos de 1 palabra (ambiguos tipo "It" o "Él")
+ *  siguen exigiendo elegir a mano. */
 function strongTitleMatch(shared: string, hitName: string | null): boolean {
   if (!hitName) return false;
   const norm = (s: string) =>
@@ -1007,7 +1014,7 @@ function strongTitleMatch(shared: string, hitName: string | null): boolean {
       .trim();
   const a = norm(shared);
   const b = norm(hitName);
-  if (a.length < 12 || a.split(" ").length < 3) return false;
+  if (a.length < 5 || a.split(" ").length < 2) return false;
   return b.includes(a) || a.includes(b);
 }
 
