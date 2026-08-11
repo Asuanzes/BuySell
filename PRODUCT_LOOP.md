@@ -43,9 +43,13 @@ ciclo_3_estado: COMPLETADO (4 pilares, 7 recorridos, conexiones, arquitectura en
 ciclo_4_estado: paquete COMPLETO en main y OTA (fases 0-1 + M1 + MI1 + M2 + M4 + R1v1 + M3 + M5 + MI2); 577 tests, evals bot 15/15
 coordinacion: Claude coordina y delega en DeepSeek; Codex editor principal vía HANDOFF (30 tareas Codex + 22 DeepSeek en la sesión)
 ciclo_5_estado: CERRADO (mensajería como sistema de operaciones); 608 tests, evals bot 53/53
-ciclo_6_estado: EN CURSO — C6i1 checklist real (servidor Codex `bfbb83ed` + móvil de DeepSeek `dd76931b` ya integrado)
+ciclo_6_estado: EN CURSO — C6i1 checklist real CERRADO y publicado; C6i2 notas con diseño DECIDIDO y servidor entregado, pendiente de auditoría + db push + móvil
 deepseek_capacidades: AMPLIADAS a escritura de CÓDIGO PROPUESTO (el propietario autorizó «TODO»); entrega ficheros completos que revisa e integra Claude
-siguiente_accion: cerrar C6i1 (contrato del servidor + montaje en la ficha + prompt que resume y enlaza), luego notas por ficha/conversación y alerta-desde-chat; después 7, 8 y 9
+navegacion: revisión a fondo hecha (15 agentes); FASE 1 (casa visible) publicada; fase 2 (pila por pestaña) CONDICIONADA a que la 1 no baste
+tests: 617 (web+shared) · evals bot 53/53 · i18n 1211 claves ES/EN
+publicado_hoy: main 68e1251 (fuga de privacidad en adopt) + 3f25be8 (botón de inicio); OTA 8f6db6a3/a0333593
+bloqueado_requiere_humano: publish_handoff del grafo (el collaboration-hook no puede registrar el prompt; el registro real vive en este documento)
+siguiente_accion: auditar el servidor de notas de Codex, aplicar RecordNote con db push y montar el bloque móvil; luego alerta-desde-chat y vista de citas; después 7, 8 y 9
 ```
 
 ---
@@ -620,9 +624,9 @@ dato, un hueco o un evento; 5-8 es un techo, no una cuota.**
 | Pieza | Estado |
 | --- | --- |
 | Modelo `RecordTask` + `RecordTaskItem` | APLICADO a Neon con `db push` (uno por VISITA, no por inmueble: se conserva la del domingo y la del jueves) |
-| Servidor: API owner-scoped + ítems deterministas en `preparar_visita` + evento al completar | Codex `bfbb83ed` EN CURSO |
+| Servidor: API owner-scoped + ítems deterministas en `preparar_visita` + evento al completar | **INTEGRADO** (Codex `bfbb83ed`), con 4 correcciones de Claude antes de entrar |
 | Móvil: `RecordChecklistBlock` (tachado, contador, «+ añadir comprobación») | **INTEGRADO** — primera entrega de CÓDIGO de DeepSeek (D6-03), revisada y corregida por Claude |
-| Montaje en la ficha + prompt que resume y enlaza | PENDIENTE (el prompt espera a que Codex libere `src`) |
+| Montaje en la ficha + prompt que resume y enlaza | **INTEGRADO** (el prompt reparte: el chat pregunta, la ficha comprueba) |
 | BUG-14 (relleno genérico) | ABSORBIDA por C6i1-A: sus instrucciones ya exigen la regla de anclaje. Mantenerlas separadas habría hecho que dos tareas reescribieran el mismo generador de ítems |
 
 **Cierre C6i1** (main `ceba961` + `cb6e0d3`, OTA preview `fbb4a3fb` y production `a09678ab`,
@@ -661,6 +665,119 @@ en su primera entrega de código había dos defectos reales (estados de carga y 
 inalcanzables por el orden de las guardas, y una sincronización que se comía la marca
 optimista del usuario).
 
+### C6i2 · Notas (en curso 2026-08-11)
+
+Revisión con 15 agentes: 4 lectores del arte previo, 3 diseños desde ángulos distintos, 6
+jueces (producto y técnica) y 2 críticos adversariales. **El diseño que iba ganando quedó
+último** al juzgarlo con el jurado completo — el primer ranking estaba corrupto porque un
+fallo de OAuth mató a los dos jueces de la opción conservadora y la enterró con un 0.
+
+| Enfoque | Nota | Veredictos |
+| --- | --- | --- |
+| Reutilizar `meta.userNotes` + `Property.notes` (0 tablas nuevas) | 7,5 | REDUCIR / REVISAR |
+| **Modelo dedicado `RecordNote`** ← ELEGIDO | 7,5 | REVISAR / REVISAR |
+| Una nota, dos lentes (nace en el chat) | 6,5 | REDUCIR / REVISAR |
+
+**DECISIÓN: modelo dedicado, y NO reutilizar el blob**, aunque fuera más barato. Los seis
+bloqueantes verificados contra reutilizar son, los cuatro peores, la MISMA cosa — el blob es
+una superficie compartida con cuatro escritores:
+1. `src/features/sources/refresh.ts:87-93` y `:171-176` hacen read-modify-write de `meta`
+   con el blob leído ANTES de N llamadas HTTP, y el cron corre cada 1-2 min ⇒ una nota
+   guardada en esa ventana se pierde sin error, y el UI optimista ya dijo «Guardada».
+2. `POST /api/records/import` acepta `meta` arbitrario del cliente ⇒ se puede escribir
+   `userNotes` de cualquier longitud saltándose el tope.
+3. El mapper spread del meta completo hace que la nota viaje en el LISTADO de la home.
+4. `adopt` la clonaba a otra cuenta (ver abajo: era un fallo VIVO).
+Cuando hacen falta cuatro puntos de saneado, el modelo está mal, no los sitios de llamada.
+Y `Property.notes` como COLUMNA es peor: fusionar dos anuncios del mismo piso borra la fila
+perdedora (`src/features/matching/merge.ts:113`) y la nota se va con ella, irrecuperable, en
+el vertical estrella y con el copy de la app prometiendo que las notas se conservan.
+
+Forma elegida: **entradas fechadas** (varias por ficha), no un blob editable — mata el
+borrado silencioso (hoy «cadena vacía BORRA» es indistinguible de «nunca hubo nota»), da
+historial coherente con el resto de la app y evita el read-modify-write. **Fuera la nota por
+conversación en v1**: no hay arte previo en el chat, no existe el canal «notas para mí» (la
+ruta rechaza una conversación consigo mismo) y dos notas para lo mismo garantizan buscar en
+la equivocada; en un chat vinculado a un registro se muestra y edita la nota DE ESE registro.
+Injertos de los rivales: la nota entra truncada en `comparar_registros` (hoy el contrapunto
+compara precios y m² e ignora el único dato adverso que aportó el usuario, cerrando con
+provenance «datos guardados del usuario», lo cual engaña) y una línea por candidato en el
+espacio de decisión.
+
+Estado: servidor entregado por Codex (`32421a96`) y PENDIENTE de auditoría de Claude, del
+`db push` del modelo y del bloque móvil.
+
+### Fallo VIVO encontrado en la revisión (arreglado, main `68e1251`)
+
+`copyRecord` de `POST /api/records/[id]/adopt` saneaba la fila quitando solo
+id/ownerId/createdAt/updatedAt y copiaba el `meta` completo ⇒ **adoptar un registro
+compartido se llevaba la nota privada de su dueño** a la cuenta del adoptante, editable y
+sobreviviendo a que le retiraran el compartido. Agravante: al mismo sitio llega
+`guardar_compartido` del bot, que está FUERA de `WRITE_TOOLS` a propósito, así que la copia
+ocurría sin turno de confirmación de nadie. La regla se extrajo a
+`withoutPrivateAnnotations` con 4 tests, para que el próximo campo de anotación se añada en
+un solo sitio. Compartir un registro comparte la FICHA, no lo que su dueño escribió para sí.
+
+## Navegación — revisión a fondo (petición del propietario, 2026-08-10)
+
+Queja literal: al profundizar (ficha → compartir → chat del bot → preparar visita → enlace
+del bot a la ficha) hacen falta tantos gestos de atrás como pantallas visitadas y no hay vía
+rápida ni visible al inicio. Revisión con 15 agentes (mapa de las 46 rutas, 3 enfoques, 6
+jueces, 2 críticos).
+
+Causa raíz: **un solo Stack raíz** donde `(tabs)` es UNA pantalla y las 46 de detalle son sus
+hermanas, así que al abrir cualquier ficha la barra de pestañas se desmonta. Las pantallas de
+pestañas se salvan porque la barra usa `Math.max(insets.bottom, 6)`; el defecto solo aparece
+en las que se abren encima, que son justo las de detalle.
+
+| Enfoque | Nota | Esfuerzo | Toques a inicio |
+| --- | --- | --- | --- |
+| A · Una pila por pestaña (barra siempre visible) | 7 | GRANDE | 1 |
+| C · Que el recorrido no genere pila (hojas) | 7 | MEDIO | — |
+| B · Semántica de pila + casa visible | 6,5 | MEDIO | 1 |
+
+**FASE 1 HECHA Y PUBLICADA** (main `3f25be8`, OTA preview `8f6db6a3` y production
+`a0333593`): botón de inicio visible. Una línea en el `screenOptions` del Stack raíz cubre
+las ~30 pantallas con header (ninguna declaraba `headerRight`, cero colisiones); opt-out
+explícito donde un toque accidental destruiría trabajo sin guardar o abandonaría un pago
+(property/form, viajes/nuevo, chat/new, chat/new-group, premium, scan-book); variante
+flotante en las dos del recorrido que ocultan su header. El botón se oculta si no hay
+profundidad. `goHome` usa **verificación POSITIVA** porque el router descarta acciones
+devolviendo `null` SIN warning, y solo colapsa si `routes[0]` es `(tabs)`: en arranque en
+frío por notificación puede ser `login`, y colapsar ahí echaría al usuario de la app.
+
+**NO se reestructuró a una pila por pestaña** pese a ser el enfoque mejor valorado, porque
+los críticos verificaron el precio: 45 ficheros movidos, cinco pilas incomunicadas donde el
+back de Android CIERRA la app en vez de volver, rotura del cálculo del teclado del chat (que
+tiene test unitario fijándolo), dos barras inferiores apiladas en cripto/mercado, y
+`scan-book` creando un SEGUNDO caparazón de pestañas por su `router.replace`. Fase 2
+condicionada a que la fase 1 no baste, con red de seguridad de Maestro antes.
+
+**Y NO se quitó el `push` duplicado del enlace del bot**, que era la corrección más obvia y
+la apuesta inicial de Claude: `revalidateOnFocus` NO es foco de navegación sino `AppState`
+(`lib/hooks/useQuery.ts:109-115`), así que volver por POP a la instancia ya montada no
+refetchea nada y **el checklist que el bot acaba de crear no aparecería**. Cambiaría
+«pantalla redundante» por «pantalla obsoleta». Requiere antes revalidación por foco de
+navegación, y opt-in (global interactúa con el bug de doble intro de `ScreenBackground`).
+
+Pendiente de fase 1: casa flotante en cripto/mercado (ocultan header y su barra inferior ya
+va con 6 botones sin sitio) y `unstable_settings = { anchor: '(tabs)' }`, que arregla un
+fallo real de hoy (arranque en frío por notificación deja una ficha sin nada debajo) pero se
+dejó fuera para no meter dos cambios de comportamiento a la vez y poder atribuir regresiones.
+
+### Decisiones del PROPIETARIO (decisión `68966e49`)
+
+- **Compartir sigue llevando al chat.** Literal: «si ya has decidido compartirlo se entiende
+  que lo harás con un mensaje adjunto, sí, va al chat directamente». Queda BLOQUEADO: ninguna
+  propuesta técnica puede revertirlo como efecto colateral (el enfoque C lo hacía).
+- **El resumen de la visita NO se duplica en el DM del bot.** El propietario delegó la
+  elección con el matiz correcto («a no ser que la visita solo la haya hecho una de las
+  personas que comparten»), y ese matiz apunta a otro destino: el DM del bot es un 1:1 con el
+  asistente, nadie más está ahí. Lo que debe viajar es el RESULTADO, y el sitio es la
+  conversación donde el registro está compartido (`getRelatedChatsForRecord`). Explícito y de
+  un toque, NUNCA automático. Cierra el caso sin diseñar listas de tareas compartidas, porque
+  `RecordTask` es owner-scoped y quien recibe un compartido no tiene checklist ni ve el ajeno.
+
 ---
 
 ## Registro de intervenciones
@@ -676,3 +793,7 @@ optimista del usuario).
 - 2026-08-10 · claude+codex+deepseek · CICLO 5 CERRADO: cabecera contextual (servidor), iconos de acción del bot, ids por enlace, teclado, evals 53/53. Deuda visible: la mitad VISUAL de la cabecera no ha llegado al usuario.
 - 2026-08-10 · propietario · Autoriza ampliar las capacidades de DeepSeek («TODO»). Claude amplía el arnés (16000 caracteres con saltos de línea, contrato de fichero completo, se le retira el protocolo del grafo que no podía cumplir) y le delega su primera tarea de CÓDIGO (D6-03).
 - 2026-08-10 · claude · CICLO 6 abierto por petición del propietario con la pieza de tareas adelantada: checklist de visita REAL. Decisión `58592d37` (el checklist marcable vive en la ficha; el chat resume y enlaza). BUG-14 absorbida por C6i1-A. BUG-12 y BUG-13 integrados en `ceba961` (608 tests).
+- 2026-08-10 · propietario · «El "añadido el fecha" SIGUE tapado por el menú de navegación de Android». El arreglo anterior era real pero incompleto: cubría las fichas, y el propietario lo veía en la pantalla de Historia, donde esa fila va en el pie de la lista. Causa raíz: `Screen` monta el área segura con `edges=["top"]` a propósito, así que el inset inferior es de cada pantalla, y 19 fijaban un número constante. 13 pantallas corregidas (main `9680a64`); `property/compare` intacta a propósito (monta su propio SafeAreaView con `edges=["bottom"]`, sumar el inset lo contaría dos veces).
+- 2026-08-10 · propietario · Pide REVISIÓN A FONDO de la navegación: volver a inicio rápido y visible, o menos pantallas atrás. Revisión de 15 agentes → plan de 4 fases; FASE 1 (casa visible) publicada en `3f25be8`. Se descarta reestructurar ahora y se descarta quitar el push duplicado (rompería la frescura de datos). Decisión `68966e49` con las dos preguntas que eran del propietario.
+- 2026-08-11 · claude · CICLO 6 C6i2 (notas): decisión de modelo dedicado `RecordNote` con entradas fechadas, contra la opción más barata de reutilizar el blob `meta.userNotes`, por cuatro fallos verificados que son propiedades del blob (cron con read-modify-write, import con meta arbitrario, fuga en el listado y clonado en adopt). Encontrado y arreglado de paso un fallo VIVO de privacidad en `adopt` (main `68e1251`).
+- 2026-08-11 · nota de proceso · Dos incidentes del arnés que costaron trabajo: un fallo de OAuth mató 7 agentes de la revisión de navegación (cero entregado) y corrompió el ranking de notas (enterró la opción conservadora con un 0 porque sus dos jueces murieron); y una interrupción directa del turno mató los dos workflows de fondo a mitad. Lección: reanudar con `resumeFromRunId` recupera lo pagado (en notas se rescataron 11 de 15 agentes), y un ranking con ceros por fallo de infraestructura NO se puede usar para decidir.
