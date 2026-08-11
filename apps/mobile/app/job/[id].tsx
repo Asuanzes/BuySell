@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   ScrollView,
   StyleSheet,
@@ -22,6 +23,8 @@ import { provinceImage } from "@/lib/records/province-images";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
+import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
+import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
 
 /**
  * Ficha propia de un empleo guardado. Muestra los datos scrapeados (lugar,
@@ -39,6 +42,14 @@ export default function JobDetail() {
   );
   const [shareChatOpen, setShareChatOpen] = useState(false);
   const [decisionOpen, setDecisionOpen] = useState(false);
+  // La ruta marca así lo que te han compartido; las notas son del dueño (404 en
+  // ajenas), por eso se espera a tener el record y confirmar que es propio.
+  const isSharedRecord = !!(record as (BaseRecord & { shared?: boolean }) | null)?.shared;
+  const notes = useRecordNotes("job", id, {
+    enabled: !!record && !isSharedRecord,
+    onError: (e) =>
+      Alert.alert(t("notes.error"), e instanceof Error ? e.message : String(e)),
+  });
 
   if (loading) {
     return (
@@ -147,6 +158,22 @@ export default function JobDetail() {
             <Text style={[styles.descText, { color: th.text }]}>{description}</Text>
           </View>
         )}
+
+        {/* Tus notas: la capa propia del usuario, al final de la ficha. Nunca en
+            una oferta compartida por otro. */}
+        {!isSharedRecord ? (
+          <View style={styles.notesBlock}>
+            <RecordNotesBlock
+              notes={notes.notes}
+              loading={notes.loading}
+              error={notes.error ? t("notes.error") : null}
+              onAdd={notes.add}
+              onEdit={notes.edit}
+              onDelete={notes.remove}
+              onRetry={() => void notes.retry()}
+            />
+          </View>
+        ) : null}
       </ScrollView>
       <ShareRecordSheet
         visible={shareChatOpen}
@@ -180,4 +207,5 @@ const styles = StyleSheet.create({
   descTitle: { fontSize: 12, fontFamily: fonts.bodySemibold, marginBottom: 6 },
   descText: { fontSize: 14, lineHeight: 20 },
   actions: { alignSelf: "flex-end", marginTop: 14 },
+  notesBlock: { marginTop: 12 },
 });
