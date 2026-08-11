@@ -44,7 +44,9 @@ import { RelatedChatsBlock } from "@/components/property/RelatedChatsBlock";
 import { HomeButton } from "@/components/HomeButton";
 import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
+import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
 import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone } from "@/lib/record-tasks";
+import { createRecordNote, deleteRecordNote, fetchRecordNotes, updateRecordNote } from "@/lib/record-notes";
 import { track } from "@/lib/analytics";
 
 type Notice = { tone: "success" | "error" | "info"; title: string; message?: string };
@@ -113,6 +115,10 @@ export default function PropertyDetailScreen() {
     [id, ownsThisRecord],
     { enabled: ownsThisRecord }
   );
+  // Las notas son PRIVADAS del dueño: en una ficha compartida no se piden.
+  const notesQ = useRecord(() => fetchRecordNotes("property", id!), [id, ownsThisRecord], {
+    enabled: ownsThisRecord,
+  });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [busyTool, setBusyTool] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -162,6 +168,23 @@ export default function PropertyDetailScreen() {
       await checklistQ.refetch();
     } catch (e) {
       await onChecklistFailure(e);
+    }
+  }
+
+  // Notas: el aviso lo da la ficha, pero el error se RELANZA para que el bloque
+  // conserve el texto que el usuario acababa de escribir. Tragárselo aquí sería
+  // dejarle la caja vacía y la nota sin guardar.
+  async function runNoteAction(action: () => Promise<unknown>) {
+    try {
+      await action();
+      await notesQ.refetch();
+    } catch (e) {
+      setNotice({
+        tone: "error",
+        title: t("detail.property.notice_error_title"),
+        message: e instanceof Error ? e.message : t("detail.property.unknown_error"),
+      });
+      throw e;
     }
   }
 
@@ -362,6 +385,23 @@ export default function PropertyDetailScreen() {
           <ActionBtn icon="git-branch-outline" label={t("decisions.add.action")} onPress={() => setDecisionOpen(true)} />
           <ActionBtn icon="create-outline" label={t("common.edit")} onPress={() => router.push(`/property/form?id=${p.id}` as never)} />
         </View>
+
+        {/* Tus notas: lo que sabes y el anuncio no dice. Va aquí, sobre el chat y
+            la historia, porque es la capa PROPIA del usuario (lo suyo primero, lo
+            hablado y lo cambiado después). Nunca en una ficha ajena. */}
+        {!isReadOnly ? (
+          <View style={styles.decisionBlock}>
+            <RecordNotesBlock
+              notes={notesQ.data ?? null}
+              loading={notesQ.loading}
+              error={notesQ.error ? t("notes.error") : null}
+              onAdd={(body) => runNoteAction(() => createRecordNote("property", id!, body))}
+              onEdit={(noteId, body) => runNoteAction(() => updateRecordNote(noteId, body))}
+              onDelete={(noteId) => runNoteAction(() => deleteRecordNote(noteId))}
+              onRetry={() => void notesQ.refetch()}
+            />
+          </View>
+        ) : null}
 
         {/* Chat relacionado: ¿qué se ha hablado? */}
         <View style={styles.decisionBlock}>

@@ -184,6 +184,19 @@
     "add_placeholder": "Add a check…",
     "error": "Couldn't load the checks."
   },
+  "notes": {
+    "title": "Your notes",
+    "loading": "Loading notes…",
+    "empty": "What you know and the listing doesn't say: what you were told, what you saw, what gave you doubts.",
+    "add_placeholder": "Write a note…",
+    "add": "Add note",
+    "edited": "edited",
+    "remaining_one": "1 character left",
+    "remaining_other": "{{count}} characters left",
+    "delete_title": "Delete this note?",
+    "delete_message": "Only this entry is deleted; the rest stay.",
+    "error": "Couldn't load the notes."
+  },
   "events": {
     "title": "What changed",
     "title_record": "History of {{title}}",

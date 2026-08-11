@@ -184,6 +184,19 @@
     "add_placeholder": "Añadir comprobación…",
     "error": "No se pudieron cargar las comprobaciones."
   },
+  "notes": {
+    "title": "Tus notas",
+    "loading": "Cargando notas…",
+    "empty": "Lo que sabes y el anuncio no dice: lo que te dijeron, lo que viste, lo que te hizo dudar.",
+    "add_placeholder": "Escribe una nota…",
+    "add": "Añadir nota",
+    "edited": "editada",
+    "remaining_one": "queda 1 carácter",
+    "remaining_other": "quedan {{count}} caracteres",
+    "delete_title": "¿Borrar esta nota?",
+    "delete_message": "Se borra solo esta entrada; las demás se quedan.",
+    "error": "No se pudieron cargar las notas."
+  },
   "events": {
     "title": "Novedades",
     "title_record": "Historia de {{title}}",
