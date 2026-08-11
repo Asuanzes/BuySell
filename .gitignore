@@ -81,3 +81,8 @@ skills-lock.json
 
 # Salidas de trabajo de agentes (previews de diseño, artefactos de tareas).
 artifacts/
+
+# Documento de coordinación del loop de producto: material INTERNO (estrategia,
+# precios en estudio, decisiones y razonamiento de descartes). El repo es
+# público, así que no se versiona. Vive en el disco y en el grafo local.
+PRODUCT_LOOP.md
