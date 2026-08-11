@@ -19,14 +19,16 @@
  */
 
 let activeSurfaces = 0;
+const freeListeners = new Set<() => void>();
 
 /** ¿Está libre el slot primario? true → esta surface puede ser la app completa. */
 export function isPrimaryFree(): boolean {
   return activeSurfaces === 0;
 }
 
-/** Ocupa el slot en el montaje (llamar SOLO desde un useEffect de la primaria).
- *  Devuelve la función de liberación para el cleanup (idempotente, clamp a 0). */
+/** Ocupa el slot en el montaje (desde un useEffect o desde un listener de
+ *  `onPrimaryFree` — nunca en render). Devuelve la función de liberación para el
+ *  cleanup (idempotente, clamp a 0). */
 export function acquireSurface(): () => void {
   activeSurfaces += 1;
   let released = false;
@@ -34,5 +36,25 @@ export function acquireSurface(): () => void {
     if (released) return;
     released = true;
     activeSurfaces = Math.max(0, activeSurfaces - 1);
+    if (activeSurfaces === 0) {
+      // Snapshot: un listener puede promocionarse (y desuscribirse) durante el aviso.
+      for (const listener of [...freeListeners]) listener();
+    }
+  };
+}
+
+/**
+ * Avisa cuando el slot primario queda LIBRE. Es la pieza que arregla el share en
+ * frío (BUG-15): la entrega ShareIntentActivity→MainActivity monta dos surfaces
+ * SOLAPADAS (la 2ª nace antes de que muera la 1ª), así que la 2ª ve el slot
+ * ocupado… durante unos milisegundos. Sin este aviso se quedaba clavada en el
+ * cartel de duplicada para siempre. El listener que promociona debe re-comprobar
+ * `isPrimaryFree()` y ocupar el slot SÍNCRONAMENTE: entre varios duplicados solo
+ * el primero del bucle gana; el resto sigue suscrito.
+ */
+export function onPrimaryFree(listener: () => void): () => void {
+  freeListeners.add(listener);
+  return () => {
+    freeListeners.delete(listener);
   };
 }

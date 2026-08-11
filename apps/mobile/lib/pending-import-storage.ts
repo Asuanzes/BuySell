@@ -20,8 +20,29 @@ export const PENDING_IMPORT_KEY = "nidokey.pendingImport";
 
 export type PendingImport = { kind: "url" | "book"; value: string; at: number };
 
+let latestPendingImport: PendingImport | null = null;
+
 export function serializePendingImport(kind: PendingImport["kind"], value: string, now: number): string {
   return JSON.stringify({ kind, value, at: now } satisfies PendingImport);
+}
+
+export function rememberPendingImport(kind: PendingImport["kind"], value: string, now: number): PendingImport {
+  latestPendingImport = { kind, value, at: now };
+  return latestPendingImport;
+}
+
+export function getRememberedPendingImport(now: number): PendingImport | null {
+  if (!latestPendingImport) return null;
+  const pending = parsePendingImport(JSON.stringify(latestPendingImport), now);
+  if (!pending) {
+    latestPendingImport = null;
+    return null;
+  }
+  return pending;
+}
+
+export function forgetPendingImport(): void {
+  latestPendingImport = null;
 }
 
 /**

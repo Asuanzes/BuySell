@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { fonts } from "@/lib/fonts";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,6 +26,8 @@ import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 import { RelatedChatsBlock } from "@/components/records/RelatedChatsBlock";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
+import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
+import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
 
 type Outcome = "yes" | "no" | "later";
 
@@ -55,6 +57,16 @@ export default function HolidayDetail() {
   const accommodation = record ? metaField<AccommodationChoice | null>(record, "accommodation", null) : null;
   const transport = record ? metaField<TransportLeg | null>(record, "transport", null) : null;
   const transportReturn = record ? metaField<TransportLeg | null>(record, "transportReturn", null) : null;
+  // Antes de los returns tempranos porque los hooks lo necesitan: las notas son
+  // del dueño (404 en una ficha compartida), así que ni se piden en ajenas.
+  const isReadOnly = record
+    ? metaField<boolean>(record, "readOnly", false) || metaField<boolean>(record, "shared", false)
+    : false;
+  const notes = useRecordNotes("holiday", id, {
+    enabled: !!record && !isReadOnly,
+    onError: (e) =>
+      Alert.alert(t("notes.error"), e instanceof Error ? e.message : String(e)),
+  });
   const hasBookingActions = Boolean(
     accommodation?.affiliateUrl || transport?.affiliateUrl || transportReturn?.affiliateUrl
   );
@@ -159,7 +171,7 @@ export default function HolidayDetail() {
   const occupancy = metaField<{ adults: number; children: number[] }[] | null>(record, "occupancy", null);
   const booking = metaField<{ hotelRef?: string | null; flightRef?: string | null } | null>(record, "booking", null);
   // ⚠️ NO leer metaField(record, "commission", …): es interno, no se pinta.
-  const isReadOnly = metaField<boolean>(record, "readOnly", false) || metaField<boolean>(record, "shared", false);
+  // (isReadOnly se calcula arriba, antes de los returns, porque lo usan los hooks.)
 
   const statusLabel =
     record.status === "BOOKED"
@@ -261,6 +273,19 @@ export default function HolidayDetail() {
             recordId={id}
             onOpenChat={onOpenChat}
             onShare={() => setShareChatOpen(true)}
+          />
+        ) : null}
+
+        {/* Tus notas: la capa propia del usuario, encima de la historia. */}
+        {id && !isReadOnly ? (
+          <RecordNotesBlock
+            notes={notes.notes}
+            loading={notes.loading}
+            error={notes.error ? t("notes.error") : null}
+            onAdd={notes.add}
+            onEdit={notes.edit}
+            onDelete={notes.remove}
+            onRetry={() => void notes.retry()}
           />
         ) : null}
 

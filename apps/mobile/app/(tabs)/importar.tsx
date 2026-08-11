@@ -57,8 +57,12 @@ export default function ImportarScreen() {
   const { t } = useTranslation();
   const { label: typeLabel, singular: typeSingular } = useTypeI18n();
   // El layout raíz captura el share/deep-link (estés donde estés) y deja aquí la
-  // URL de inmueble O el TEXTO compartido de un libro; consumimos cada canal y lo
-  // limpiamos (patrón consumidor → un segundo share igual vuelve a dispararse).
+  // URL de inmueble O el TEXTO compartido de un libro. Va arriba del todo porque
+  // completePendingImport lo usan los flujos de import de más abajo.
+  // OJO: recoger (setPending*(null)) limpia solo el ESTADO; el almacén persistido
+  // se borra con completePendingImport() en los terminales de ÉXITO. Si esta
+  // pantalla muere a mitad (la instancia condenada del arranque en frío, BUG-15),
+  // la instancia superviviente encuentra el pendiente y rehace el import.
   const {
     url: pendingUrl,
     setUrl: setPendingUrl,
@@ -300,6 +304,8 @@ export default function ImportarScreen() {
     }
   }, [t]);
 
+  // Consumo de los canales pendientes (capturados arriba del todo): patrón
+  // consumidor — un segundo share igual vuelve a dispararse (null → valor).
   useEffect(() => {
     if (pendingUrl) {
       handleIncomingUrl(pendingUrl);
