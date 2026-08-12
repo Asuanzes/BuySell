@@ -432,7 +432,10 @@
     "compare_hint": "Elige 2 o 3 inmuebles",
     "compare_cta": "Comparar ({{count}})",
     "compare_selected_label": "{{title}} seleccionado para comparar",
-    "compare_unselected_label": "{{title}} no seleccionado para comparar"
+    "compare_unselected_label": "{{title}} no seleccionado para comparar",
+    "hol_all": "Todos",
+    "hol_organizing": "Organizando",
+    "hol_booked": "Reservados"
   },
   "compare": {
     "title": "Comparar inmuebles",
@@ -703,7 +706,12 @@
       "booking_outcome_no": "No",
       "booking_outcome_later": "Aún no",
       "row_transport_return": "Vuelo de vuelta",
-      "view_return_flight": "Reservar vuelta"
+      "view_return_flight": "Reservar vuelta",
+      "status_organizing": "Organizando",
+      "planning_title": "En organización",
+      "planning_window": "Ventana aproximada",
+      "planning_budget": "Presupuesto",
+      "planning_cta": "Buscar vuelos y hotel"
     },
     "job": {
       "row_company": "Empresa",
@@ -883,7 +891,21 @@
     "nights_one": "{{count}} noche",
     "nights_other": "{{count}} noches",
     "round_trip": "Ida y vuelta",
-    "one_way": "Solo ida"
+    "one_way": "Solo ida",
+    "organize_link": "¿Aún sin fechas? Organiza el viaje",
+    "organize_title": "Organizar viaje",
+    "organize_hint": "Apunta el viaje antes de reservar: destino tentativo y, si quieres, una ventana de fechas y un presupuesto. Al reservar después se completará este mismo registro.",
+    "organize_destination": "Destino (tentativo)",
+    "organize_destination_ph": "Japón, Roma, la costa…",
+    "organize_window": "Ventana de fechas aproximada",
+    "organize_window_optional": "Opcional: toca el calendario si ya barajas fechas",
+    "organize_window_end": "Ahora toca el último día de la ventana",
+    "organize_window_clear": "Quitar ventana",
+    "organize_budget": "Presupuesto aproximado (€)",
+    "organize_budget_ph": "1500",
+    "organize_cta": "Crear viaje en organización",
+    "organize_error": "No se pudo crear el viaje",
+    "organize_record_title": "Viaje a {{destination}}"
   },
   "travel": {
     "services": "Servicios",

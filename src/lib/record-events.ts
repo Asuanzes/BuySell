@@ -38,6 +38,10 @@ export function visitPreparedEventKey(recordId: string, now: Date): string {
   return `visit-prep:${recordId}:${utcDay(now)}`;
 }
 
+export function tripPreparedEventKey(recordId: string, now: Date): string {
+  return `trip-prep:${recordId}:${utcDay(now)}`;
+}
+
 export function recheckEventKey(listingId: string, observedAt: Date, prevCents: number | null, newCents: number | null): string {
   return `recheck:${listingId}:${observedAt.toISOString()}:${prevCents ?? "null"}->${newCents ?? "null"}`;
 }

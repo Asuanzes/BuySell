@@ -705,6 +705,18 @@ function AuthGate() {
             }}
           />
           <Stack.Screen
+            name="viajes/organizar"
+            options={{
+              headerShown: true,
+              headerRight: undefined, // opt-out: formulario con trabajo sin guardar
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("trip.organize_title"),
+            }}
+          />
+          <Stack.Screen
             name="viajes/nuevo"
             options={{
               headerShown: true,

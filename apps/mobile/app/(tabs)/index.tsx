@@ -78,7 +78,9 @@ export default function RecordsScreen() {
   // bookIds del servidor; AND con el resto de ejes.
   const [bookSubcats, setBookSubcats] = useState<BookSubcategory[] | null>(null);
   const [subcatFilter, setSubcatFilter] = useState<string | null>(null);
-  useEffect(() => { setEditing(false); setComparing(false); setCompareIds([]); setOpFilter("ALL"); setSubcatFilter(null); }, [type]);
+  // C8: filtro de estado en Viajes — Organizando (sin reserva) vs Reservados.
+  const [holFilter, setHolFilter] = useState<"ALL" | "ORGANIZING" | "BOOKED">("ALL");
+  useEffect(() => { setEditing(false); setComparing(false); setCompareIds([]); setOpFilter("ALL"); setSubcatFilter(null); setHolFilter("ALL"); }, [type]);
   // Refresh por FOCO (diseño C7 15/15): al volver de una ficha donde se
   // asignaron o crearon subcategorías, los chips reflejan el cambio.
   useFocusEffect(
@@ -153,11 +155,17 @@ export default function RecordsScreen() {
           return !isRentOperation(op);
         })
       : ordered;
+  // C8: eje de estado en viajes (Organizando = todavía sin reserva).
+  const showHolFilter = type === "holiday" && !editing;
+  const shownAfterHol =
+    showHolFilter && shownAfterOp && holFilter !== "ALL"
+      ? shownAfterOp.filter((r) => (holFilter === "BOOKED" ? r.status === "BOOKED" : r.status !== "BOOKED"))
+      : shownAfterOp;
   // C7: eje de subcategoría en libros, AND con lo anterior; el modo edición cae
   // a la lista plana sin filtro (guard !editing) para que borrar/arrastrar vea todo.
   const showSubcatFilter = type === "book" && !editing && (bookSubcats?.length ?? 0) > 0;
   const activeSubcat = showSubcatFilter && subcatFilter ? (bookSubcats ?? []).find((s) => s.id === subcatFilter) ?? null : null;
-  const shown = activeSubcat && shownAfterOp ? shownAfterOp.filter((r) => activeSubcat.bookIds.includes(r.id)) : shownAfterOp;
+  const shown = activeSubcat && shownAfterHol ? shownAfterHol.filter((r) => activeSubcat.bookIds.includes(r.id)) : shownAfterHol;
   const canCompareShown = type === "property" && !editing && shown != null && shown.length >= 2;
   const compareSelectedSet = useMemo(() => new Set(compareIds), [compareIds]);
   useEffect(() => {
@@ -228,6 +236,35 @@ export default function RecordsScreen() {
                   <Pressable
                     key={opt}
                     onPress={() => setOpFilter(opt)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={[
+                      styles.opChip,
+                      { borderColor: active ? th.accent : "transparent" },
+                      active && { backgroundColor: th.accentSoft },
+                    ]}
+                  >
+                    <Text style={[styles.opChipText, { color: active ? th.accent : th.textMuted }]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          {!isChat && !isFood && showHolFilter && records && records.length > 0 && (
+            <View style={[styles.opFilter, th.elevation.sm, { backgroundColor: th.surfaceRaised, borderColor: th.border }]}>
+              {(["ALL", "ORGANIZING", "BOOKED"] as const).map((opt) => {
+                const active = holFilter === opt;
+                const label =
+                  opt === "ALL"
+                    ? t("records.hol_all")
+                    : opt === "ORGANIZING"
+                      ? t("records.hol_organizing")
+                      : t("records.hol_booked");
+                return (
+                  <Pressable
+                    key={opt}
+                    onPress={() => setHolFilter(opt)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
                     style={[

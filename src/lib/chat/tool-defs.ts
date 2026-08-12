@@ -68,6 +68,21 @@ export const BOT_TOOLS = [
   {
     type: "function",
     function: {
+      name: "preparar_viaje",
+      description:
+        "Prepara un VIAJE PROPIO del usuario (organizándose o ya reservado): devuelve destino, fechas, presupuesto, datos que faltan e items estructurados, y crea/reutiliza el checklist de viaje marcable en la ficha del registro. Aditiva y sin datos inventados.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Id propio del viaje (de listar_registros o de un enlace [[holiday:id|Título]])" },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "tendencias",
       description: "Tendencias actuales agregadas (X/Twitter, Google Trends, Hacker News, Twitch). Opcional: filtrar por fuente.",
       parameters: {

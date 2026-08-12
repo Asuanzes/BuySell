@@ -36,7 +36,10 @@ const RecordPayload = z.object({
   externalId: z.string().nullish(),
   meta: z.record(z.unknown()).optional(),
 });
-const Body = z.object({ record: RecordPayload });
+// C8: holidayId opcional = viaje EN ORGANIZACIÓN que esta reserva completa.
+// La transición actualiza la MISMA fila (checklist/notas/eventos cuelgan de su
+// id por soft-ref y no se tocan); prohibido crear un segundo registro.
+const Body = z.object({ record: RecordPayload, holidayId: z.string().min(1).optional() });
 
 /** Referencia de reserva de prueba ("H-ABC123"). */
 function testRef(prefix: string): string {
@@ -97,9 +100,56 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const { id } = await upsertRecord(ownerId, normalized);
-    // Garantiza estado BOOKED aunque el viaje ya existiera (upsertHoliday no pisa status).
-    await prisma.holiday.update({ where: { id }, data: { status: "BOOKED" } });
+    let id: string;
+    const organizing = parsed.data.holidayId
+      ? await prisma.holiday.findFirst({ where: { id: parsed.data.holidayId, ownerId } })
+      : null;
+    if (parsed.data.holidayId && !organizing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404, headers: CORS });
+    }
+    if (organizing) {
+      // Transición organización→reservado sobre la MISMA fila. meta.planning se
+      // conserva como referencia (criterio de aceptación C8). Si el externalId de
+      // la reserva ya existiera en OTRA fila del usuario (re-reserva del mismo
+      // viaje), el unique saltaría: en ese caso caemos al upsert normal y el
+      // registro organizador queda intacto (nunca se borra datos del usuario).
+      const startDate = typeof meta.startISO === "string" ? new Date(meta.startISO) : null;
+      const endDate = typeof meta.endISO === "string" ? new Date(meta.endISO) : null;
+      const existingMeta = (organizing.meta as Record<string, unknown>) ?? {};
+      try {
+        const value = normalized.currentValue ?? null;
+        await prisma.holiday.update({
+          where: { id: organizing.id },
+          data: {
+            title: normalized.title,
+            subtitle: normalized.subtitle ?? null,
+            status: "BOOKED",
+            destination: (typeof meta.destination === "string" && meta.destination) || organizing.destination,
+            startDate: startDate && !Number.isNaN(startDate.getTime()) ? startDate : null,
+            endDate: endDate && !Number.isNaN(endDate.getTime()) ? endDate : null,
+            currentValue: value,
+            currency: normalized.currency ?? organizing.currency,
+            imageUrl: normalized.imageUrl ?? organizing.imageUrl,
+            source: normalized.source,
+            externalId: normalized.externalId ?? null,
+            lastCheckedAt: normalized.observedAt,
+            meta: { ...existingMeta, ...(normalized.meta as Record<string, unknown>) } as object,
+            snapshots:
+              value != null
+                ? { create: [{ value, source: normalized.source ?? "travel-book", observedAt: normalized.observedAt }] }
+                : undefined,
+          },
+        });
+        id = organizing.id;
+      } catch {
+        ({ id } = await upsertRecord(ownerId, normalized));
+        await prisma.holiday.update({ where: { id }, data: { status: "BOOKED" } });
+      }
+    } else {
+      ({ id } = await upsertRecord(ownerId, normalized));
+      // Garantiza estado BOOKED aunque el viaje ya existiera (upsertHoliday no pisa status).
+      await prisma.holiday.update({ where: { id }, data: { status: "BOOKED" } });
+    }
     const saved = await getHolidayById(id);
     return NextResponse.json(
       { booking, record: saved ? holidayToBaseRecord(saved) : null },

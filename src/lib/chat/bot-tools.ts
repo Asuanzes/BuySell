@@ -1,8 +1,8 @@
 import { issueMobileJwt } from "@/lib/mobile-jwt";
 import { verifyMobileJwt } from "@/lib/mobile-jwt";
 import { RECORD_TYPES, type BotRecordType as RecordType } from "@/lib/chat/tool-defs";
-import { createRecordEvent, visitPreparedEventKey } from "@/lib/record-events";
-import { createVisitChecklistForRecord, type RecordTaskView, type StructuredTaskItemInput } from "@/lib/record-tasks";
+import { createRecordEvent, tripPreparedEventKey, visitPreparedEventKey } from "@/lib/record-events";
+import { createVisitChecklistForRecord, type DailyChecklistKind, type RecordTaskView, type StructuredTaskItemInput } from "@/lib/record-tasks";
 
 /**
  * Herramientas (function calling) del asistente Nidokey. Filosofía perezosa: NO
@@ -268,7 +268,7 @@ function missingVisitFields(record: AnyRecord): MissingVisitField[] {
 type PrepareVisitDeps = {
   apiGet: (path: string, token: string) => Promise<unknown>;
   createEvent: typeof createRecordEvent;
-  createChecklist?: (userId: string, input: { recordType: RecordType; recordId: string; title?: string; items: StructuredTaskItemInput[] }) => Promise<RecordTaskView>;
+  createChecklist?: (userId: string, input: { recordType: RecordType; recordId: string; title?: string; items: StructuredTaskItemInput[]; kind?: DailyChecklistKind }) => Promise<RecordTaskView>;
   userFromToken: (token: string) => Promise<{ userId: string; email: string } | null>;
   now: () => Date;
 };
@@ -483,6 +483,162 @@ export async function prepareVisit(id: string, token: string, deps: PrepareVisit
   };
 }
 
+// ── C8 · preparar_viaje ─────────────────────────────────────────────────────
+
+type TripFacts = {
+  destino: string | null;
+  inicio: string | null;
+  fin: string | null;
+  /** Días de viaje si hay fechas (reales o ventana aproximada). */
+  dias: number | null;
+  presupuesto_cents: number | null;
+  reservado: boolean;
+};
+
+/** Datos del viaje que anclan la checklist: reales primero, planning de respaldo. */
+export function extractTripFacts(record: AnyRecord): TripFacts {
+  const meta = pickMeta(record);
+  const planning = meta.planning && typeof meta.planning === "object" ? (meta.planning as AnyRecord) : {};
+  const destino =
+    (typeof meta.destination === "string" && meta.destination.trim()) ||
+    (typeof planning.destinationTentative === "string" && planning.destinationTentative.trim()) ||
+    null;
+  const inicio = (typeof meta.startISO === "string" && meta.startISO) || (typeof planning.windowStartISO === "string" && planning.windowStartISO) || null;
+  const fin = (typeof meta.endISO === "string" && meta.endISO) || (typeof planning.windowEndISO === "string" && planning.windowEndISO) || null;
+  let dias: number | null = null;
+  if (inicio && fin) {
+    const ms = new Date(fin.slice(0, 10)).getTime() - new Date(inicio.slice(0, 10)).getTime();
+    if (Number.isFinite(ms) && ms >= 0) dias = Math.round(ms / 86400000) + 1;
+  }
+  const budget = Number(planning.budgetCents);
+  return {
+    destino,
+    inicio,
+    fin,
+    dias,
+    presupuesto_cents: Number.isFinite(budget) && budget > 0 ? Math.round(budget) : null,
+    reservado: Boolean(meta.booking),
+  };
+}
+
+/**
+ * Items de la checklist de VIAJE, deterministas y ANCLADOS (regla del
+ * propietario: cada ítem nace de un dato, un hueco o un evento; 8 es techo,
+ * no cuota — nada de «llevar gafas de sol»). Orden de inserción = prioridad
+ * de supervivencia al corte: huecos → destino → duración → universales.
+ */
+export function buildPrepareTripItems(facts: TripFacts): PrepareVisitChecklistItem[] {
+  const items: PrepareVisitChecklistItem[] = [];
+
+  if (!facts.destino) {
+    items.push({ key: "missing:destination", label: "Definir el destino", reason: "El viaje aún no tiene destino guardado; visado, salud y divisa dependen de él." });
+  }
+  if (!facts.inicio || !facts.fin) {
+    items.push({ key: "missing:dates", label: "Cerrar la ventana de fechas", reason: "Sin fechas no se puede reservar ni calcular el equipaje." });
+  }
+  if (!facts.reservado) {
+    items.push({ key: "missing:booking", label: "Reservar transporte y alojamiento", reason: "El registro no tiene reserva confirmada todavía." });
+  }
+
+  if (facts.destino) {
+    items.push(
+      { key: "dest:visa", label: `Comprobar si ${facts.destino} exige visado o autorización`, reason: `Destino guardado: ${facts.destino}.` },
+      { key: "dest:health", label: `Comprobar recomendaciones sanitarias para ${facts.destino}`, reason: "Vacunas o seguro obligatorio dependen del destino guardado." },
+      { key: "dest:currency", label: `Comprobar moneda y medios de pago en ${facts.destino}`, reason: "Divisa y efectivo dependen del destino guardado." },
+      { key: "dest:plug", label: `Comprobar el tipo de enchufe en ${facts.destino}`, reason: "El adaptador depende del destino guardado." },
+    );
+  }
+
+  if (facts.dias != null && facts.dias > 5) {
+    items.push({ key: "fact:laundry", label: "Prever lavandería o maleta grande", reason: `El viaje guardado dura ${facts.dias} días.` });
+  } else if (facts.dias != null && facts.dias <= 3) {
+    items.push({ key: "fact:carryon", label: "Valorar solo equipaje de mano", reason: `El viaje guardado dura ${facts.dias} días.` });
+  }
+
+  items.push(
+    { key: "doc:id", label: "Revisar vigencia de DNI/pasaporte", reason: "Documentación imprescindible para cualquier viaje." },
+    { key: "money:bank", label: "Avisar al banco y llevar segundo medio de pago", reason: "Evita bloqueos de tarjeta fuera de tu zona habitual." },
+    { key: "home:leave", label: "Dejar la casa lista (llaves, luces, plantas)", reason: "Cierre de casa antes de la salida." },
+  );
+
+  return items
+    .filter((item, index, arr) => arr.findIndex((other) => other.key === item.key || other.label === item.label) === index)
+    .slice(0, 8);
+}
+
+/**
+ * preparar_viaje(id): checklist de viaje adjunta al registro (RecordTask
+ * trip_checklist, diario idempotente — mismo mecanismo que la visita) +
+ * huella en el EventLog. ADITIVA y fuera de WRITE_TOOLS a propósito, como
+ * preparar_visita (el precedente manda sobre la línea «con confirmación» del
+ * diseño: crear un checklist no destruye ni expone nada).
+ */
+export async function prepareTrip(id: string, token: string, deps: PrepareVisitDeps = defaultPrepareVisitDeps): Promise<unknown> {
+  const recordId = String(id || "").trim();
+  if (!recordId) return { error: "preparar_viaje necesita id de viaje" };
+
+  const record = (await deps.apiGet(`/api/records/${encodeURIComponent(recordId)}?type=holiday`, token)) as AnyRecord;
+  if (record?.error) return { error: `viaje no preparable (${recordId}): ${record.error}. Revisa que sea un id propio.` };
+  if (record?.type !== "holiday") return { error: "preparar_viaje solo admite viajes (holiday)" };
+  const meta = pickMeta(record);
+  if (meta.shared || meta.readOnly) return { error: "solo puedo preparar viajes propios, no compartidos" };
+
+  const facts = extractTripFacts(record);
+  const items = buildPrepareTripItems(facts);
+
+  let taskId: string | null = null;
+  const user = await deps.userFromToken(token);
+  if (user?.userId) {
+    const observedAt = deps.now();
+    await deps.createEvent({
+      userId: user.userId,
+      recordType: "holiday",
+      recordId,
+      eventType: "trip_prepared",
+      source: "bot",
+      idempotencyKey: tripPreparedEventKey(recordId, observedAt),
+      payload: { recordTitle: record.title ?? "Viaje" },
+      observedAt,
+    });
+    if (deps.createChecklist) {
+      try {
+        const task = await deps.createChecklist(user.userId, {
+          recordType: "holiday",
+          recordId,
+          title: `Checklist de viaje: ${String(record.title ?? "Viaje").slice(0, 120)}`,
+          items,
+          kind: "trip_checklist",
+        });
+        taskId = task.id;
+      } catch (err) {
+        console.error("[bot-tools] no se pudo crear checklist de viaje:", err);
+      }
+    }
+  }
+
+  return {
+    type: "holiday",
+    id: recordId,
+    viaje: {
+      titulo: record.title ?? null,
+      destino: facts.destino,
+      inicio: facts.inicio,
+      fin: facts.fin,
+      dias: facts.dias,
+      presupuesto_eur: facts.presupuesto_cents != null ? Math.round(facts.presupuesto_cents) / 100 : null,
+      reservado: facts.reservado,
+    },
+    datos_que_faltan: [
+      !facts.destino ? "destino" : null,
+      !facts.inicio || !facts.fin ? "fechas" : null,
+      !facts.reservado ? "reserva" : null,
+    ].filter(Boolean),
+    items,
+    taskId,
+    provenance: "ficha_guardada_del_usuario",
+  };
+}
+
 // Fase 0 food OFF (2026-08-09): resolveCoords y las tools de comida se retiraron
 // con la vertical (ver tool-defs.ts).
 
@@ -563,6 +719,10 @@ export async function runTool(name: string | undefined, argsJson: string | undef
       case "preparar_visita": {
         const id = String(args.id || "");
         return cap(JSON.stringify(await prepareVisit(id, token)), 5000);
+      }
+      case "preparar_viaje": {
+        const id = String(args.id || "");
+        return cap(JSON.stringify(await prepareTrip(id, token)), 5000);
       }
       case "tendencias": {
         const source = args.source ? `&source=${encodeURIComponent(String(args.source))}` : "";

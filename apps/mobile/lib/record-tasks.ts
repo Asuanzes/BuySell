@@ -25,12 +25,14 @@ type RecordTaskDto = {
  */
 export async function fetchLatestVisitChecklist(
   recordType: RecordType,
-  recordId: string
+  recordId: string,
+  // C8: los viajes usan su propio kind; el default conserva el contrato de la visita.
+  kind: "visit_checklist" | "trip_checklist" = "visit_checklist"
 ): Promise<Checklist | null> {
   const { items } = await api<{ items: RecordTaskDto[] }>(
     `/api/records/${recordId}/tasks?type=${encodeURIComponent(recordType)}`
   );
-  const latest = items.find((task) => task.kind === "visit_checklist");
+  const latest = items.find((task) => task.kind === kind);
   return latest ? toChecklist(latest) : null;
 }
 

@@ -121,6 +121,19 @@ test("visit checklist creation is idempotent per UTC day", async () => {
   assert.equal(second.items[0].label, "Pedir gastos");
 });
 
+test("C8: el checklist de VIAJE es independiente del de visita el mismo día (idempotencia por kind)", async () => {
+  const db = makeDb();
+  const deps = { prisma: db as any, ownsRecord: async () => true, now: () => new Date("2026-08-10T08:00:00.000Z") };
+  const visit = await createVisitChecklistForRecord("u1", { recordType: "holiday", recordId: "h1", items: [{ label: "A" }] }, deps);
+  const trip = await createVisitChecklistForRecord("u1", { recordType: "holiday", recordId: "h1", items: [{ label: "B" }], kind: "trip_checklist" }, deps);
+  const tripAgain = await createVisitChecklistForRecord("u1", { recordType: "holiday", recordId: "h1", items: [{ label: "C" }], kind: "trip_checklist" }, deps);
+
+  assert.notEqual(visit.id, trip.id);
+  assert.equal(trip.id, tripAgain.id);
+  assert.equal(db.tasks.length, 2);
+  assert.equal(trip.title, "Checklist de viaje");
+});
+
 test("items can be toggled and custom items are appended", async () => {
   const db = makeDb();
   const deps = { prisma: db as any, ownsRecord: async () => true, now: () => new Date("2026-08-10T08:00:00.000Z") };

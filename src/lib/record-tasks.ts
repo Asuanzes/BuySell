@@ -6,7 +6,10 @@ import { prisma as defaultPrisma } from "@/lib/db";
 import { createRecordEvent } from "@/lib/record-events";
 import { ownsRecord } from "@/lib/records/access";
 
-export type RecordTaskKind = "visit_checklist" | "followup";
+export type RecordTaskKind = "visit_checklist" | "trip_checklist" | "followup";
+
+/** Kinds de checklist DIARIO idempotente (uno por día UTC y registro). */
+export type DailyChecklistKind = "visit_checklist" | "trip_checklist";
 
 export type StructuredTaskItemInput = {
   key?: string;
@@ -84,8 +87,8 @@ export function visitChecklistDoneEventKey(taskId: string): string {
 }
 
 export function normalizeRecordTaskKind(value: unknown): RecordTaskKind {
-  if (value === "visit_checklist" || value === "followup") return value;
-  throw new RecordTaskApiError(400, "kind debe ser visit_checklist o followup");
+  if (value === "visit_checklist" || value === "trip_checklist" || value === "followup") return value;
+  throw new RecordTaskApiError(400, "kind debe ser visit_checklist, trip_checklist o followup");
 }
 
 export function normalizeRecordTaskType(value: unknown): RecordType {
@@ -163,9 +166,12 @@ export async function createRecordTask(
 
 export async function createVisitChecklistForRecord(
   userId: string,
-  input: { recordType: RecordType; recordId: string; title?: string; items: StructuredTaskItemInput[] },
+  input: { recordType: RecordType; recordId: string; title?: string; items: StructuredTaskItemInput[]; kind?: DailyChecklistKind },
   deps?: Deps
 ): Promise<RecordTaskView> {
+  // C8: mismo mecanismo diario idempotente para el checklist de VIAJE
+  // (kind trip_checklist); el default conserva el contrato de la visita.
+  const kind: DailyChecklistKind = input.kind ?? "visit_checklist";
   await assertOwnsRecord(userId, input.recordType, input.recordId, deps);
   const client = db(deps);
   const now = deps?.now?.() ?? new Date();
@@ -175,7 +181,7 @@ export async function createVisitChecklistForRecord(
       userId,
       recordType: input.recordType,
       recordId: input.recordId,
-      kind: "visit_checklist",
+      kind,
       createdAt: { gte: range.gte, lt: range.lt },
     },
     include: includeItems(),
@@ -187,8 +193,8 @@ export async function createVisitChecklistForRecord(
     {
       recordType: input.recordType,
       recordId: input.recordId,
-      kind: "visit_checklist",
-      title: input.title ?? "Checklist de visita",
+      kind,
+      title: input.title ?? (kind === "trip_checklist" ? "Checklist de viaje" : "Checklist de visita"),
       items: input.items,
     },
     deps
@@ -291,12 +297,12 @@ async function maybeMarkTaskCompleted(taskId: string, userId: string, deps?: Dep
   const allDone = task.items.length > 0 && task.items.every((item: RecordTaskItemView) => item.done);
   const completedAt = allDone ? (task.completedAt ?? (deps?.now?.() ?? new Date())) : null;
   await client.recordTask.update({ where: { id: task.id }, data: { completedAt } });
-  if (allDone && task.kind === "visit_checklist") {
+  if (allDone && (task.kind === "visit_checklist" || task.kind === "trip_checklist")) {
     await (deps?.createEvent ?? createRecordEvent)({
       userId,
       recordType: normalizeRecordTaskType(task.recordType),
       recordId: task.recordId,
-      eventType: "visit_checklist_done",
+      eventType: task.kind === "trip_checklist" ? "trip_checklist_done" : "visit_checklist_done",
       source: "bot",
       idempotencyKey: visitChecklistDoneEventKey(task.id),
       payload: { taskId: task.id, checklistTitle: task.title },

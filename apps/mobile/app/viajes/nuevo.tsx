@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
-import { Stack, router } from "expo-router";
+import { Stack, router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Calendar, type DateData } from "react-native-calendars";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -208,6 +208,10 @@ export default function NewTrip() {
   const { th } = useTheme();
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
+  // C8: si se llega desde un viaje EN ORGANIZACIÓN, la reserva completa esa
+  // misma fila (holidayId) y el buscador arranca con su destino tentativo (q).
+  const params = useLocalSearchParams<{ holidayId?: string; q?: string }>();
+  const organizingHolidayId = typeof params.holidayId === "string" && params.holidayId ? params.holidayId : null;
   // Locale del calendario sincronizado con el idioma; también alimenta fmtDay y
   // se usa como `key` del <Calendar> (fuerza remount al cambiar idioma).
   const calLang = useCalendarLocale();
@@ -223,7 +227,7 @@ export default function NewTrip() {
   const wantTransfer = pkg === "flight_hotel_transfer";
 
   // Paso 1
-  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeQuery, setPlaceQuery] = useState(() => (typeof params.q === "string" ? params.q : ""));
   const [places, setPlaces] = useState<Place[]>([]);
   const [searching, setSearching] = useState(false);
   const [dest, setDest] = useState<Place | null>(null);
@@ -692,7 +696,11 @@ export default function NewTrip() {
       const { record: saved, booking } = await api<{
         record: { id: string } | null;
         booking: { hotelRef: string | null; flightRef: string | null };
-      }>("/api/travel/book", { method: "POST", body: JSON.stringify({ record }) });
+      }>("/api/travel/book", {
+        method: "POST",
+        // C8: la reserva desde un viaje organizándose completa la MISMA fila.
+        body: JSON.stringify(organizingHolidayId ? { record, holidayId: organizingHolidayId } : { record }),
+      });
       // Confirmación con modal de la app (no Alert nativo).
       setBooked({ id: saved?.id ?? null, hotelRef: booking.hotelRef ?? "", flightRef: booking.flightRef });
     } catch (e) {
@@ -1037,6 +1045,17 @@ export default function NewTrip() {
                 }}
               />
             </View>
+            {/* C8: bifurcación temprana — quien AÚN no tiene fechas organiza el
+                viaje (registro en estado Organizando) en vez de forzar fechas.
+                Oculto si ya venimos de un viaje organizándose (evita el bucle). */}
+            {!organizingHolidayId ? (
+              <Pressable onPress={() => router.push("/viajes/organizar" as never)} style={styles.linkRow} hitSlop={6}>
+                <Ionicons name="bulb-outline" size={15} color={th.accent} />
+                <Text style={{ color: th.accent, fontSize: 13, fontFamily: fonts.bodySemibold }}>
+                  {t("trip.organize_link")}
+                </Text>
+              </Pressable>
+            ) : null}
 
             <Text style={[styles.label, { color: th.textMuted, marginTop: 6 }]}>
               {wantHotel ? t("trip.travelers_rooms") : t("trip.travelers")}

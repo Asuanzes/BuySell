@@ -432,7 +432,10 @@
     "compare_hint": "Choose 2 or 3 properties",
     "compare_cta": "Compare ({{count}})",
     "compare_selected_label": "{{title}} selected for comparison",
-    "compare_unselected_label": "{{title}} not selected for comparison"
+    "compare_unselected_label": "{{title}} not selected for comparison",
+    "hol_all": "All",
+    "hol_organizing": "Organizing",
+    "hol_booked": "Booked"
   },
   "compare": {
     "title": "Compare properties",
@@ -703,7 +706,12 @@
       "booking_outcome_no": "No",
       "booking_outcome_later": "Not yet",
       "row_transport_return": "Return flight",
-      "view_return_flight": "Book return"
+      "view_return_flight": "Book return",
+      "status_organizing": "Organizing",
+      "planning_title": "Being organized",
+      "planning_window": "Approximate window",
+      "planning_budget": "Budget",
+      "planning_cta": "Search flights & hotel"
     },
     "job": {
       "row_company": "Company",
@@ -883,7 +891,21 @@
     "nights_one": "{{count}} night",
     "nights_other": "{{count}} nights",
     "round_trip": "Round trip",
-    "one_way": "One way"
+    "one_way": "One way",
+    "organize_link": "No dates yet? Organize the trip",
+    "organize_title": "Organize trip",
+    "organize_hint": "Jot the trip down before booking: a tentative destination and, if you want, a date window and a budget. Booking later will complete this same record.",
+    "organize_destination": "Destination (tentative)",
+    "organize_destination_ph": "Japan, Rome, the coast…",
+    "organize_window": "Approximate date window",
+    "organize_window_optional": "Optional: tap the calendar if you have dates in mind",
+    "organize_window_end": "Now tap the window's last day",
+    "organize_window_clear": "Clear window",
+    "organize_budget": "Approximate budget (€)",
+    "organize_budget_ph": "1500",
+    "organize_cta": "Create trip in organization",
+    "organize_error": "Couldn't create the trip",
+    "organize_record_title": "Trip to {{destination}}"
   },
   "travel": {
     "services": "Amenities",

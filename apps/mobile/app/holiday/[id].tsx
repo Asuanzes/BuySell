@@ -25,9 +25,19 @@ import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
 import { RelatedChatsBlock } from "@/components/records/RelatedChatsBlock";
+import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
 import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
+import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone, setChecklistSchedule } from "@/lib/record-tasks";
+
+/** meta.planning del viaje EN ORGANIZACIÓN (C8). */
+type TripPlanning = {
+  destinationTentative?: string | null;
+  windowStartISO?: string | null;
+  windowEndISO?: string | null;
+  budgetCents?: number | null;
+};
 
 type Outcome = "yes" | "no" | "later";
 
@@ -67,6 +77,52 @@ export default function HolidayDetail() {
     onError: (e) =>
       Alert.alert(t("notes.error"), e instanceof Error ? e.message : String(e)),
   });
+  // C8: checklist de VIAJE (kind trip_checklist), solo del dueño; el bloque
+  // desaparece hasta que el bot la crea con preparar_viaje.
+  const checklistQ = useRecord(
+    () => fetchLatestVisitChecklist("holiday", id!, "trip_checklist"),
+    [id, !!record && !isReadOnly],
+    { enabled: !!id && !!record && !isReadOnly }
+  );
+
+  async function onChecklistFailure(e: unknown) {
+    await checklistQ.refetch();
+    Alert.alert(t("checklist.error"), e instanceof Error ? e.message : String(e));
+  }
+
+  async function toggleChecklistItem(itemId: string, done: boolean) {
+    const taskId = checklistQ.data?.id;
+    if (!taskId) return;
+    try {
+      await setChecklistItemDone(taskId, itemId, done);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
+
+  async function addOwnChecklistItem(label: string) {
+    const taskId = checklistQ.data?.id;
+    if (!taskId) return;
+    try {
+      await addChecklistItem(taskId, label);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
+
+  // Fecha de SALIDA como cita (C6i4): aparece en la pantalla Citas del rail.
+  async function scheduleChecklist(scheduledOn: string | null) {
+    const taskId = checklistQ.data?.id;
+    if (!taskId) return;
+    try {
+      await setChecklistSchedule(taskId, scheduledOn);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
   const hasBookingActions = Boolean(
     accommodation?.affiliateUrl || transport?.affiliateUrl || transportReturn?.affiliateUrl
   );
@@ -166,6 +222,8 @@ export default function HolidayDetail() {
   }
 
   const destination = metaField<string | null>(record, "destination", null);
+  const planning = metaField<TripPlanning | null>(record, "planning", null);
+  const isOrganizing = Boolean(planning) && record.status !== "BOOKED";
   const transfer = metaField<TransportLeg | null>(record, "transfer", null);
   const tripType = metaField<string | null>(record, "tripType", null);
   const occupancy = metaField<{ adults: number; children: number[] }[] | null>(record, "occupancy", null);
@@ -176,6 +234,8 @@ export default function HolidayDetail() {
   const statusLabel =
     record.status === "BOOKED"
       ? t("detail.holiday.status_booked")
+      : isOrganizing
+      ? t("detail.holiday.status_organizing")
       : record.status === "PLANNING"
       ? t("detail.holiday.status_planning")
       : null;
@@ -266,6 +326,53 @@ export default function HolidayDetail() {
             ))}
           </View>
         )}
+
+        {/* C8: viaje EN ORGANIZACIÓN — lo tentativo y el paso siguiente. */}
+        {isOrganizing && !isReadOnly ? (
+          <View style={[styles.card, { backgroundColor: th.surface, borderColor: th.border }]}>
+            <Text style={[styles.planningTitle, { color: th.textMuted }]}>{t("detail.holiday.planning_title")}</Text>
+            {planning?.windowStartISO ? (
+              <View style={styles.row}>
+                <Text style={[styles.rowKey, { color: th.textSubtle }]}>{t("detail.holiday.planning_window")}</Text>
+                <Text style={[styles.rowVal, { color: th.text }]}>
+                  {planning.windowStartISO}
+                  {planning.windowEndISO && planning.windowEndISO !== planning.windowStartISO ? ` → ${planning.windowEndISO}` : ""}
+                </Text>
+              </View>
+            ) : null}
+            {planning?.budgetCents != null ? (
+              <View style={styles.row}>
+                <Text style={[styles.rowKey, { color: th.textSubtle }]}>{t("detail.holiday.planning_budget")}</Text>
+                <Text style={[styles.rowVal, { color: th.text }]}>{formatMoney(planning.budgetCents, "EUR")}</Text>
+              </View>
+            ) : null}
+            <Pressable
+              onPress={() =>
+                router.push(
+                  `/viajes/nuevo?holidayId=${id}&q=${encodeURIComponent(planning?.destinationTentative ?? destination ?? "")}` as never
+                )
+              }
+              accessibilityRole="button"
+              style={[styles.outlineBtn, { borderColor: th.accent }]}
+            >
+              <Ionicons name="airplane-outline" size={18} color={th.accent} />
+              <Text style={{ color: th.accent, fontFamily: fonts.bodySemibold }}>{t("detail.holiday.planning_cta")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Checklist de viaje (C8): la crea el bot con preparar_viaje; marcable aquí. */}
+        {!isReadOnly && checklistQ.data ? (
+          <RecordChecklistBlock
+            checklist={checklistQ.data}
+            loading={checklistQ.loading}
+            error={checklistQ.error ? t("checklist.error") : null}
+            onToggleItem={(itemId, done) => void toggleChecklistItem(itemId, done)}
+            onAddItem={(label) => void addOwnChecklistItem(label)}
+            onSchedule={(scheduledOn) => void scheduleChecklist(scheduledOn)}
+            onRetry={() => void checklistQ.refetch()}
+          />
+        ) : null}
 
         {id ? (
           <RelatedChatsBlock
@@ -380,6 +487,7 @@ const styles = StyleSheet.create({
   rowKey: { fontSize: 13 },
   rowVal: { fontSize: 13, fontFamily: fonts.bodySemibold, flexShrink: 1, textAlign: "right" },
   bookingSection: { marginTop: 8 },
+  planningTitle: { fontSize: 12, fontFamily: fonts.bodySemibold, marginBottom: 4 },
   disclosure: { fontSize: 11, lineHeight: 15, marginBottom: 2 },
   outlineBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 46, borderRadius: 10, borderWidth: 1, marginTop: 10 },
   outcomeBox: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 12, gap: 10 },
