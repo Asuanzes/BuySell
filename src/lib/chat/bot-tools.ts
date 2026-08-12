@@ -486,6 +486,52 @@ export async function prepareVisit(id: string, token: string, deps: PrepareVisit
 // Fase 0 food OFF (2026-08-09): resolveCoords y las tools de comida se retiraron
 // con la vertical (ver tool-defs.ts).
 
+/** Tipos con precio vigilable — los mismos que valida POST /api/alerts. */
+const ALERT_RECORD_TYPES = ["property", "crypto", "market"] as const;
+const ALERT_KINDS = ["PRICE_BELOW", "PRICE_ABOVE", "PRICE_DROP_PCT", "STATUS_CHANGE"] as const;
+
+export type CreateAlertBody = {
+  recordType: (typeof ALERT_RECORD_TYPES)[number];
+  recordId: string;
+  kind: (typeof ALERT_KINDS)[number];
+  field: "price" | "rent";
+  threshold?: number;
+};
+
+/**
+ * Mapea los argumentos del LLM al body EXACTO de POST /api/alerts. Pura y
+ * exportada para testear la parte peligrosa sin red: euros→céntimos SOLO en
+ * umbrales absolutos (PRICE_DROP_PCT viaja como entero 1-99 tal cual), renta
+ * solo en inmuebles y STATUS_CHANGE solo en inmuebles. La API re-valida todo
+ * (ownsRecord, cuota, condición ya cumplida): esto es defensa en profundidad
+ * y mensajes de error que el bot pueda explicar.
+ */
+export function buildCreateAlertBody(args: Record<string, any>): { body: CreateAlertBody } | { error: string } {
+  const type = String(args.type || "") as CreateAlertBody["recordType"];
+  const id = String(args.id || "").trim();
+  const kind = String(args.kind || "") as CreateAlertBody["kind"];
+  if (!ALERT_RECORD_TYPES.includes(type) || !id) {
+    return { error: "type/id no válidos: la alerta necesita un registro propio de inmuebles, cripto o mercados (libros, viajes y empleos no tienen precio vigilable)" };
+  }
+  if (!ALERT_KINDS.includes(kind)) return { error: "kind debe ser PRICE_BELOW|PRICE_ABOVE|PRICE_DROP_PCT|STATUS_CHANGE" };
+  const field = args.campo === "renta" ? "rent" : "price";
+  if (field === "rent" && type !== "property") return { error: "solo los inmuebles tienen renta mensual vigilable" };
+  if (kind === "STATUS_CHANGE") {
+    if (type !== "property") return { error: "el cambio de estado (vendido/retirado) solo aplica a inmuebles" };
+    return { body: { recordType: type, recordId: id, kind, field } };
+  }
+  if (kind === "PRICE_DROP_PCT") {
+    const pct = Number(args.porcentaje);
+    if (!Number.isInteger(pct) || pct < 1 || pct > 99) return { error: "porcentaje debe ser un entero entre 1 y 99" };
+    return { body: { recordType: type, recordId: id, kind, field, threshold: pct } };
+  }
+  const eur = Number(args.umbral_eur);
+  if (!Number.isFinite(eur) || eur <= 0) return { error: "umbral_eur debe ser un número positivo en euros" };
+  const cents = Math.round(eur * 100);
+  if (cents < 1) return { error: "umbral demasiado pequeño: el mínimo es 0,01 €" };
+  return { body: { recordType: type, recordId: id, kind, field, threshold: cents } };
+}
+
 /** Despacha UNA tool de la whitelist. Devuelve siempre un string (JSON) para el LLM. */
 export async function runTool(name: string | undefined, argsJson: string | undefined, token: string): Promise<string> {
   let args: Record<string, any> = {};
@@ -628,6 +674,14 @@ export async function runTool(name: string | undefined, argsJson: string | undef
           return cap(JSON.stringify(data), 2000);
         }
         return JSON.stringify({ error: "este tipo aún no admite edición desde el chat; guía al usuario a la ficha del registro" });
+      }
+      case "crear_alerta": {
+        const built = buildCreateAlertBody(args);
+        if ("error" in built) return JSON.stringify({ error: built.error });
+        // La API valida ownsRecord, cuota (402 con upgrade) y condición ya
+        // cumplida; el detail llega al LLM para que explique el motivo real.
+        const data = await apiSend("/api/alerts", "POST", built.body, token);
+        return cap(JSON.stringify(data), 2000);
       }
       case "compartidos_conmigo": {
         return cap(JSON.stringify(compactRecords(await apiGet("/api/records/shared", token))));

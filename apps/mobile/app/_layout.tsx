@@ -447,6 +447,17 @@ function AuthGate() {
             }}
           />
           <Stack.Screen
+            name="appointments"
+            options={{
+              headerShown: true,
+              headerBackTitle: t("common.back"),
+              headerTintColor: th.primary,
+              headerStyle: { backgroundColor: th.surface },
+              headerTitleStyle: { color: th.text, fontFamily: fonts.heading },
+              title: t("appointments.title"),
+            }}
+          />
+          <Stack.Screen
             name="decisions/index"
             options={{
               headerShown: true,

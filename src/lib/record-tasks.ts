@@ -33,6 +33,8 @@ export type RecordTaskView = {
   recordId: string;
   kind: string;
   title: string;
+  /** Fecha de la cita (00:00Z del día elegido) o null si no está citada. */
+  scheduledAt?: string | Date | null;
   createdAt: string | Date;
   updatedAt: string | Date;
   completedAt: string | Date | null;
@@ -191,6 +193,52 @@ export async function createVisitChecklistForRecord(
     },
     deps
   );
+}
+
+/**
+ * "YYYY-MM-DD" → Date a las 00:00Z de ese día, o null para quitar la cita.
+ * Solo día a propósito (D6-01 redujo el calendario a «vista de citas», no
+ * agenda con horas): guardar el día como fecha UTC pura evita que un 00:00
+ * local se corra de día al verse desde otra zona horaria.
+ */
+export function normalizeScheduledOn(value: unknown): Date | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new RecordTaskApiError(400, "scheduledOn debe ser YYYY-MM-DD o null");
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  // Rechaza fechas imposibles (2026-02-31 «rueda» a marzo en Date): la vuelta
+  // a ISO tiene que devolver el mismo día que entró.
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new RecordTaskApiError(400, "scheduledOn no es una fecha válida");
+  }
+  return date;
+}
+
+/** Pone o quita la fecha de cita de una tarea PROPIA. */
+export async function setRecordTaskSchedule(userId: string, taskId: string, scheduledOn: unknown, deps?: Deps): Promise<RecordTaskView> {
+  const scheduledAt = normalizeScheduledOn(scheduledOn);
+  const client = db(deps);
+  const task = await client.recordTask.findFirst({ where: { id: taskId, userId }, select: { id: true } });
+  if (!task) throw new RecordTaskApiError(404, "Not found");
+  return client.recordTask.update({ where: { id: task.id }, data: { scheduledAt }, include: includeItems() });
+}
+
+/**
+ * Citas del usuario: tareas con fecha, de los últimos 30 días en adelante,
+ * ordenadas por fecha. Las completadas SÍ salen: completedAt significa
+ * «checklist lleno», no «visita pasada» — ocultar una visita del domingo
+ * porque ya marcaste todo sería esconder la cita.
+ */
+export async function listScheduledTasks(userId: string, deps?: Deps): Promise<RecordTaskView[]> {
+  const now = deps?.now?.() ?? new Date();
+  const horizon = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  return db(deps).recordTask.findMany({
+    where: { userId, scheduledAt: { not: null, gte: horizon } },
+    orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
+    take: 100,
+    include: includeItems(),
+  });
 }
 
 export async function addRecordTaskItem(userId: string, taskId: string, label: string, reason?: string | null, deps?: Deps): Promise<RecordTaskItemView> {

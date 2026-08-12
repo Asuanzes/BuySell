@@ -22,6 +22,7 @@ import { categoryColor, RECORD_TYPE_CONFIG } from "@/lib/records/config";
 import { useAppStyle } from "@/lib/app-style-context";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { BooksByAuthor } from "@/components/BooksByAuthor";
+import { fetchBookSubcategories, type BookSubcategory } from "@/lib/book-subcategories";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { ReorderableRecordList } from "@/components/ReorderableRecordList";
 import { deleteRecord } from "@/lib/data/records-repository";
@@ -73,7 +74,23 @@ export default function RecordsScreen() {
   // sobre meta.operationType — no necesita endpoint nuevo. Se resetea al cambiar
   // de categoría.
   const [opFilter, setOpFilter] = useState<"ALL" | "SALE" | "RENT" | "RENT_TO_OWN">("ALL");
-  useEffect(() => { setEditing(false); setComparing(false); setCompareIds([]); setOpFilter("ALL"); }, [type]);
+  // C7: subcategorías personalizadas (solo libros). Filtro client-side por
+  // bookIds del servidor; AND con el resto de ejes.
+  const [bookSubcats, setBookSubcats] = useState<BookSubcategory[] | null>(null);
+  const [subcatFilter, setSubcatFilter] = useState<string | null>(null);
+  useEffect(() => { setEditing(false); setComparing(false); setCompareIds([]); setOpFilter("ALL"); setSubcatFilter(null); }, [type]);
+  // Refresh por FOCO (diseño C7 15/15): al volver de una ficha donde se
+  // asignaron o crearon subcategorías, los chips reflejan el cambio.
+  useFocusEffect(
+    useCallback(() => {
+      if (type !== "book") return;
+      let cancel = false;
+      fetchBookSubcategories()
+        .then((items) => { if (!cancel) setBookSubcats(items); })
+        .catch(() => { /* sin red los chips simplemente no cambian */ });
+      return () => { cancel = true; };
+    }, [type])
+  );
   useEffect(() => { if (records && records.length === 0) { setEditing(false); setComparing(false); setCompareIds([]); } }, [records]);
   useFocusEffect(
     useCallback(() => {
@@ -127,7 +144,7 @@ export default function RecordsScreen() {
    * puedan volver a responder distinto a la misma pregunta.
    */
   const showOpFilter = type === "property" && !editing;
-  const shown =
+  const shownAfterOp =
     showOpFilter && ordered && opFilter !== "ALL"
       ? ordered.filter((r) => {
           const op = metaField<string>(r, "operationType", "SALE");
@@ -136,6 +153,11 @@ export default function RecordsScreen() {
           return !isRentOperation(op);
         })
       : ordered;
+  // C7: eje de subcategoría en libros, AND con lo anterior; el modo edición cae
+  // a la lista plana sin filtro (guard !editing) para que borrar/arrastrar vea todo.
+  const showSubcatFilter = type === "book" && !editing && (bookSubcats?.length ?? 0) > 0;
+  const activeSubcat = showSubcatFilter && subcatFilter ? (bookSubcats ?? []).find((s) => s.id === subcatFilter) ?? null : null;
+  const shown = activeSubcat && shownAfterOp ? shownAfterOp.filter((r) => activeSubcat.bookIds.includes(r.id)) : shownAfterOp;
   const canCompareShown = type === "property" && !editing && shown != null && shown.length >= 2;
   const compareSelectedSet = useMemo(() => new Set(compareIds), [compareIds]);
   useEffect(() => {
@@ -219,6 +241,37 @@ export default function RecordsScreen() {
                 );
               })}
             </View>
+          )}
+
+          {!isChat && !isFood && showSubcatFilter && records && records.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.subcatBar, th.elevation.sm, { backgroundColor: th.surfaceRaised, borderColor: th.border }]}
+              contentContainerStyle={styles.subcatBarContent}
+            >
+              {[null, ...(bookSubcats ?? [])].map((subcat) => {
+                const id = subcat === null ? null : subcat.id;
+                const active = subcatFilter === id;
+                return (
+                  <Pressable
+                    key={id ?? "all"}
+                    onPress={() => setSubcatFilter(id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={[
+                      styles.opChip,
+                      { borderColor: active ? th.accent : "transparent" },
+                      active && { backgroundColor: th.accentSoft },
+                    ]}
+                  >
+                    <Text style={[styles.opChipText, { color: active ? th.accent : th.textMuted }]}>
+                      {subcat === null ? t("bookSubcats.filter_all") : subcat.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           )}
 
           {canCompareShown && !comparing && (
@@ -422,6 +475,17 @@ export default function RecordsScreen() {
             <Ionicons name="git-branch-outline" size={26} color={trendsColor} />
           </Pressable>
           <Pressable
+            onPress={() => router.navigate("/appointments" as never)}
+            accessibilityRole="button"
+            accessibilityLabel={t("appointments.title")}
+            style={[
+              styles.railItem,
+              { borderColor: "transparent" },
+            ]}
+          >
+            <Ionicons name="calendar-outline" size={26} color={trendsColor} />
+          </Pressable>
+          <Pressable
             onPress={() => router.navigate("/trends" as never)}
             accessibilityRole="button"
             accessibilityLabel={typeLabel("trends")}
@@ -519,6 +583,15 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   opChipText: { fontSize: 12, fontFamily: fonts.bodySemibold },
+  subcatBar: {
+    flexGrow: 0,
+    borderWidth: 1,
+    borderRadius: 18,
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  subcatBarContent: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
   compareStartWrap: { paddingHorizontal: 12, paddingTop: 6 },
   compareStart: {
     alignSelf: "flex-start",

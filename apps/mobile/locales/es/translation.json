@@ -182,7 +182,37 @@
     "progress_other": "{{done}} de {{count}} hechas",
     "all_done": "Todo comprobado",
     "add_placeholder": "Añadir comprobación…",
-    "error": "No se pudieron cargar las comprobaciones."
+    "error": "No se pudieron cargar las comprobaciones.",
+    "schedule_add": "Añadir fecha de visita",
+    "schedule_change": "Cambiar fecha de visita",
+    "schedule_on": "Visita: {{date}}",
+    "schedule_clear": "Quitar fecha de visita",
+    "schedule_title": "¿Qué día es la visita?"
+  },
+  "appointments": {
+    "title": "Citas",
+    "subtitle": "Tus visitas con fecha y su preparación",
+    "section_today": "Hoy",
+    "section_upcoming": "Próximas",
+    "section_past": "Pasadas",
+    "empty_title": "Sin citas",
+    "empty_desc": "Ponle fecha a una visita desde el checklist de su ficha y aparecerá aquí.",
+    "error_title": "No se pudieron cargar las citas",
+    "progress": "{{done}}/{{total}}",
+    "no_record": "Registro no disponible"
+  },
+  "bookSubcats": {
+    "filter_all": "Todas",
+    "card_title": "Subcategorías",
+    "card_add": "Añadir subcategoría",
+    "edit_label": "Editar subcategorías",
+    "sheet_title": "Subcategorías del libro",
+    "sheet_hint": "Marca las subcategorías de este libro o crea una nueva (máx. 40 caracteres).",
+    "create_placeholder": "Nueva subcategoría…",
+    "create_label": "Crear subcategoría",
+    "empty": "Aún no tienes subcategorías: crea la primera arriba.",
+    "delete_label": "Borrar {{name}}",
+    "error_generic": "No se pudo completar la operación."
   },
   "notes": {
     "title": "Tus notas",

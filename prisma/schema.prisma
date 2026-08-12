@@ -156,6 +156,8 @@ model User {
   decisions         Decision[]
   recordTasks       RecordTask[]
   recordNotes       RecordNote[]
+  bookSubcategories BookSubcategory[]
+  bookSubcategoryAssignments BookSubcategoryAssignment[]
 
   // Chat
   chatParticipations ConversationParticipant[]
@@ -609,8 +611,44 @@ model BookRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  subcategoryAssignments BookSubcategoryAssignment[]
+
   @@unique([ownerId, externalId, source])
   @@index([recordType])
+}
+
+// C7 subcategorías personalizadas de LIBROS (solo libros de momento, decisión
+// del propietario 2026-08-11 «a ver cómo funciona»). Nombre 1..40 tras trim
+// (VarChar 48 de holgura, patrón RecordTaskItem.key); único por usuario.
+model BookSubcategory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(48)
+  createdAt DateTime @default(now())
+
+  assignments BookSubcategoryAssignment[]
+
+  @@unique([userId, name])
+}
+
+// Tabla puente libro↔subcategoría. Lleva userId a propósito (Codex 7b5ad001):
+// BookRecord.ownerId es nullable/SetNull, así que la FK a bookId por sí sola
+// no impide asignar un libro ajeno — el owner-scoping se aplica en la API Y el
+// unique con userId es el target del skipDuplicates del merge de duplicados.
+model BookSubcategoryAssignment {
+  id            String          @id @default(cuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId        String
+  book          BookRecord      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  subcategoryId String
+  subcategory   BookSubcategory @relation(fields: [subcategoryId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+
+  @@unique([userId, bookId, subcategoryId])
+  @@index([userId, subcategoryId])
+  @@index([bookId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1374,6 +1412,11 @@ model RecordTask {
   recordId    String
   kind        String    @db.VarChar(32) // "visit_checklist" | "followup"
   title       String
+  // Fecha de la CITA (visita), solo día: se guarda a las 00:00Z del YYYY-MM-DD
+  // elegido y se muestra por sus partes de fecha UTC — así el día no se corre
+  // al cambiar de zona horaria. NO es createdAt: un checklist creado hoy puede
+  // citarse para el domingo (C6i4, vista de citas).
+  scheduledAt DateTime?
   completedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1381,6 +1424,7 @@ model RecordTask {
   items RecordTaskItem[]
 
   @@index([userId, recordType, recordId, createdAt(sort: Desc)])
+  @@index([userId, scheduledAt])
 }
 
 model RecordTaskItem {

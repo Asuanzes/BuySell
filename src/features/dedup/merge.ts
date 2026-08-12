@@ -170,10 +170,29 @@ export async function mergeRecords(
       rows.map((r) => r.currentValue).find((v) => v != null) ??
       (book?.averageRating != null ? Math.round(book.averageRating * 100) : null);
 
-    const [, updated, del] = await prisma.$transaction([
+    // C7: las subcategorías de los drops pasan al keep. Lectura previa + insert
+    // con skipDuplicates (ON CONFLICT DO NOTHING sobre el unique userId+bookId+
+    // subcategoryId): si el keep ya tenía la misma, no duplica. Las filas de los
+    // drops caen por cascada al borrar sus BookRecord.
+    const dropSubcategoryIds = [
+      ...new Set(
+        (
+          await prisma.bookSubcategoryAssignment.findMany({
+            where: { userId: ownerId, bookId: { in: drops } },
+            select: { subcategoryId: true },
+          })
+        ).map((a) => a.subcategoryId),
+      ),
+    ];
+
+    const [, , updated, del] = await prisma.$transaction([
       prisma.recordNote.updateMany({
         where: { userId: ownerId, recordType: "book", recordId: { in: drops } },
         data: { recordId: keep.id },
+      }),
+      prisma.bookSubcategoryAssignment.createMany({
+        data: dropSubcategoryIds.map((subcategoryId) => ({ userId: ownerId, bookId: keep.id, subcategoryId })),
+        skipDuplicates: true,
       }),
       prisma.bookRecord.update({
         where: { id: keep.id },

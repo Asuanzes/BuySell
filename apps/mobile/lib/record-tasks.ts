@@ -11,6 +11,7 @@ type RecordTaskDto = {
   recordId: string;
   kind: string;
   title: string;
+  scheduledAt: string | null;
   createdAt: string;
   completedAt: string | null;
   items: Array<{ id: string; label: string; reason: string | null; done: boolean; sortOrder: number }>;
@@ -38,12 +39,44 @@ function toChecklist(task: RecordTaskDto): Checklist {
     id: task.id,
     title: task.title,
     createdAt: task.createdAt,
+    scheduledAt: task.scheduledAt ?? null,
     completedAt: task.completedAt,
     items: task.items
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((item) => ({ id: item.id, label: item.label, reason: item.reason, done: item.done })),
   };
+}
+
+/**
+ * Fecha de la cita en "YYYY-MM-DD" o null. El servidor guarda el día a las
+ * 00:00Z y aquí se lee por las partes UTC del ISO: así el día elegido no se
+ * corre al cambiar de zona horaria.
+ */
+export function setChecklistSchedule(taskId: string, scheduledOn: string | null): Promise<unknown> {
+  return api(`/api/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ scheduledOn }),
+  });
+}
+
+export type Appointment = {
+  id: string;
+  recordType: string;
+  recordId: string;
+  kind: string;
+  title: string;
+  scheduledAt: string;
+  completedAt: string | null;
+  itemsTotal: number;
+  itemsDone: number;
+  recordTitle: string | null;
+};
+
+/** Vista de citas (C6i4): tareas con fecha, últimos 30 días en adelante. */
+export async function fetchAppointments(): Promise<Appointment[]> {
+  const { items } = await api<{ items: Appointment[] }>("/api/tasks");
+  return items;
 }
 
 export function setChecklistItemDone(taskId: string, itemId: string, done: boolean): Promise<unknown> {

@@ -45,7 +45,7 @@ import { HomeButton } from "@/components/HomeButton";
 import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
-import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone } from "@/lib/record-tasks";
+import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone, setChecklistSchedule } from "@/lib/record-tasks";
 import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
 import { track } from "@/lib/analytics";
 
@@ -171,6 +171,18 @@ export default function PropertyDetailScreen() {
     if (!taskId) return;
     try {
       await addChecklistItem(taskId, label);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
+
+  // Fecha de la CITA (C6i4): se guarda en la tarea y alimenta la vista /appointments.
+  async function scheduleChecklist(scheduledOn: string | null) {
+    const taskId = checklistQ.data?.id;
+    if (!taskId) return;
+    try {
+      await setChecklistSchedule(taskId, scheduledOn);
       await checklistQ.refetch();
     } catch (e) {
       await onChecklistFailure(e);
@@ -361,6 +373,7 @@ export default function PropertyDetailScreen() {
               error={checklistQ.error ? t("checklist.error") : null}
               onToggleItem={(itemId, done) => void toggleChecklistItem(itemId, done)}
               onAddItem={(label) => void addOwnChecklistItem(label)}
+              onSchedule={(scheduledOn) => void scheduleChecklist(scheduledOn)}
               onRetry={() => void checklistQ.refetch()}
             />
           </View>

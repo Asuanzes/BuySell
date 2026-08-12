@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Calendar, type DateData } from "react-native-calendars";
 import { useTranslation } from "react-i18next";
 
 import { fonts } from "@/lib/fonts";
+import { useCalendarLocale } from "@/lib/i18n/calendar-locales";
 import { useTheme } from "@/lib/theme";
 
 /** Contrato del servidor (RecordTask + RecordTaskItem). */
@@ -12,9 +14,29 @@ export type Checklist = {
   id: string;
   title: string;
   createdAt: string;
+  /** ISO de la cita (00:00Z del día elegido) o null; solo día, sin hora. */
+  scheduledAt?: string | null;
   completedAt?: string | null;
   items: ChecklistItem[];
 };
+
+/** "YYYY-MM-DD" de HOY en hora local (minDate del calendario de cita). */
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Día de la cita por partes UTC del ISO: el día elegido no se corre por zona horaria. */
+function fmtScheduledDay(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  return date.toLocaleDateString(locale === "en" ? "en-GB" : "es-ES", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
 
 export function RecordChecklistBlock({
   checklist,
@@ -22,6 +44,7 @@ export function RecordChecklistBlock({
   error = null,
   onToggleItem,
   onAddItem,
+  onSchedule,
   onRetry,
 }: {
   checklist: Checklist | null;
@@ -29,12 +52,16 @@ export function RecordChecklistBlock({
   error?: string | null;
   onToggleItem: (itemId: string, done: boolean) => void;
   onAddItem: (label: string) => void;
+  /** Pone/quita la fecha de cita ("YYYY-MM-DD" | null). Sin handler no hay fila de fecha. */
+  onSchedule?: (scheduledOn: string | null) => void;
   onRetry?: () => void;
 }) {
   const { th } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const calLang = useCalendarLocale();
   const [items, setItems] = useState<ChecklistItem[]>(checklist?.items ?? []);
   const [draft, setDraft] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Firma de lo que dice el SERVIDOR. Sincronizar contra `checklist` a secas
   // resetearía la marca optimista en cada render si el padre recrea el objeto,
@@ -96,6 +123,7 @@ export function RecordChecklistBlock({
   const total = items.length;
   const doneCount = items.filter((item) => item.done).length;
   const allDone = total > 0 && doneCount === total;
+  const scheduledYmd = checklist.scheduledAt ? checklist.scheduledAt.slice(0, 10) : null;
 
   return (
     <View style={[styles.container, { backgroundColor: th.surface, borderColor: th.border }, th.elevation.sm]}>
@@ -110,6 +138,64 @@ export function RecordChecklistBlock({
           {allDone ? t("checklist.all_done") : t("checklist.progress", { done: doneCount, count: total })}
         </Text>
       </View>
+
+      {onSchedule ? (
+        <View style={styles.scheduleRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={scheduledYmd ? t("checklist.schedule_change") : t("checklist.schedule_add")}
+            onPress={() => setPickerOpen(true)}
+            style={({ pressed }) => [styles.scheduleButton, pressed && { opacity: 0.7 }]}
+            hitSlop={6}
+          >
+            <Ionicons name="calendar-outline" size={16} color={scheduledYmd ? th.accent : th.primary} />
+            <Text style={[styles.scheduleLabel, { color: scheduledYmd ? th.text : th.primary }]}>
+              {checklist.scheduledAt
+                ? t("checklist.schedule_on", { date: fmtScheduledDay(checklist.scheduledAt, i18n.language) })
+                : t("checklist.schedule_add")}
+            </Text>
+          </Pressable>
+          {scheduledYmd ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t("checklist.schedule_clear")}
+              onPress={() => onSchedule(null)}
+              hitSlop={8}
+            >
+              <Ionicons name="close-circle-outline" size={18} color={th.textSubtle} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {onSchedule ? (
+        <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+          <Pressable style={[styles.pickerBackdrop]} onPress={() => setPickerOpen(false)} accessibilityRole="button">
+            <Pressable style={[styles.pickerCard, { backgroundColor: th.surface, borderColor: th.border }]} onPress={() => {}}>
+              <Text style={[styles.pickerTitle, { color: th.text }]}>{t("checklist.schedule_title")}</Text>
+              <Calendar
+                key={calLang}
+                minDate={todayISO()}
+                firstDay={1}
+                markedDates={scheduledYmd ? { [scheduledYmd]: { selected: true, selectedColor: th.accent } } : undefined}
+                onDayPress={(day: DateData) => {
+                  setPickerOpen(false);
+                  onSchedule(day.dateString);
+                }}
+                theme={{
+                  calendarBackground: th.surface,
+                  monthTextColor: th.text,
+                  dayTextColor: th.text,
+                  textDisabledColor: th.textSubtle,
+                  textSectionTitleColor: th.textMuted,
+                  arrowColor: th.accent,
+                  todayTextColor: th.accent,
+                }}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
 
       <View style={styles.items}>
         {items.map((item) => (
@@ -194,6 +280,12 @@ const styles = StyleSheet.create({
   headerTitleWrap: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 },
   headerTitle: { flex: 1, fontSize: 15, lineHeight: 20, fontFamily: fonts.bodySemibold },
   progress: { fontSize: 13, lineHeight: 18, fontFamily: fonts.body },
+  scheduleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 },
+  scheduleButton: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 28, flexShrink: 1 },
+  scheduleLabel: { fontSize: 13, lineHeight: 18, fontFamily: fonts.bodySemibold },
+  pickerBackdrop: { flex: 1, justifyContent: "center", padding: 22, backgroundColor: "rgba(0,0,0,0.4)" },
+  pickerCard: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 6 },
+  pickerTitle: { fontSize: 15, fontFamily: fonts.bodySemibold, paddingHorizontal: 4, paddingTop: 2 },
   items: { gap: 2 },
   itemRow: {
     flexDirection: "row",

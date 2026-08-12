@@ -19,11 +19,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { type BaseRecord, type Book, metaField } from "@nidokey/shared";
 import { api } from "@/lib/api";
+import { fetchBookSubcategories, type BookSubcategory } from "@/lib/book-subcategories";
 import { useRecord } from "@/lib/hooks/useRecord";
 import { useTheme } from "@/lib/theme";
 import { ShareOpenActions } from "@/components/ShareOpenActions";
 import { ShareRecordSheet } from "@/components/ShareRecordSheet";
 import { AddToDecisionSheet } from "@/components/AddToDecisionSheet";
+import { BookSubcategoriesSheet } from "@/components/BookSubcategoriesSheet";
 
 /**
  * Ficha de un libro guardado. Lee el `Book` completo de `meta.book` (lo guarda
@@ -48,6 +50,21 @@ export default function BookDetail() {
   const [editingNote, setEditingNote] = useState(false);
   const [draftNote, setDraftNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  // C7: subcategorías personalizadas (solo libros propios).
+  const [subcats, setSubcats] = useState<BookSubcategory[] | null>(null);
+  const [subcatsOpen, setSubcatsOpen] = useState(false);
+  const isReadOnly = record
+    ? metaField<boolean>(record, "shared", false) === true || metaField<boolean>(record, "readOnly", false) === true
+    : false;
+
+  useEffect(() => {
+    if (!record || isReadOnly) return;
+    let cancel = false;
+    fetchBookSubcategories()
+      .then((items) => { if (!cancel) setSubcats(items); })
+      .catch(() => { /* sin red: el bloque simplemente no se pinta */ });
+    return () => { cancel = true; };
+  }, [record, isReadOnly]);
 
   // Inicializa la nota desde el record UNA sola vez (primer load). No se reasigna
   // en revalidaciones por foco para no pisar una edición en curso del usuario.
@@ -274,7 +291,52 @@ export default function BookDetail() {
           )}
         </View>
 
+        {/* C7: subcategorías personalizadas del usuario (solo libros propios). */}
+        {!isReadOnly ? (
+          <View style={[styles.card, { backgroundColor: th.surface, borderColor: th.border }]}>
+            <Pressable
+              onPress={() => setSubcatsOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t("bookSubcats.edit_label")}
+            >
+              <View style={styles.noteHeader}>
+                <Text style={[styles.descTitle, { color: th.textMuted, marginBottom: 0 }]}>{t("bookSubcats.card_title")}</Text>
+                <Ionicons name="pencil" size={13} color={th.textSubtle} />
+              </View>
+              {(() => {
+                const assigned = (subcats ?? []).filter((s) => s.bookIds.includes(id!));
+                return assigned.length > 0 ? (
+                  <View style={styles.subcatChips}>
+                    {assigned.map((s) => (
+                      <View key={s.id} style={[styles.subcatChip, { backgroundColor: th.surfaceRaised, borderColor: th.border }]}>
+                        <Text style={[styles.subcatChipText, { color: th.text }]} numberOfLines={1}>
+                          {s.name}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={[styles.addNoteRow, { marginTop: 6 }]}>
+                    <Ionicons name="add-circle-outline" size={18} color={th.primary} />
+                    <Text style={[styles.addNoteText, { color: th.primary }]}>{t("bookSubcats.card_add")}</Text>
+                  </View>
+                );
+              })()}
+            </Pressable>
+          </View>
+        ) : null}
+
       </ScrollView>
+      <BookSubcategoriesSheet
+        visible={subcatsOpen}
+        bookId={id!}
+        onClose={(changed) => {
+          setSubcatsOpen(false);
+          if (changed) {
+            fetchBookSubcategories().then(setSubcats).catch(() => {});
+          }
+        }}
+      />
       <ShareRecordSheet
         visible={shareChatOpen}
         onClose={() => setShareChatOpen(false)}
@@ -354,5 +416,8 @@ const styles = StyleSheet.create({
   noteHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   addNoteRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 2 },
   addNoteText: { fontSize: 14, fontFamily: fonts.bodySemibold },
+  subcatChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  subcatChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, maxWidth: "100%" },
+  subcatChipText: { fontSize: 12, fontFamily: fonts.bodySemibold },
   heroActions: { alignSelf: "flex-end", marginTop: "auto" },
 });

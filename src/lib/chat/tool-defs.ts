@@ -181,6 +181,26 @@ export const BOT_TOOLS = [
   {
     type: "function",
     function: {
+      name: "crear_alerta",
+      description:
+        "Crea una alerta de precio sobre un registro PROPIO con precio vigilable (inmuebles, criptos, mercados): al cumplirse avisa con un DM del asistente y push. kind: PRICE_BELOW (baja de X €), PRICE_ABOVE (sube de X €), PRICE_DROP_PCT (cae un X % desde ahora), STATUS_CHANGE (vendido/retirado, solo inmuebles). ⚠️ REQUIERE confirmación explícita del usuario antes de llamar.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["property", "crypto", "market"] },
+          id: { type: "string", description: "Id propio del registro (de listar_registros o de un enlace [[tipo:id|Título]])" },
+          kind: { type: "string", enum: ["PRICE_BELOW", "PRICE_ABOVE", "PRICE_DROP_PCT", "STATUS_CHANGE"] },
+          umbral_eur: { type: "number", description: "Solo PRICE_BELOW/PRICE_ABOVE: umbral en EUROS (p.ej. 150000 = 150.000 €)" },
+          porcentaje: { type: "number", description: "Solo PRICE_DROP_PCT: caída en porcentaje ENTERO entre 1 y 99" },
+          campo: { type: "string", enum: ["precio", "renta"], description: "Solo inmuebles mixtos: vigilar el precio de venta o la renta mensual (por defecto precio)" },
+        },
+        required: ["type", "id", "kind"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "compartidos_conmigo",
       description: "Lista los registros que OTROS usuarios han compartido conmigo (solo lectura).",
       parameters: { type: "object", properties: {} },
@@ -209,4 +229,4 @@ export const BOT_TOOLS_ANTHROPIC = BOT_TOOLS.map((t) => ({
 }));
 
 /** Tools que ESCRIBEN datos (requieren confirmación del usuario, salvo guardar_compartido que es additivo). */
-export const WRITE_TOOLS = ["crear_registro", "borrar_registro", "fusionar_registros", "compartir_registro", "editar_registro"] as const;
+export const WRITE_TOOLS = ["crear_registro", "borrar_registro", "fusionar_registros", "compartir_registro", "editar_registro", "crear_alerta"] as const;

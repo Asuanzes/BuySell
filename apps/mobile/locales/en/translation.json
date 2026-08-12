@@ -182,7 +182,37 @@
     "progress_other": "{{done}} of {{count}} done",
     "all_done": "All checked",
     "add_placeholder": "Add a check…",
-    "error": "Couldn't load the checks."
+    "error": "Couldn't load the checks.",
+    "schedule_add": "Add visit date",
+    "schedule_change": "Change visit date",
+    "schedule_on": "Visit: {{date}}",
+    "schedule_clear": "Remove visit date",
+    "schedule_title": "Which day is the visit?"
+  },
+  "appointments": {
+    "title": "Appointments",
+    "subtitle": "Your dated visits and their preparation",
+    "section_today": "Today",
+    "section_upcoming": "Upcoming",
+    "section_past": "Past",
+    "empty_title": "No appointments",
+    "empty_desc": "Set a date on a visit checklist from its record and it will show up here.",
+    "error_title": "Couldn't load appointments",
+    "progress": "{{done}}/{{total}}",
+    "no_record": "Record unavailable"
+  },
+  "bookSubcats": {
+    "filter_all": "All",
+    "card_title": "Subcategories",
+    "card_add": "Add subcategory",
+    "edit_label": "Edit subcategories",
+    "sheet_title": "Book subcategories",
+    "sheet_hint": "Tick this book's subcategories or create a new one (max 40 characters).",
+    "create_placeholder": "New subcategory…",
+    "create_label": "Create subcategory",
+    "empty": "No subcategories yet: create the first one above.",
+    "delete_label": "Delete {{name}}",
+    "error_generic": "The operation could not be completed."
   },
   "notes": {
     "title": "Your notes",
