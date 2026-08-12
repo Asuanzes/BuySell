@@ -1,13 +1,18 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { deleteItem, getItem, setItem } from "@/lib/secure-store";
 import {
+  COMPLETED_IMPORT_KEY,
+  COMPLETED_IMPORT_TTL_MS,
   forgetPendingImport,
   getRememberedPendingImport,
   PENDING_IMPORT_KEY,
+  parseCompletedImport,
   parsePendingImport,
   rememberPendingImport,
+  serializeCompletedImport,
   serializePendingImport,
+  type CompletedImport,
 } from "@/lib/pending-import-storage";
 
 /**
@@ -34,8 +39,17 @@ import {
  * importación — la instancia promocionada hidrataba un almacén vacío y el libro
  * se esfumaba sin error. Con el borrado movido al final, morir a mitad deja el
  * pendiente intacto y la instancia superviviente rehace el import a la vista.
- * Si el import muere en ERROR tampoco se borra: reabrir en <10 min reintenta
- * (semántica de retry); pasado el TTL caduca solo.
+ *
+ * "Terminar" = alcanzar un terminal RENDERIZADO (éxito, lista de candidatos o
+ * error a la vista), no solo éxito: dejar vivo el pendiente tras enseñar un
+ * error/lista reabría Importar con el mismo libro en cada arranque en frío
+ * durante todo el TTL (el "bucle" de agosto-2026). Morir EN VUELO sigue sin
+ * borrar nada — esa es la protección de la instancia condenada.
+ *
+ * RE-ENTREGA del intent: Android re-adjunta el ACTION_SEND original al recrear
+ * la Activity desde recientes y expo-share-intent lo re-captura en cada
+ * onCreate. setBookShare ignora un share idéntico al último COMPLETADO
+ * (COMPLETED_IMPORT_TTL_MS); sin eso el bucle no tenía ni el límite del TTL.
  */
 type Ctx = {
   url: string | null;
@@ -59,9 +73,27 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
   const [url, setUrlState] = useState<string | null>(null);
   const [bookShare, setBookShareState] = useState<string | null>(null);
   const [hydrating, setHydrating] = useState(true);
+  // Último share de LIBRO entregado a los consumidores: es lo que
+  // completePendingImport registra como "completado" para el dedupe de abajo.
+  const lastDeliveredBookRef = useRef<string | null>(null);
+  // Último share COMPLETADO (persistido): un share idéntico que llegue dentro
+  // de la ventana se ignora — es la re-entrega nativa del intent, no el usuario.
+  const lastCompletedRef = useRef<CompletedImport | null>(null);
 
   useEffect(() => {
     let alive = true;
+    // El dedupe de re-entrega necesita el último completado SIEMPRE, también
+    // cuando el pendiente viene del canal en memoria. ponytail: si un share
+    // re-entregado llega antes de que este read (~ms) resuelva, se cuela una
+    // vez; la ventana real de la re-entrega (evento nativo tras montar el
+    // árbol) es órdenes de magnitud más lenta.
+    getItem(COMPLETED_IMPORT_KEY)
+      .then((raw) => {
+        if (alive && !lastCompletedRef.current) {
+          lastCompletedRef.current = parseCompletedImport(raw, Date.now());
+        }
+      })
+      .catch(() => {});
     const remembered = getRememberedPendingImport(Date.now());
     if (remembered?.kind === "url") {
       setUrlState(remembered.value);
@@ -71,6 +103,7 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
       };
     }
     if (remembered?.kind === "book") {
+      lastDeliveredBookRef.current = remembered.value;
       setBookShareState(remembered.value);
       setHydrating(false);
       return () => {
@@ -80,9 +113,17 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
     getItem(PENDING_IMPORT_KEY)
       .then((raw) => {
         if (!alive) return;
+        // Guard de frescura: si un share fresco llegó MIENTRAS leíamos el
+        // disco, el canal en memoria ya lo tiene y manda él. Aplicar aquí el
+        // guardado (más viejo) pisaba el share recién capturado y la pantalla
+        // Importar aparecía con el libro ANTERIOR y resultados incoherentes.
+        if (getRememberedPendingImport(Date.now())) return;
         const pending = parsePendingImport(raw, Date.now());
         if (pending?.kind === "url") setUrlState(pending.value);
-        else if (pending?.kind === "book") setBookShareState(pending.value);
+        else if (pending?.kind === "book") {
+          lastDeliveredBookRef.current = pending.value;
+          setBookShareState(pending.value);
+        }
         // Caducado o corrupto: se limpia para no reintentarlo en cada arranque.
         if (raw && !pending) void deleteItem(PENDING_IMPORT_KEY).catch(() => {});
       })
@@ -108,6 +149,9 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
 
   const setUrl = useCallback(
     (u: string | null) => {
+      // Canal cambiado: una completion posterior se refiere al flujo de URL,
+      // no a un libro rancio entregado antes.
+      if (u) lastDeliveredBookRef.current = null;
       setUrlState(u);
       persist("url", u);
     },
@@ -116,6 +160,14 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
 
   const setBookShare = useCallback(
     (t: string | null) => {
+      // Re-entrega nativa del intent: un share IDÉNTICO al último ya
+      // COMPLETADO no se re-procesa. Solo libros — re-compartir la misma URL
+      // de inmueble es un gesto legítimo de "revisa el precio".
+      if (t) {
+        const c = lastCompletedRef.current;
+        if (c && c.value === t && Date.now() - c.at <= COMPLETED_IMPORT_TTL_MS) return;
+        lastDeliveredBookRef.current = t;
+      }
       setBookShareState(t);
       persist("book", t);
     },
@@ -123,6 +175,13 @@ export function PendingImportProvider({ children }: { children: ReactNode }) {
   );
 
   const completePendingImport = useCallback(() => {
+    // Registrar QUÉ se completó para poder ignorar su re-entrega nativa.
+    const v = lastDeliveredBookRef.current;
+    if (v) {
+      const now = Date.now();
+      lastCompletedRef.current = { value: v, at: now };
+      void setItem(COMPLETED_IMPORT_KEY, serializeCompletedImport(v, now)).catch(() => {});
+    }
     forgetPendingImport();
     void deleteItem(PENDING_IMPORT_KEY).catch(() => {});
   }, []);

@@ -2,11 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  COMPLETED_IMPORT_TTL_MS,
   forgetPendingImport,
   getRememberedPendingImport,
   PENDING_IMPORT_TTL_MS,
+  parseCompletedImport,
   parsePendingImport,
   rememberPendingImport,
+  serializeCompletedImport,
   serializePendingImport,
 } from "./pending-import-storage";
 
@@ -88,4 +91,28 @@ test("un segundo remember sobrescribe al primero: gana el ultimo share", () => {
   const pending = getRememberedPendingImport(NOW + 2);
   assert.equal(pending?.kind, "book");
   assert.equal(pending?.value, "Sapiens https://amazon.es/dp/8499926223");
+});
+
+test("el ultimo share completado se recuerda para ignorar su re-entrega", () => {
+  const raw = serializeCompletedImport("Echa un vistazo a esto en Amazon La asistenta", NOW);
+  const completed = parseCompletedImport(raw, NOW + 60_000);
+
+  assert.equal(completed?.value, "Echa un vistazo a esto en Amazon La asistenta");
+  assert.equal(completed?.at, NOW);
+});
+
+test("un completado viejo deja de bloquear el mismo share", () => {
+  const raw = serializeCompletedImport("Dune https://amazon.es/dp/0441172717", NOW);
+
+  assert.ok(parseCompletedImport(raw, NOW + COMPLETED_IMPORT_TTL_MS - 1));
+  assert.equal(parseCompletedImport(raw, NOW + COMPLETED_IMPORT_TTL_MS + 1), null);
+});
+
+test("un completado corrupto o con fecha futura no bloquea ningun share", () => {
+  assert.equal(parseCompletedImport(null, NOW), null);
+  assert.equal(parseCompletedImport("{no es json", NOW), null);
+  assert.equal(parseCompletedImport(JSON.stringify({ value: "   ", at: NOW }), NOW), null);
+  assert.equal(parseCompletedImport(JSON.stringify({ value: "x" }), NOW), null);
+  // Reloj hacia atras: un `at` futuro se trata como caducado, no como eterno.
+  assert.equal(parseCompletedImport(serializeCompletedImport("x", NOW + 60_000), NOW), null);
 });

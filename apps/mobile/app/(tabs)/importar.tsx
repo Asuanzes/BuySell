@@ -182,8 +182,17 @@ export default function ImportarScreen() {
   // Share de un enlace de LIBRO: detecta el libro, busca (por ISBN o título) y,
   // si es un ISBN (match fiable), lo añade solo; si no, deja los resultados para
   // que elijas. Reutiliza la búsqueda + el import existentes.
+  //
+  // Guard de ejecución: DOS shares en el mismo arranque (el guardado que hidrata
+  // + el recién compartido) lanzaban dos imports concurrentes y el último en
+  // TERMINAR pisaba caja y resultados del otro (caja de un libro, lista de
+  // otro). Gana el último en EMPEZAR; el superado no escribe UI, no auto-añade
+  // y no completa el pendiente (que ya es de otro share).
+  const bookImportRunId = useRef(0);
   const importBookShare = useCallback(
     async (sharedText: string) => {
+      const run = ++bookImportRunId.current;
+      const superseded = () => bookImportRunId.current !== run;
       setType("book");
       setOkMsg(null);
       setErrorMsg(null);
@@ -248,9 +257,12 @@ export default function ImportarScreen() {
         if (e instanceof ApiError && e.status === 502) serviceDown = true;
         /* red caída → hits vacío → cae a alta manual */
       } finally {
-        setSearching(false);
-        setHasSearched(true);
+        if (!superseded()) {
+          setSearching(false);
+          setHasSearched(true);
+        }
       }
+      if (superseded()) return;
       setResults(hits);
       // Guard anti-ficha-vacía: aunque sea "fiable", no auto-añadimos un resultado
       // sin TÍTULO real (un share pobre de una app nativa podía colar una ficha en
@@ -265,12 +277,13 @@ export default function ImportarScreen() {
             method: "POST",
             body: JSON.stringify({ type: "book", input: { kind: "record", record: hits[0].record } }),
           });
+          if (superseded()) return;
           setOkMsg(t("importar.ok_book_added_pick", { title: r.record?.title ?? hits[0].name ?? t("importar.book_fallback") }));
           setStatus("ok");
-          completePendingImport(); // terminal de éxito: el share ya no debe resucitar
           setValue(""); // A1: limpiar la caja tras añadir el libro compartido.
           setAddedKeys(new Set([0]));
         } catch (e) {
+          if (superseded()) return;
           setErrorMsg(errMsg(e, t("importar.err_add_book")));
           setStatus("error");
         }
@@ -282,6 +295,12 @@ export default function ImportarScreen() {
         );
         setStatus("error");
       }
+      // Terminal RENDERIZADO (éxito, lista de candidatos o error a la vista): el
+      // share ya fue ENTREGADO al usuario y no debe resucitar en el siguiente
+      // arranque en frío — dejarlo vivo reabría Importar con el mismo libro en
+      // bucle. La protección BUG-15 (instancia condenada que muere A MITAD del
+      // import) sigue intacta: morir en vuelo nunca llega a esta línea.
+      completePendingImport();
     },
     [setType, completePendingImport]
   );
