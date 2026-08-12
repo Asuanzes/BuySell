@@ -93,7 +93,10 @@ export async function openLibraryWorkRatings(
     `https://openlibrary.org/works/${encodeURIComponent(id)}/ratings.json`
   )) as { summary?: { average?: number | null; count?: number | null } } | null;
   const avg = json?.summary?.average;
-  if (avg == null || !Number.isFinite(avg)) return null;
+  // OL devuelve average:0 y count:0 para works SIN votos (no null): eso es
+  // "sin nota", no una nota de cero — guardarlo pintaba "★ 0.0" en la ficha
+  // (y currentValue=0). En una escala 1–5 un promedio 0 real es imposible.
+  if (avg == null || !Number.isFinite(avg) || avg <= 0) return null;
   const count = json?.summary?.count;
   return { average: Math.round(avg * 10) / 10, count: typeof count === "number" ? count : null };
 }

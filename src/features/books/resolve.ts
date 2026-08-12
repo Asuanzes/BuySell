@@ -186,13 +186,17 @@ export async function lookupBookByIsbn(isbn: string): Promise<Book | null> {
     } catch {
       unavailable = true;
     }
-  } else if (!book.description) {
-    // OL sin sinopsis ni en el work (frecuente) → injerta la de Google si la
-    // tiene. Decorativo: el libro ya está resuelto, un fallo aquí no bloquea.
+  } else if (!book.description || book.averageRating == null) {
+    // OL sin sinopsis NI en el work (frecuente) o sin NOTA (casi siempre en
+    // ediciones españolas: OL apenas tiene votos) → injerta lo que falte desde
+    // Google. Antes solo se preguntaba a Google cuando faltaba la sinopsis, y
+    // un OL con descripción pero sin nota dejaba el libro sin estrellas aunque
+    // Google la tuviera. Decorativo: el libro ya está resuelto, un fallo aquí
+    // no bloquea (y si Google está en 429 de cuota, simplemente no hay nota).
     try {
       const items = await googleBooksSearch(`isbn:${norm}`);
       const alt = items[0] ? fromGoogleBooks(items[0]) : null;
-      if (alt?.description) book = { ...book, description: alt.description };
+      if (!book.description && alt?.description) book = { ...book, description: alt.description };
       if (alt && book.averageRating == null && alt.averageRating != null) {
         book = { ...book, averageRating: alt.averageRating, ratingsCount: alt.ratingsCount };
       }

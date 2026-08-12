@@ -168,7 +168,11 @@ export function bookToRecord(book: Book): BaseRecord {
     subtitle: [author, book.publishedYear].filter(Boolean).join(" · ") || null,
     status: null,
     primaryValue:
-      book.averageRating != null ? `★ ${book.averageRating.toFixed(1)}` : null,
+      // > 0: un promedio 0 es "sin votos" (artefacto de OL), no una nota real —
+      // pintar "★ 0.0" desprestigia el libro y el dato.
+      book.averageRating != null && book.averageRating > 0
+        ? `★ ${book.averageRating.toFixed(1)}`
+        : null,
     imageUrl: book.imageUrls.thumbnail ?? book.imageUrls.large ?? null,
     createdAt: book.createdAt ?? null,
     updatedAt: book.updatedAt ?? null,

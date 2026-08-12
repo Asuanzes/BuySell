@@ -156,7 +156,7 @@ export default function BookDetail() {
                 {book.authors.join(", ")}
               </Text>
             ) : null}
-            {book.averageRating != null ? (
+            {book.averageRating != null && book.averageRating > 0 ? (
               <RatingStars
                 value={book.averageRating}
                 count={book.ratingsCount ?? null}
