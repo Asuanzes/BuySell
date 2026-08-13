@@ -39,6 +39,14 @@ export type ContextHeaderEvent = {
 };
 
 export type ConversationContextHeader = ContextCard & {
+  /**
+   * Registro que el header ELIGIÓ (la conversación puede no tener contexto
+   * propio y derivarlo del último mensaje compartido): sin esto el cliente no
+   * sabía a qué ficha navegar y el toque en el banner era un no-op silencioso
+   * (fallo real reportado el 2026-08-13 en el DM del bot).
+   */
+  recordType?: string;
+  recordId?: string;
   viewerOwnsRecord?: boolean;
   relatedRecordCount?: number;
   changedSinceMyLastMessage?: {
@@ -191,11 +199,22 @@ async function fetchCard(contextType: string, contextId: string): Promise<CardWi
   if (contextType === "holiday") {
     const h = await prisma.holiday.findUnique({
       where: { id: contextId },
-      select: { ownerId: true, title: true, subtitle: true, imageUrl: true, status: true },
+      select: { ownerId: true, title: true, subtitle: true, imageUrl: true, status: true, meta: true },
     });
     if (!h) return null;
+    // C8: un PLANNING con meta.planning es un viaje EN ORGANIZACIÓN — la misma
+    // etiqueta que su ficha («Organizando»), no «En planificación» (Codex 5d0e03e9).
+    const organizing = Boolean((h.meta as { planning?: unknown } | null)?.planning);
     const statusLabel =
-      h.status === "BOOKED" ? "Reservado ✔" : h.status === "PLANNING" ? "En planificación" : h.status === "DONE" ? "Hecho" : null;
+      h.status === "BOOKED"
+        ? "Reservado ✔"
+        : h.status === "PLANNING"
+          ? organizing
+            ? "Organizando"
+            : "En planificación"
+          : h.status === "DONE"
+            ? "Hecho"
+            : null;
     return { ownerId: h.ownerId, title: h.title, imageUrl: h.imageUrl, subtitle: h.subtitle, meta: statusLabel };
   }
   if (contextType === "job") {
@@ -328,6 +347,12 @@ export async function buildConversationContextHeader(
 
   const viewerOwnsRecord = ownerId === viewerId;
   const header: ConversationContextHeader = card ?? degradedCard();
+  if (card) {
+    // Solo con tarjeta real: en la degradada («registro eliminado») navegar
+    // llevaría a un 404, así que el cliente no recibe destino y no navega.
+    header.recordType = selected.contextType;
+    header.recordId = selected.contextId;
+  }
 
   if (!viewerOwnsRecord) return header;
 

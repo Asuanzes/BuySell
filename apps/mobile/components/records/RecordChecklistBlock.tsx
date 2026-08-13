@@ -45,6 +45,8 @@ export function RecordChecklistBlock({
   onToggleItem,
   onAddItem,
   onSchedule,
+  onCreate,
+  createLabel,
   onRetry,
 }: {
   checklist: Checklist | null;
@@ -54,6 +56,9 @@ export function RecordChecklistBlock({
   onAddItem: (label: string) => void;
   /** Pone/quita la fecha de cita ("YYYY-MM-DD" | null). Sin handler no hay fila de fecha. */
   onSchedule?: (scheduledOn: string | null) => void;
+  /** Sin checklist aún: CTA para crear una vacía (antes era imposible sin el bot — Codex 5d0e03e9). */
+  onCreate?: () => void;
+  createLabel?: string;
   onRetry?: () => void;
 }) {
   const { th } = useTheme();
@@ -105,7 +110,22 @@ export function RecordChecklistBlock({
     );
   }
 
-  if (!checklist) return null;
+  if (!checklist) {
+    if (!onCreate) return null;
+    return (
+      <View style={[styles.container, { backgroundColor: th.surface, borderColor: th.border }, th.elevation.sm]}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onCreate}
+          style={({ pressed }) => [styles.createRow, pressed && { opacity: 0.7 }]}
+          hitSlop={6}
+        >
+          <Ionicons name="add-circle-outline" size={18} color={th.primary} />
+          <Text style={[styles.createLabel, { color: th.primary }]}>{createLabel ?? t("checklist.create")}</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   const toggleItem = (item: ChecklistItem) => {
     const nextDone = !item.done;
@@ -319,6 +339,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  createRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 32 },
+  createLabel: { fontSize: 14, fontFamily: fonts.bodySemibold },
   loadingText: { fontSize: 14, lineHeight: 20, fontFamily: fonts.body },
   errorText: { marginBottom: 10, fontSize: 14, lineHeight: 20, fontFamily: fonts.body },
   retryButton: {

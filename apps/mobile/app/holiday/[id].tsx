@@ -29,7 +29,7 @@ import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock"
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
 import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
-import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone, setChecklistSchedule } from "@/lib/record-tasks";
+import { addChecklistItem, createChecklist, fetchLatestVisitChecklist, setChecklistItemDone, setChecklistSchedule } from "@/lib/record-tasks";
 
 /** meta.planning del viaje EN ORGANIZACIÓN (C8). */
 type TripPlanning = {
@@ -118,6 +118,16 @@ export default function HolidayDetail() {
     if (!taskId) return;
     try {
       await setChecklistSchedule(taskId, scheduledOn);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
+
+  // Crear el checklist de viaje desde la ficha (sin pasar por el bot).
+  async function createOwnChecklist() {
+    try {
+      await createChecklist("holiday", id!, "trip_checklist");
       await checklistQ.refetch();
     } catch (e) {
       await onChecklistFailure(e);
@@ -361,15 +371,17 @@ export default function HolidayDetail() {
           </View>
         ) : null}
 
-        {/* Checklist de viaje (C8): la crea el bot con preparar_viaje; marcable aquí. */}
-        {!isReadOnly && checklistQ.data ? (
+        {/* Checklist de viaje (C8): lo crea el bot con preparar_viaje o el CTA. */}
+        {!isReadOnly && !checklistQ.loading ? (
           <RecordChecklistBlock
-            checklist={checklistQ.data}
+            checklist={checklistQ.data ?? null}
             loading={checklistQ.loading}
             error={checklistQ.error ? t("checklist.error") : null}
             onToggleItem={(itemId, done) => void toggleChecklistItem(itemId, done)}
             onAddItem={(label) => void addOwnChecklistItem(label)}
             onSchedule={(scheduledOn) => void scheduleChecklist(scheduledOn)}
+            onCreate={() => void createOwnChecklist()}
+            createLabel={t("checklist.create_trip")}
             onRetry={() => void checklistQ.refetch()}
           />
         ) : null}

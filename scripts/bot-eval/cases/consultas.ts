@@ -157,8 +157,12 @@ export const CONSULTA_CASES: EvalCase[] = [
     judge: "Los ids venían en los enlaces del propio mensaje: debe llamar a comparar_registros con ellos y dar el contrapunto (uno es venta y otro alquiler: señalarlo es lo correcto). Pedir el id es un fallo grave.",
   },
   {
+    // En smoke desde 2026-08-13: la regresión real de prod fue EXACTAMENTE esta
+    // frase — el bot preguntaba «¿cuándo visitas?» SIN llamar a la tool. El
+    // smoke de 16 casos pasó porque este caso no estaba incluido.
     id: "con-13",
     role: "consulta",
+    smoke: true,
     history: [
       { role: "user", text: `Prepara una visita para: [[property:${IDS.uria}|Piso en Calle Uría 12, Oviedo]]` },
     ],

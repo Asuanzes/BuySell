@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth-helpers";
 import {
   createRecordTask,
+  createVisitChecklistForRecord,
   listRecordTasks,
   normalizeRecordTaskKind,
   normalizeRecordTaskType,
@@ -45,9 +46,15 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       items?: unknown;
     };
     const kind = normalizeRecordTaskKind(body.kind ?? "followup");
-    const title = typeof body.title === "string" ? body.title : kind === "visit_checklist" ? "Checklist de visita" : "Seguimiento";
     const items = Array.isArray(body.items) ? (body.items as StructuredTaskItemInput[]) : [];
-    const task = await createRecordTask(userId, { recordType, recordId: id, kind, title, items });
+    const title = typeof body.title === "string" ? body.title : undefined;
+    // Los checklists de visita/viaje son DIARIOS e idempotentes (mismo contrato
+    // que el bot): un doble toque en el CTA de la ficha devuelve el existente
+    // en vez de duplicarlo. El título por defecto lo pone el helper según kind.
+    const task =
+      kind === "visit_checklist" || kind === "trip_checklist"
+        ? await createVisitChecklistForRecord(userId, { recordType, recordId: id, title, items, kind })
+        : await createRecordTask(userId, { recordType, recordId: id, kind, title: title ?? "Seguimiento", items });
     return NextResponse.json({ task, created: true }, { status: 201 });
   } catch (error) {
     return errorResponse(error);

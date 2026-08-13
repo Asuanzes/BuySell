@@ -23,6 +23,10 @@ export type ChatContextCard = {
   meta?: string | null;
   statusShown?: boolean;
   imageUrl: string | null;
+  /** Registro elegido por el servidor (puede venir del último mensaje
+   *  compartido, no solo del contexto propio de la conversación). */
+  recordType?: string;
+  recordId?: string;
   viewerOwnsRecord?: boolean;
   relatedRecordCount?: number;
   /** El servidor manda esto SOLO al dueño del registro, y como máximo 3 eventos. */
@@ -81,11 +85,9 @@ export function ChatContextBanner({
         accessibilityLabel={card.title}
         style={({ pressed }) => [styles.rowTop, pressed && { opacity: 0.7 }]}
       >
-        {card.imageUrl ? (
-          <Image source={{ uri: card.imageUrl }} style={styles.img} contentFit="cover" />
-        ) : (
-          <View style={[styles.img, { backgroundColor: th.imagePlaceholder }]} />
-        )}
+        {/* Sin imagen NO se reserva el hueco: un cuadrado vacío parecía una
+            foto rota (fallo reportado 2026-08-13 con viajes organizándose). */}
+        {card.imageUrl ? <Image source={{ uri: card.imageUrl }} style={styles.img} contentFit="cover" /> : null}
         <View style={styles.body}>
           <Text style={[styles.title, { color: th.text }]} numberOfLines={1}>
             {card.title}

@@ -187,7 +187,10 @@
     "schedule_change": "Cambiar fecha de visita",
     "schedule_on": "Visita: {{date}}",
     "schedule_clear": "Quitar fecha de visita",
-    "schedule_title": "¿Qué día es la visita?"
+    "schedule_title": "¿Qué día es la visita?",
+    "create": "Crear checklist",
+    "create_visit": "Crear checklist de visita",
+    "create_trip": "Crear checklist de viaje"
   },
   "appointments": {
     "title": "Citas",

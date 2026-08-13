@@ -91,6 +91,59 @@ test("buildConversationContextHeader: owner receives total changes and at most 3
   assert.equal(header?.changedSinceMyLastMessage?.events.length, 3);
 });
 
+test("el header lleva SIEMPRE el registro elegido (recordType/recordId), también cuando se deriva del último mensaje compartido", async () => {
+  // Conversación SIN contexto propio (el caso del DM del bot): la tarjeta sale
+  // del último mensaje con contexto. Sin recordType/recordId el cliente no
+  // sabía a qué ficha navegar y el toque era un no-op (fallo 2026-08-13).
+  const fromMessage = await buildConversationContextHeader(
+    {
+      id: "c1",
+      kind: "DIRECT",
+      contextType: null,
+      contextId: null,
+      participants: [{ userId: "owner", joinedAt: at("2026-08-10T09:00:00.000Z") }],
+      messages: [
+        { senderId: "owner", contextType: "holiday", contextId: "h1", deletedAt: null, createdAt: at("2026-08-12T22:37:00.000Z") },
+      ],
+    },
+    "owner",
+    { fetchCard: async () => card("owner", "Viaje a Roma"), countRecordEvents: async () => 0, findRecordEvents: async () => [] }
+  );
+  assert.equal(fromMessage?.recordType, "holiday");
+  assert.equal(fromMessage?.recordId, "h1");
+
+  const fromConversation = await buildConversationContextHeader(
+    {
+      id: "c2",
+      kind: "DIRECT",
+      contextType: "property",
+      contextId: "p1",
+      participants: [{ userId: "owner", joinedAt: at("2026-08-10T09:00:00.000Z") }],
+      messages: [],
+    },
+    "owner",
+    { fetchCard: async () => card("owner"), countRecordEvents: async () => 0, findRecordEvents: async () => [] }
+  );
+  assert.equal(fromConversation?.recordType, "property");
+  assert.equal(fromConversation?.recordId, "p1");
+
+  // Tarjeta degradada (registro borrado): sin destino — navegar sería un 404.
+  const degraded = await buildConversationContextHeader(
+    {
+      id: "c3",
+      kind: "DIRECT",
+      contextType: "property",
+      contextId: "gone",
+      participants: [{ userId: "owner", joinedAt: at("2026-08-10T09:00:00.000Z") }],
+      messages: [],
+    },
+    "owner",
+    { fetchCard: async () => null, countRecordEvents: async () => 0, findRecordEvents: async () => [] }
+  );
+  assert.equal(degraded?.recordType, undefined);
+  assert.equal(degraded?.recordId, undefined);
+});
+
 test("buildConversationContextHeader: non-owner receives only the public card fields", async () => {
   const header = await buildConversationContextHeader(
     {
@@ -105,7 +158,16 @@ test("buildConversationContextHeader: non-owner receives only the public card fi
     { fetchCard: async () => card("owner") }
   );
 
-  assert.deepEqual(header, { title: "Piso Centro", imageUrl: null, subtitle: "Oviedo", meta: "200.000 €" });
+  // recordType/recordId SÍ son públicos: son el destino del toque (la ficha
+  // sigue protegida por sus propias APIs); la actividad del dueño no viaja.
+  assert.deepEqual(header, {
+    title: "Piso Centro",
+    imageUrl: null,
+    subtitle: "Oviedo",
+    meta: "200.000 €",
+    recordType: "property",
+    recordId: "p1",
+  });
   assert.equal(Object.hasOwn(header!, "changedSinceMyLastMessage"), false);
   assert.equal(Object.hasOwn(header!, "viewerOwnsRecord"), false);
   assert.equal(Object.hasOwn(header!, "relatedRecordCount"), false);

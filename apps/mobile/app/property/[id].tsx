@@ -45,7 +45,7 @@ import { HomeButton } from "@/components/HomeButton";
 import { RecordChecklistBlock } from "@/components/records/RecordChecklistBlock";
 import { RecordHistoryBlock } from "@/components/records/RecordHistoryBlock";
 import { RecordNotesBlock } from "@/components/records/RecordNotesBlock";
-import { addChecklistItem, fetchLatestVisitChecklist, setChecklistItemDone, setChecklistSchedule } from "@/lib/record-tasks";
+import { addChecklistItem, createChecklist, fetchLatestVisitChecklist, setChecklistItemDone, setChecklistSchedule } from "@/lib/record-tasks";
 import { useRecordNotes } from "@/lib/hooks/useRecordNotes";
 import { track } from "@/lib/analytics";
 
@@ -183,6 +183,17 @@ export default function PropertyDetailScreen() {
     if (!taskId) return;
     try {
       await setChecklistSchedule(taskId, scheduledOn);
+      await checklistQ.refetch();
+    } catch (e) {
+      await onChecklistFailure(e);
+    }
+  }
+
+  // Crear checklist desde la ficha (sin pasar por el bot): vacía, idempotente
+  // por día en el servidor; el usuario añade sus comprobaciones en el bloque.
+  async function createOwnChecklist() {
+    try {
+      await createChecklist("property", id!, "visit_checklist");
       await checklistQ.refetch();
     } catch (e) {
       await onChecklistFailure(e);
@@ -365,15 +376,17 @@ export default function PropertyDetailScreen() {
         {/* Checklist de la visita: solo aparece si el usuario preparó una, y
             entonces es lo más accionable de la ficha, así que va por encima del
             chat, la historia y la comparativa de zona. */}
-        {!isReadOnly && checklistQ.data ? (
+        {!isReadOnly && !checklistQ.loading ? (
           <View style={styles.decisionBlock}>
             <RecordChecklistBlock
-              checklist={checklistQ.data}
+              checklist={checklistQ.data ?? null}
               loading={checklistQ.loading}
               error={checklistQ.error ? t("checklist.error") : null}
               onToggleItem={(itemId, done) => void toggleChecklistItem(itemId, done)}
               onAddItem={(label) => void addOwnChecklistItem(label)}
               onSchedule={(scheduledOn) => void scheduleChecklist(scheduledOn)}
+              onCreate={() => void createOwnChecklist()}
+              createLabel={t("checklist.create_visit")}
               onRetry={() => void checklistQ.refetch()}
             />
           </View>

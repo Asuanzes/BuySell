@@ -25,6 +25,10 @@ export type RecordCardDto = {
   meta?: string | null;
   statusShown?: boolean;
   imageUrl: string | null;
+  /** Registro que el header ELIGIÓ (puede venir del último mensaje compartido,
+   *  no solo del contexto propio de la conversación): destino del toque. */
+  recordType?: string;
+  recordId?: string;
   /** Los tres campos de abajo solo llegan al DUEÑO del registro: el servidor los
    *  omite para quien lo tiene compartido (no se filtra actividad ajena). */
   viewerOwnsRecord?: boolean;

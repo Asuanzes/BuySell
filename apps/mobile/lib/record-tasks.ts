@@ -94,3 +94,19 @@ export function addChecklistItem(taskId: string, label: string): Promise<unknown
     body: JSON.stringify({ label }),
   });
 }
+
+/**
+ * Crea un checklist VACÍO desde la ficha (antes solo el bot podía crearlos):
+ * el título por defecto lo pone el servidor según el kind, y el usuario añade
+ * sus comprobaciones con el input del bloque.
+ */
+export function createChecklist(
+  recordType: RecordType,
+  recordId: string,
+  kind: "visit_checklist" | "trip_checklist"
+): Promise<unknown> {
+  return api(`/api/records/${recordId}/tasks?type=${encodeURIComponent(recordType)}`, {
+    method: "POST",
+    body: JSON.stringify({ kind, items: [] }),
+  });
+}
