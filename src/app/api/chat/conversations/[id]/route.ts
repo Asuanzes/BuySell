@@ -6,7 +6,7 @@ import { requireUserId } from "@/lib/auth-helpers";
 import { getParticipantOrNull } from "@/lib/chat/guard";
 import { conversationDto } from "@/lib/chat/serialize";
 import { actorName, systemEvent } from "@/lib/chat/system";
-import { buildConversationContextHeader } from "@/lib/chat/context";
+import { buildConversationContextHeader, CONTEXT_MESSAGES_WINDOW } from "@/lib/chat/context";
 import { deleteObject, groupImageKey } from "@/lib/chat/r2";
 import { isProtectedName } from "@nidokey/shared";
 
@@ -14,10 +14,13 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const PARTICIPANT_INCLUDE = {
   participants: { include: { user: { select: { id: true, name: true, username: true, email: true, image: true } } } },
+  // ÚLTIMOS N mensajes CON cuerpo (antes: solo los de compartido y sin tope):
+  // el banner extrae también los enlaces [[tipo:id|…]] para el carrusel y para
+  // que la última acción mueva el contexto (2026-08-13).
   messages: {
-    where: { contextType: { not: null }, contextId: { not: null } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    select: { senderId: true, contextType: true, contextId: true, deletedAt: true, createdAt: true },
+    take: CONTEXT_MESSAGES_WINDOW,
+    select: { senderId: true, contextType: true, contextId: true, body: true, deletedAt: true, createdAt: true },
   },
 } satisfies Prisma.ConversationInclude;
 

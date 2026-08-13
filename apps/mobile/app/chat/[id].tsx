@@ -1010,26 +1010,20 @@ export default function ChatScreen() {
           contextId={conversation.contextId}
           deletedLabel={t("chat.context_deleted")}
           locale={i18n.language === "en" ? "en" : "es"}
-          onOpenRecord={() => {
-            // El destino lo decide el SERVIDOR (card.recordType/Id): la tarjeta
-            // puede venir del último mensaje compartido y no del contexto propio
-            // de la conversación — con solo conversation.contextType el toque era
-            // un no-op silencioso en el DM del bot (fallo reportado 2026-08-13).
-            const recordType = conversation.context?.recordType ?? conversation.contextType;
-            const recordId = conversation.context?.recordId ?? conversation.contextId;
+          onOpenRecord={(recordType, recordId) => {
+            // El destino lo decide el banner (página actual del carrusel); el
+            // fallback al contexto propio de la conversación vive en el banner.
             if (recordType && recordId) {
               router.push(`/${recordType}/${recordId}` as never);
             }
           }}
-          onOpenHistory={() => {
-            const recordType = conversation.context?.recordType ?? conversation.contextType;
-            const recordId = conversation.context?.recordId ?? conversation.contextId;
+          onOpenHistory={(recordType, recordId) => {
             if (!recordType || !recordId) return;
-            const qs = new URLSearchParams({
-              recordType,
-              recordId,
-              recordTitle: conversation.context?.title ?? "",
-            });
+            const title =
+              conversation.context?.records?.find((r) => r.recordId === recordId)?.title ??
+              conversation.context?.title ??
+              "";
+            const qs = new URLSearchParams({ recordType, recordId, recordTitle: title });
             router.push(`/events?${qs.toString()}` as never);
           }}
         />

@@ -144,6 +144,78 @@ test("el header lleva SIEMPRE el registro elegido (recordType/recordId), tambié
   assert.equal(degraded?.recordId, undefined);
 });
 
+test("carrusel: los enlaces [[…]] de los cuerpos cuentan como contexto y el más reciente va primero", async () => {
+  // El caso real del 2026-08-13: «Viaje a Roma» compartido ayer y HOY un
+  // checklist de visita pedido por enlace — el banner debe moverse al piso.
+  const header = await buildConversationContextHeader(
+    {
+      id: "c1",
+      kind: "DIRECT",
+      contextType: null,
+      contextId: null,
+      participants: [{ userId: "owner", joinedAt: at("2026-08-10T09:00:00.000Z") }],
+      messages: [
+        {
+          senderId: "owner",
+          contextType: null,
+          contextId: null,
+          body: "Prepara una visita para: [[property:p9|Piso Centro]] y de paso [[ir:/events|Novedades]] y otra vez [[property:p9|Piso Centro]]",
+          deletedAt: null,
+          createdAt: at("2026-08-13T08:28:00.000Z"),
+        },
+        { senderId: "owner", contextType: "holiday", contextId: "h1", body: "📌 Viaje a Roma", deletedAt: null, createdAt: at("2026-08-12T22:37:00.000Z") },
+      ],
+    },
+    "owner",
+    {
+      fetchCard: async (_type, id) => card("owner", id === "p9" ? "Piso Centro" : "Viaje a Roma"),
+      countRecordEvents: async () => 0,
+      findRecordEvents: async () => [],
+    }
+  );
+
+  assert.equal(header?.recordType, "property");
+  assert.equal(header?.recordId, "p9");
+  assert.deepEqual(
+    header?.records?.map((r) => `${r.recordType}:${r.recordId}`),
+    ["property:p9", "holiday:h1"],
+    "el enlace de cuerpo más reciente primero, deduplicado y sin enlaces ir:"
+  );
+});
+
+test("privacidad: un enlace de cuerpo en grupo exige sharedAccess al viewer no-dueño (un compartido explícito no)", async () => {
+  const conversation = {
+    id: "g1",
+    kind: "GROUP",
+    contextType: null,
+    contextId: null,
+    participants: [
+      { userId: "owner", joinedAt: at("2026-08-10T09:00:00.000Z") },
+      { userId: "member", joinedAt: at("2026-08-10T09:00:00.000Z") },
+    ],
+    messages: [
+      // Enlace de CUERPO (mención del bot) — no es una compartición.
+      { senderId: null, contextType: null, contextId: null, body: "Mira [[property:p9|Piso Centro]]", deletedAt: null, createdAt: at("2026-08-13T10:00:00.000Z") },
+      // Compartido EXPLÍCITO (nace de un RecordShare): visible como siempre.
+      { senderId: "owner", contextType: "holiday", contextId: "h1", body: "📌 Viaje", deletedAt: null, createdAt: at("2026-08-12T10:00:00.000Z") },
+    ],
+  };
+  const deps = {
+    fetchCard: async (_t: string, id: string) => card("owner", id),
+    countRecordEvents: async () => 0,
+    findRecordEvents: async () => [],
+  };
+
+  const denied = await buildConversationContextHeader(conversation, "member", { ...deps, sharedAccess: async () => false });
+  assert.deepEqual(denied?.records?.map((r) => r.recordId), ["h1"], "sin sharedAccess el enlace no enseña tarjeta; el compartido sí");
+
+  const granted = await buildConversationContextHeader(conversation, "member", { ...deps, sharedAccess: async () => true });
+  assert.deepEqual(granted?.records?.map((r) => r.recordId), ["p9", "h1"]);
+
+  const asOwner = await buildConversationContextHeader(conversation, "owner", { ...deps, sharedAccess: async () => false });
+  assert.deepEqual(asOwner?.records?.map((r) => r.recordId), ["p9", "h1"], "el dueño ve lo suyo sin pasar por sharedAccess");
+});
+
 test("buildConversationContextHeader: non-owner receives only the public card fields", async () => {
   const header = await buildConversationContextHeader(
     {
@@ -158,8 +230,8 @@ test("buildConversationContextHeader: non-owner receives only the public card fi
     { fetchCard: async () => card("owner") }
   );
 
-  // recordType/recordId SÍ son públicos: son el destino del toque (la ficha
-  // sigue protegida por sus propias APIs); la actividad del dueño no viaja.
+  // recordType/recordId y records SÍ son públicos: son el destino del toque
+  // (la ficha sigue protegida por sus APIs); la actividad del dueño no viaja.
   assert.deepEqual(header, {
     title: "Piso Centro",
     imageUrl: null,
@@ -167,6 +239,9 @@ test("buildConversationContextHeader: non-owner receives only the public card fi
     meta: "200.000 €",
     recordType: "property",
     recordId: "p1",
+    records: [
+      { recordType: "property", recordId: "p1", title: "Piso Centro", imageUrl: null, subtitle: "Oviedo", meta: "200.000 €" },
+    ],
   });
   assert.equal(Object.hasOwn(header!, "changedSinceMyLastMessage"), false);
   assert.equal(Object.hasOwn(header!, "viewerOwnsRecord"), false);

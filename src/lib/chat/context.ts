@@ -1,4 +1,4 @@
-import { isRentOperation, type RecordType } from "@nidokey/shared";
+import { isRentOperation, RECORD_LINK_RE, RECORD_ROUTES, type RecordType } from "@nidokey/shared";
 
 import { prisma } from "@/lib/db";
 import { sharedAccess } from "@/lib/records/access";
@@ -38,6 +38,8 @@ export type ContextHeaderEvent = {
   payload: unknown;
 };
 
+export type ConversationContextRecord = ContextCard & { recordType: string; recordId: string };
+
 export type ConversationContextHeader = ContextCard & {
   /**
    * Registro que el header ELIGIÓ (la conversación puede no tener contexto
@@ -47,6 +49,14 @@ export type ConversationContextHeader = ContextCard & {
    */
   recordType?: string;
   recordId?: string;
+  /**
+   * Carrusel (2026-08-13): TODOS los registros de la conversación con tarjeta
+   * válida — contexto propio, compartidos Y enlaces [[tipo:id|…]] de los
+   * cuerpos — ordenados por recencia (contexto propio anclado primero). El
+   * primario (campos de arriba) es records[0]; los clientes viejos lo siguen
+   * leyendo igual.
+   */
+  records?: ConversationContextRecord[];
   viewerOwnsRecord?: boolean;
   relatedRecordCount?: number;
   changedSinceMyLastMessage?: {
@@ -62,6 +72,8 @@ type ContextMessageLite = {
   senderId: string | null;
   contextType: string | null;
   contextId: string | null;
+  /** Cuerpo del mensaje: de aquí salen los enlaces [[tipo:id|Título]] (banner rotatorio). */
+  body?: string | null;
   deletedAt?: Date | null;
   createdAt: Date;
 };
@@ -81,7 +93,13 @@ type ContextConversationLite = {
   messages?: ContextMessageLite[];
 };
 
-type RecordPair = { contextType: string; contextId: string };
+type RecordPair = {
+  contextType: string;
+  contextId: string;
+  /** true si el par salió de un enlace [[…]] del CUERPO (no de un compartido
+   *  explícito): esos exigen sharedAccess al viewer no-dueño (regla 3). */
+  fromLink?: boolean;
+};
 
 type RecordEventLite = {
   recordType: string;
@@ -96,6 +114,7 @@ type ContextHeaderDeps = {
   findContextMessages?: (conversationId: string) => Promise<ContextMessageLite[]>;
   findRecordEvents?: (viewerId: string, pairs: RecordPair[], baseline: Date) => Promise<RecordEventLite[]>;
   countRecordEvents?: (viewerId: string, pairs: RecordPair[], baseline: Date) => Promise<number>;
+  sharedAccess?: (contextType: string, contextId: string, viewerId: string) => Promise<boolean>;
 };
 
 const fmtPrice = (cents: number | null | undefined, currency = "EUR"): string | null =>
@@ -238,27 +257,46 @@ function pairKey(pair: RecordPair): string {
   return `${pair.contextType}\0${pair.contextId}`;
 }
 
-function recordPairsFrom(conversation: ContextConversationLite, messages: ContextMessageLite[]): RecordPair[] {
-  const pairs = new Map<string, RecordPair>();
-  const add = (contextType: string | null, contextId: string | null) => {
-    if (!contextType || !contextId) return;
-    const pair = { contextType, contextId };
-    pairs.set(pairKey(pair), pair);
+/** Tope del carrusel: más registros que esto es catálogo, no contexto. */
+export const MAX_CONTEXT_RECORDS = 6;
+
+/**
+ * Pares (tipo, id) de la conversación ORDENADOS por recencia: el contexto
+ * propio (conversación vinculada a una ficha) va anclado primero; después,
+ * mensaje a mensaje del más nuevo al más viejo, tanto los compartidos
+ * (message.contextType) como los enlaces [[tipo:id|Título]] del cuerpo — sin
+ * estos últimos, pedir un checklist de visita no movía el banner (fallo
+ * reportado 2026-08-13). Deduplicado conservando la primera aparición.
+ */
+export function orderedRecordPairs(conversation: ContextConversationLite, messages: ContextMessageLite[]): RecordPair[] {
+  const out: RecordPair[] = [];
+  const seen = new Set<string>();
+  const push = (contextType: string | null | undefined, contextId: string | null | undefined, fromLink = false) => {
+    const type = String(contextType ?? "").trim();
+    const id = String(contextId ?? "").trim();
+    if (!type || !id) return;
+    const pair: RecordPair = { contextType: type, contextId: id, ...(fromLink ? { fromLink: true } : {}) };
+    const k = pairKey(pair);
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(pair);
   };
 
-  add(conversation.contextType, conversation.contextId);
+  push(conversation.contextType, conversation.contextId);
   for (const message of messages) {
-    if (!message.deletedAt) add(message.contextType, message.contextId);
+    if (message.deletedAt) continue;
+    push(message.contextType, message.contextId);
+    if (message.body) {
+      const re = new RegExp(RECORD_LINK_RE);
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(message.body))) {
+        // Solo tipos de registro reales ("ir:" y desconocidos fuera); un id
+        // inventado por el LLM cae solo: fetchCard devuelve null y se descarta.
+        if (RECORD_ROUTES[match[1]]) push(match[1], match[2], true);
+      }
+    }
   }
-  return [...pairs.values()];
-}
-
-function selectHeaderPair(conversation: ContextConversationLite, messages: ContextMessageLite[]): RecordPair | null {
-  if (conversation.contextType && conversation.contextId) {
-    return { contextType: conversation.contextType, contextId: conversation.contextId };
-  }
-  const latest = messages.find((message) => !message.deletedAt && message.contextType && message.contextId);
-  return latest?.contextType && latest.contextId ? { contextType: latest.contextType, contextId: latest.contextId } : null;
+  return out;
 }
 
 function activeParticipantIds(conversation: ContextConversationLite): string[] {
@@ -282,11 +320,18 @@ function joinedAtBaseline(conversation: ContextConversationLite, viewerId: strin
   return conversation.participants.find((p) => p.userId === viewerId)?.joinedAt ?? null;
 }
 
+/**
+ * Ventana de mensajes del banner. Antes solo los de contexto (compartidos) y
+ * sin tope; ahora los ÚLTIMOS N con cuerpo, para extraer también los enlaces.
+ */
+export const CONTEXT_MESSAGES_WINDOW = 80;
+
 async function defaultFindContextMessages(conversationId: string): Promise<ContextMessageLite[]> {
   return prisma.chatMessage.findMany({
-    where: { conversationId, contextType: { not: null }, contextId: { not: null } },
+    where: { conversationId },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    select: { senderId: true, contextType: true, contextId: true, deletedAt: true, createdAt: true },
+    take: CONTEXT_MESSAGES_WINDOW,
+    select: { senderId: true, contextType: true, contextId: true, body: true, deletedAt: true, createdAt: true },
   });
 }
 
@@ -319,52 +364,89 @@ export async function buildConversationContextHeader(
   deps: ContextHeaderDeps = {}
 ): Promise<ConversationContextHeader | null> {
   const messages = conversation.messages ?? (await (deps.findContextMessages ?? defaultFindContextMessages)(conversation.id));
-  const selected = selectHeaderPair(conversation, messages);
-  if (!selected) return null;
+  const allPairs = orderedRecordPairs(conversation, messages);
+  if (allPairs.length === 0) return null;
 
-  const allPairs = recordPairsFrom(conversation, messages);
-  const selectedKey = pairKey(selected);
-  const relatedRecordCount = allPairs.filter((pair) => pairKey(pair) !== selectedKey).length;
   const participantIds = activeParticipantIds(conversation);
+  const limited = allPairs.slice(0, MAX_CONTEXT_RECORDS);
+  const fetchOne = deps.fetchCard ?? fetchCard;
+  const checkShared =
+    deps.sharedAccess ?? ((type: string, id: string, viewer: string) => sharedAccess(type as RecordType, id, viewer));
+  const fetched = await Promise.all(
+    limited.map(async (pair) => {
+      try {
+        const f = await fetchOne(pair.contextType, pair.contextId);
+        if (!f || !f.ownerId) return null;
+        // Regla 2: solo registros cuyo DUEÑO sigue en la conversación.
+        if (!participantIds.includes(f.ownerId)) return null;
+        // Regla 3 para pares de ENLACE (hallazgo Codex 3370738f): un enlace de
+        // cuerpo NO es una compartición — al viewer no-dueño se le exige
+        // sharedAccess, o en un grupo cualquier mención del bot enseñaría
+        // título/foto/precio a todos. Los compartidos explícitos ya nacen de un
+        // RecordShare y quedan como estaban.
+        if (pair.fromLink && f.ownerId !== viewerId && !(await checkShared(pair.contextType, pair.contextId, viewerId))) {
+          return null;
+        }
+        return f;
+      } catch {
+        return null;
+      }
+    })
+  );
 
-  let ownerId: string | null = null;
-  let card: ContextCard | null = null;
-  try {
-    const fetched = await (deps.fetchCard ?? fetchCard)(selected.contextType, selected.contextId);
-    ownerId = fetched?.ownerId ?? null;
-    if (fetched && ownerId && participantIds.includes(ownerId)) {
-      card = {
-        title: fetched.title,
-        imageUrl: fetched.imageUrl,
-        subtitle: fetched.subtitle,
-        meta: fetched.meta ?? null,
-        ...(fetched.statusShown ? { statusShown: true } : {}),
-      };
+  const records: ConversationContextRecord[] = [];
+  const owners: string[] = [];
+  fetched.forEach((f, i) => {
+    if (f && f.ownerId) {
+      records.push({
+        recordType: limited[i].contextType,
+        recordId: limited[i].contextId,
+        title: f.title,
+        imageUrl: f.imageUrl,
+        subtitle: f.subtitle,
+        meta: f.meta ?? null,
+        ...(f.statusShown ? { statusShown: true } : {}),
+      });
+      owners.push(f.ownerId);
     }
-  } catch {
-    card = null;
-  }
+  });
 
-  const viewerOwnsRecord = ownerId === viewerId;
-  const header: ConversationContextHeader = card ?? degradedCard();
-  if (card) {
-    // Solo con tarjeta real: en la degradada («registro eliminado») navegar
-    // llevaría a un 404, así que el cliente no recibe destino y no navega.
-    header.recordType = selected.contextType;
-    header.recordId = selected.contextId;
-  }
+  const primary = records[0] ?? null;
+  const header: ConversationContextHeader = primary
+    ? {
+        title: primary.title,
+        imageUrl: primary.imageUrl,
+        subtitle: primary.subtitle,
+        meta: primary.meta ?? null,
+        ...(primary.statusShown ? { statusShown: true } : {}),
+        // Solo con tarjeta real: en la degradada («registro eliminado»)
+        // navegar llevaría a un 404, así que no hay destino.
+        recordType: primary.recordType,
+        recordId: primary.recordId,
+      }
+    : degradedCard();
+  if (records.length > 0) header.records = records;
 
+  const viewerOwnsRecord = primary != null && owners[0] === viewerId;
   if (!viewerOwnsRecord) return header;
 
   header.viewerOwnsRecord = true;
+  const relatedRecordCount = allPairs.length - 1;
   if (relatedRecordCount > 0) header.relatedRecordCount = relatedRecordCount;
 
-  const baseline = lastOwnMessageBaseline(messages, viewerId) ?? joinedAtBaseline(conversation, viewerId);
+  let baseline = lastOwnMessageBaseline(messages, viewerId) ?? joinedAtBaseline(conversation, viewerId);
+  // La ventana de mensajes es finita: si el último mensaje propio quedó fuera,
+  // no abrimos la cuenta hasta joinedAt (contaría medio historial de golpe).
+  const oldestFetched = messages.length >= CONTEXT_MESSAGES_WINDOW ? (messages[messages.length - 1]?.createdAt ?? null) : null;
+  if (baseline && oldestFetched && oldestFetched > baseline) baseline = oldestFetched;
   if (!baseline) return header;
 
+  // Los eventos agregan sobre TODOS los pares (con tope: la query lleva un OR
+  // por par) — así «cambios detectados» cubre también los registros enlazados.
+  const eventPairs = allPairs.slice(0, 12);
   const [total, events] = await Promise.all([
-    (deps.countRecordEvents ?? defaultCountRecordEvents)(viewerId, allPairs, baseline),
-    (deps.findRecordEvents ?? defaultFindRecordEvents)(viewerId, allPairs, baseline),
+    (deps.countRecordEvents ?? defaultCountRecordEvents)(viewerId, eventPairs, baseline),
+    (deps.findRecordEvents ?? defaultFindRecordEvents)(viewerId, eventPairs, baseline),
   ]);
   header.changedSinceMyLastMessage =
     total > 0

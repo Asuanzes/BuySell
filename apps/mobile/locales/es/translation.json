@@ -1114,6 +1114,8 @@
     "changed_count_one": "1 cambio desde tu último mensaje",
     "changed_count_other": "{{count}} cambios desde tu último mensaje",
     "changed_open": "Ver la historia del registro",
+    "context_prev": "Registro anterior del contexto",
+    "context_next": "Siguiente registro del contexto",
     "typing": "escribiendo…",
     "composer_placeholder": "Escribe un mensaje…",
     "send": "Enviar",

@@ -29,6 +29,17 @@ export type RecordCardDto = {
    *  no solo del contexto propio de la conversación): destino del toque. */
   recordType?: string;
   recordId?: string;
+  /** Carrusel: todos los registros de la conversación (contexto propio,
+   *  compartidos y enlaces [[…]] de los cuerpos), por recencia. */
+  records?: Array<{
+    recordType: string;
+    recordId: string;
+    title: string;
+    subtitle: string | null;
+    meta?: string | null;
+    statusShown?: boolean;
+    imageUrl: string | null;
+  }>;
   /** Los tres campos de abajo solo llegan al DUEÑO del registro: el servidor los
    *  omite para quien lo tiene compartido (no se filtra actividad ajena). */
   viewerOwnsRecord?: boolean;

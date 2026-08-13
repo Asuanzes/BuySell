@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,6 +18,16 @@ export type ContextHeaderEvent = {
   payload: RecordEventPayload;
 };
 
+export type ChatContextRecord = {
+  recordType: string;
+  recordId: string;
+  title: string;
+  subtitle: string | null;
+  meta?: string | null;
+  statusShown?: boolean;
+  imageUrl: string | null;
+};
+
 export type ChatContextCard = {
   title: string;
   subtitle: string | null;
@@ -27,6 +38,8 @@ export type ChatContextCard = {
    *  compartido, no solo del contexto propio de la conversación). */
   recordType?: string;
   recordId?: string;
+  /** Carrusel: todos los registros de la conversación, por recencia. */
+  records?: ChatContextRecord[];
   viewerOwnsRecord?: boolean;
   relatedRecordCount?: number;
   /** El servidor manda esto SOLO al dueño del registro, y como máximo 3 eventos. */
@@ -36,7 +49,9 @@ export type ChatContextCard = {
 /**
  * Cabecera de la conversación: de qué se está hablando y —lo que la diferencia
  * de cualquier chat— qué ha cambiado ahí desde la última vez que el usuario
- * escribió. Son dos destinos distintos: la ficha y la historia del registro.
+ * escribió. Con varios registros en juego (compartidos y enlaces [[…]] de los
+ * mensajes), el banner ROTA entre ellos con los chevrons; el más reciente va
+ * primero, así una acción nueva mueve el contexto sola (petición 2026-08-13).
  */
 export function ChatContextBanner({
   card,
@@ -51,12 +66,38 @@ export function ChatContextBanner({
   contextType: string | null;
   contextId: string | null;
   deletedLabel: string;
-  onOpenRecord: () => void;
-  onOpenHistory: () => void;
+  onOpenRecord: (recordType: string | null, recordId: string | null) => void;
+  onOpenHistory: (recordType: string | null, recordId: string | null) => void;
   locale: string;
 }) {
   const { th } = useTheme();
   const { t } = useTranslation();
+
+  // Carrusel: records del servidor; sin ellos (cliente/servidor viejos), la
+  // tarjeta primaria como única página.
+  const pages = useMemo<ChatContextRecord[]>(() => {
+    if (!card) return [];
+    if (card.records?.length) return card.records;
+    return [
+      {
+        recordType: card.recordType ?? contextType ?? "",
+        recordId: card.recordId ?? contextId ?? "",
+        title: card.title,
+        subtitle: card.subtitle,
+        meta: card.meta ?? null,
+        ...(card.statusShown ? { statusShown: true } : {}),
+        imageUrl: card.imageUrl,
+      },
+    ];
+  }, [card, contextType, contextId]);
+
+  const [index, setIndex] = useState(0);
+  // La firma de páginas cambia (nuevo registro en juego) → volver a la primera:
+  // así la última acción se ve sin tocar nada.
+  const signature = pages.map((p) => `${p.recordType}:${p.recordId}`).join(",");
+  useEffect(() => {
+    setIndex(0);
+  }, [signature]);
 
   if (!card) {
     if (!contextType || !contextId) return null;
@@ -67,6 +108,7 @@ export function ChatContextBanner({
     );
   }
 
+  const current = pages[Math.min(index, pages.length - 1)] ?? null;
   const changed = card.changedSinceMyLastMessage;
   // Nada de «0 cambios»: sin actividad, el banner es el de siempre.
   const latest =
@@ -77,38 +119,58 @@ export function ChatContextBanner({
     ? formatRecordEventDescription(latest.eventType, latest.payload, t, locale)
     : null;
 
+  const cycle = (delta: number) => {
+    if (pages.length < 2) return;
+    setIndex((prev) => (prev + delta + pages.length) % pages.length);
+  };
+
   return (
     <View style={[styles.banner, { backgroundColor: th.surface, borderColor: th.border }]}>
-      <Pressable
-        onPress={onOpenRecord}
-        accessibilityRole="button"
-        accessibilityLabel={card.title}
-        style={({ pressed }) => [styles.rowTop, pressed && { opacity: 0.7 }]}
-      >
-        {/* Sin imagen NO se reserva el hueco: un cuadrado vacío parecía una
-            foto rota (fallo reportado 2026-08-13 con viajes organizándose). */}
-        {card.imageUrl ? <Image source={{ uri: card.imageUrl }} style={styles.img} contentFit="cover" /> : null}
-        <View style={styles.body}>
-          <Text style={[styles.title, { color: th.text }]} numberOfLines={1}>
-            {card.title}
-          </Text>
-          {card.subtitle ? (
-            <Text style={[styles.sub, { color: th.textMuted }]} numberOfLines={1}>
-              {card.subtitle}
+      <View style={styles.rowTop}>
+        {pages.length > 1 ? (
+          <Pressable onPress={() => cycle(-1)} hitSlop={10} accessibilityRole="button" accessibilityLabel={t("chat.context_prev")}>
+            <Ionicons name="chevron-back" size={16} color={th.textSubtle} />
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={() => onOpenRecord(current?.recordType || null, current?.recordId || null)}
+          accessibilityRole="button"
+          accessibilityLabel={current?.title ?? card.title}
+          style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.7 }]}
+        >
+          {/* Sin imagen NO se reserva el hueco: un cuadrado vacío parecía una
+              foto rota (fallo reportado 2026-08-13 con viajes organizándose). */}
+          {current?.imageUrl ? <Image source={{ uri: current.imageUrl }} style={styles.img} contentFit="cover" /> : null}
+          <View style={styles.body}>
+            <Text style={[styles.title, { color: th.text }]} numberOfLines={1}>
+              {current?.title ?? card.title}
             </Text>
+            {current?.subtitle ? (
+              <Text style={[styles.sub, { color: th.textMuted }]} numberOfLines={1}>
+                {current.subtitle}
+              </Text>
+            ) : null}
+            {current?.meta ? (
+              <Text style={[styles.sub, { color: th.textMuted }]} numberOfLines={1}>
+                {current.meta}
+              </Text>
+            ) : null}
+          </View>
+          {pages.length > 1 ? (
+            <Text style={[styles.pageIndicator, { color: th.textSubtle }]}>{`${Math.min(index, pages.length - 1) + 1}/${pages.length}`}</Text>
           ) : null}
-          {card.meta ? (
-            <Text style={[styles.sub, { color: th.textMuted }]} numberOfLines={1}>
-              {card.meta}
-            </Text>
-          ) : null}
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={th.textSubtle} />
-      </Pressable>
+          <Ionicons name="chevron-forward" size={16} color={th.textSubtle} />
+        </Pressable>
+        {pages.length > 1 ? (
+          <Pressable onPress={() => cycle(1)} hitSlop={10} accessibilityRole="button" accessibilityLabel={t("chat.context_next")}>
+            <Ionicons name="chevron-forward-circle-outline" size={18} color={th.textSubtle} />
+          </Pressable>
+        ) : null}
+      </View>
 
       {changed && changed.total > 0 ? (
         <Pressable
-          onPress={onOpenHistory}
+          onPress={() => onOpenHistory(current?.recordType || null, current?.recordId || null)}
           accessibilityRole="button"
           accessibilityLabel={t("chat.changed_open")}
           style={({ pressed }) => [
@@ -143,7 +205,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
   },
-  rowTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  rowTop: { flexDirection: "row", alignItems: "center", gap: 6 },
+  rowMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 },
   rowChanged: {
     flexDirection: "row",
     alignItems: "center",
@@ -157,4 +220,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 13, fontFamily: fonts.bodyMedium },
   sub: { fontSize: 12, fontFamily: fonts.body },
   changedCount: { fontSize: 13, fontFamily: fonts.bodyMedium },
+  pageIndicator: { fontSize: 11, fontFamily: fonts.body },
 });
